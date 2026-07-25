@@ -15,6 +15,16 @@ export type CreatedTransitInstruction = {
 
 export type TransitReconciliationStatus = '已核销' | '未核销' | '部分核销';
 export type OverseasWarehouseArrivalStatus = '是' | '否';
+export type CreatedTransitAttachment = {
+  id: string;
+  name: string;
+  type: string;
+  customerVisible: '可见' | '不可见';
+  uploadedAt: string;
+  uploadedBy: string;
+  fileSize: string;
+  file?: File;
+};
 
 export type CreatedTransitChildOrder = {
   id: string;
@@ -51,6 +61,7 @@ export type CreatedTransitChildOrder = {
   volume: string;
   inboundTime: string;
   boxNumbers: string[];
+  attachments?: CreatedTransitAttachment[];
 };
 
 const createdTransitChildOrders: CreatedTransitChildOrder[] = [];

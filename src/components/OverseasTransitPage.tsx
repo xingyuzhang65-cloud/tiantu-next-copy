@@ -34,7 +34,7 @@ import {
   submitStorageBoxesAsTransitChild,
   subscribeOverseasTransitFlow,
 } from './overseasTransitFlow';
-import type { CreatedTransitChildOrder } from './overseasTransitFlow';
+import type { CreatedTransitAttachment, CreatedTransitChildOrder } from './overseasTransitFlow';
 
 interface OverseasTransitPageProps {
   addToast: (msg: string, type: 'success' | 'info' | 'warning') => void;
@@ -736,6 +736,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
   const [appliedStorageIdentifierFilters, setAppliedStorageIdentifierFilters] = useState<Record<StorageIdentifierSearchKey, string>>({ ...emptyStorageIdentifierSearchValues });
   const [selectedStorageBoxIndexesByOrder, setSelectedStorageBoxIndexesByOrder] = useState<Record<string, number[]>>({});
   const [storageAddressForm, setStorageAddressForm] = useState<AddressFormState>({ ...emptyAddressForm });
+  const [storageAttachments, setStorageAttachments] = useState<CreatedTransitAttachment[]>([]);
   const [storageInstructionRowsByOrder, setStorageInstructionRowsByOrder] = useState<Record<string, StorageInstructionRow[]>>({});
   const [showStorageInstructionModal, setShowStorageInstructionModal] = useState(false);
   const [selectedStorageInstructionFeeCodes, setSelectedStorageInstructionFeeCodes] = useState<string[]>(storageInstructionFeeRows.slice(0, 3).map((row) => row.code));
@@ -793,6 +794,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
         return;
       }
       setStorageAddressForm(nextRow.status === '暂存已完成' ? getCompletedStorageAddressForm(nextRow) : { ...emptyAddressForm });
+      setStorageAttachments([]);
       setActiveStorageOrder(nextRow);
       addToast(`已打开 ${nextRow.headWaybillNo} ${nextRow.status === '暂存已完成' ? '暂存已完成详情' : '中转下单页面'}`, 'info');
       return;
@@ -838,7 +840,24 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
 
   const cancelStorageSubmission = () => {
     if (activeStorageOrderKey) setSelectedStorageBoxIndexesByOrder((prev) => ({ ...prev, [activeStorageOrderKey]: [] }));
+    setStorageAttachments([]);
     setActiveStorageOrder(null);
+  };
+
+  const handleStorageAttachmentFileChange = (file?: File) => {
+    if (!file) return;
+    const sizeInMb = file.size / 1024 / 1024;
+    setStorageAttachments([{
+      id: `STORAGE-ATT-${Date.now()}`,
+      name: file.name,
+      type: '其它',
+      customerVisible: '可见',
+      uploadedAt: formatLocalDateTime(),
+      uploadedBy: '天朗（付豪）',
+      fileSize: sizeInMb >= 1 ? `${sizeInMb.toFixed(1)}MB` : `${Math.max(1, Math.round(file.size / 1024))}KB`,
+      file,
+    }]);
+    addToast('附件已选择，提交下单后可在子单其它信息中下载', 'info');
   };
 
   const submitStorageOrder = () => {
@@ -882,10 +901,12 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
       volume: (boxNumbers.length * 0.078).toFixed(2),
       inboundTime: activeStorageOrder.warehouseAt,
       boxNumbers,
+      attachments: storageAttachments,
     };
     submitStorageBoxesAsTransitChild(child);
     setSelectedStorageBoxIndexesByOrder((prev) => ({ ...prev, [activeStorageOrderKey]: [] }));
     setStorageInstructionRowsByOrder((prev) => ({ ...prev, [activeStorageOrderKey]: [] }));
+    setStorageAttachments([]);
     setStorageAddressForm({ ...emptyAddressForm });
     setActiveStorageOrder(null);
     addToast(`已提交 ${boxNumbers.length} 箱，已生成海外中转单并流转至待确认状态`, 'success');
@@ -1331,7 +1352,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
               <h2 className="text-sm font-bold text-slate-950">{isCompletedStorageOrder ? '暂存已完成详情' : '中转下单'}</h2>
               <button
                 type="button"
-                onClick={() => { setActiveStorageOrder(null); setShowStorageInstructionModal(false); setEditingStorageInstruction(null); setDeletingStorageInstruction(null); }}
+                onClick={() => { setStorageAttachments([]); setActiveStorageOrder(null); setShowStorageInstructionModal(false); setEditingStorageInstruction(null); setDeletingStorageInstruction(null); }}
                 className="rounded p-1 text-slate-700 hover:bg-slate-100"
                 aria-label="关闭"
               >
@@ -1552,6 +1573,34 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                       />
                     </>
                   )}
+                </div>
+                <div className="mt-5 border-t border-slate-100 pt-4">
+                  <div className="flex items-start gap-3 text-xs">
+                    <span className="w-24 shrink-0 pt-2 text-right font-bold text-slate-900">附件上传：</span>
+                    <div className="min-w-0 flex-1">
+                      <label className="inline-flex h-8 cursor-pointer items-center rounded bg-[#004bb1] px-5 text-xs font-bold text-white hover:bg-[#003b91]">
+                        选择附件
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={(event) => {
+                            handleStorageAttachmentFileChange(event.target.files?.[0]);
+                            event.currentTarget.value = '';
+                          }}
+                        />
+                      </label>
+                      {storageAttachments.length > 0 ? (
+                        <div className="mt-3 flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+                          <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                          <span className="min-w-0 flex-1 truncate">{storageAttachments[0].name}</span>
+                          <span className="text-slate-400">{storageAttachments[0].fileSize}</span>
+                          <button type="button" onClick={() => setStorageAttachments([])} className="font-bold text-red-500 hover:underline">删除</button>
+                        </div>
+                      ) : (
+                        <div className="mt-3 text-[11px] text-slate-400">暂未上传附件</div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </section>
 

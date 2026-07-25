@@ -15,7 +15,7 @@ import {
 } from './overseasTransitAddress';
 import type { AddressFormState } from './overseasTransitAddress';
 import { cancelCreatedTransitChildOrders, confirmCreatedTransitChildOrders, getCreatedTransitChildOrders, markCreatedTransitChildOrdersAsOrdered, rejectCreatedTransitChildOrders, rollbackCreatedTransitChildOrdersToConfirmed, rollbackCreatedTransitChildOrdersToOrdered, rollbackSignedCreatedTransitChildOrdersToTransit, shipCreatedTransitChildOrders, signCreatedTransitChildOrders, subscribeOverseasTransitFlow, updateCreatedTransitChildOrderInstructions } from './overseasTransitFlow';
-import type { CreatedTransitChildOrder, CreatedTransitInstruction, OverseasWarehouseArrivalStatus, TransitReconciliationStatus } from './overseasTransitFlow';
+import type { CreatedTransitAttachment, CreatedTransitChildOrder, CreatedTransitInstruction, OverseasWarehouseArrivalStatus, TransitReconciliationStatus } from './overseasTransitFlow';
 
 interface OverseasTransitOrderPageProps {
   addToast: (msg: string, type: 'success' | 'info' | 'warning') => void;
@@ -58,6 +58,7 @@ interface OverseasTransitRow {
   volume: string;
   inboundTime: string;
   boxNumbers?: string[];
+  attachments?: CreatedTransitAttachment[];
 }
 
 interface TransitTransferRow {
@@ -770,7 +771,7 @@ type InstructionFeeRow = (typeof instructionFeeRows)[number] & {
   addedBy?: string;
 };
 type QuoteFeeRow = (typeof quoteFeeRows)[number];
-type AttachmentRow = (typeof attachmentRows)[number];
+type AttachmentRow = (typeof attachmentRows)[number] & { file?: File };
 
 const getReconciliationStatus = (row: Pick<OverseasTransitRow, 'reconciliationStatus'>): TransitReconciliationStatus =>
   row.reconciliationStatus || '未核销';
@@ -821,7 +822,7 @@ type AttachmentFormState = {
   customerVisible: '可见' | '不可见';
 };
 
-const attachmentTypeOptions = ['POD', 'ISA', '报关资料', '底单', '其他', '税金单', '递延资料', '提单'];
+const attachmentTypeOptions = ['POD', 'ISA', '报关资料', '底单', '其他', '其它', '税金单', '递延资料', '提单'];
 const emptyAttachmentForm: AttachmentFormState = {
   fileName: '',
   fileSize: '',
@@ -1547,6 +1548,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const [quoteRowsByOrder, setQuoteRowsByOrder] = useState<Record<string, QuoteFeeRow[]>>({});
   const [quoteLogsByOrder, setQuoteLogsByOrder] = useState<Record<string, OrderLogRow[]>>({});
   const [attachmentRowsByOrder, setAttachmentRowsByOrder] = useState<Record<string, AttachmentRow[]>>({});
+  const [addressAttachmentsByOrder, setAddressAttachmentsByOrder] = useState<Record<string, AttachmentRow[]>>({});
   const [trackingRowsByOrder, setTrackingRowsByOrder] = useState<Record<string, TrackingEvent[]>>({});
   const [showTrackingModal, setShowTrackingModal] = useState(false);
   const [trackingForm, setTrackingForm] = useState<TrackingFormState>(emptyTrackingForm);
@@ -1618,7 +1620,10 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const activeInstructionRows = activeOrder ? getInstructionRowsForOrder(activeOrder) : [];
   const activeQuoteRows = activeOrder ? (quoteRowsByOrder[activeOrderKey] || quoteFeeRows) : [];
   const canEditQuoteFees = !!activeOrder && quoteEditableStatuses.has(activeOrder.status);
-  const activeAttachmentRows = activeOrder ? (attachmentRowsByOrder[activeOrderKey] || attachmentRows) : [];
+  const activeAttachmentRows = activeOrder
+    ? [...(attachmentRowsByOrder[activeOrderKey] || attachmentRows), ...(activeOrder.attachments || []), ...(addressAttachmentsByOrder[activeOrderKey] || [])]
+    : [];
+  const activeAddressAttachments = activeOrder ? (addressAttachmentsByOrder[activeOrderKey] || []) : [];
   const activeTrackingRows = activeOrder ? (trackingRowsByOrder[activeOrderKey] || getDefaultTrackingRows(activeOrder)) : [];
 
   useEffect(() => subscribeOverseasTransitFlow(() => setCreatedTransitRows(getCreatedTransitChildOrders())), []);
@@ -2258,6 +2263,44 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
       fileName: file.name,
       fileSize: sizeInMb >= 1 ? `${sizeInMb.toFixed(1)}MB` : `${Math.max(1, Math.round(file.size / 1024))}KB`,
     }));
+  };
+
+  const handleAddressAttachmentFileChange = (file?: File) => {
+    if (!file || !activeOrderKey) return;
+    const sizeInMb = file.size / 1024 / 1024;
+    const attachment: AttachmentRow = {
+      id: `ADDR-${Date.now()}`,
+      name: file.name,
+      type: '其它',
+      customerVisible: '可见',
+      uploadedAt: formatDateTime(),
+      uploadedBy: '天朗（付豪）',
+      fileSize: sizeInMb >= 1 ? `${sizeInMb.toFixed(1)}MB` : `${Math.max(1, Math.round(file.size / 1024))}KB`,
+      file,
+    };
+    setAddressAttachmentsByOrder((prev) => ({ ...prev, [activeOrderKey]: [attachment] }));
+    addToast('附件已选择，下单后可在子单其它信息中下载', 'info');
+  };
+
+  const removeAddressAttachment = () => {
+    if (!activeOrderKey) return;
+    setAddressAttachmentsByOrder((prev) => ({ ...prev, [activeOrderKey]: [] }));
+  };
+
+  const downloadAttachment = (row: AttachmentRow) => {
+    if (!row.file) {
+      addToast(`正在下载 ${row.name}`, 'info');
+      return;
+    }
+    const url = URL.createObjectURL(row.file);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = row.name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    addToast(`已下载 ${row.name}`, 'success');
   };
 
   const saveAttachment = () => {
@@ -3094,6 +3137,35 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                         onChange={(value) => updateAddressField('overseasWarehouseRemark', value)}
                       />
                     </div>
+                    <div className="mt-5 border-t border-slate-100 pt-4">
+                      <div className="flex items-start gap-3 text-xs">
+                        <span className="w-24 shrink-0 pt-2 text-right font-bold text-slate-900">附件上传：</span>
+                        <div className="min-w-0 flex-1">
+                          <label className="inline-flex h-8 cursor-pointer items-center rounded bg-[#004bb1] px-5 text-xs font-bold text-white hover:bg-[#003b91]">
+                            选择附件
+                            <input
+                              type="file"
+                              className="hidden"
+                              onChange={(event) => {
+                                handleAddressAttachmentFileChange(event.target.files?.[0]);
+                                event.currentTarget.value = '';
+                              }}
+                            />
+                          </label>
+                          {activeAddressAttachments.length > 0 ? (
+                            <div className="mt-3 flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+                              <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                              <span className="min-w-0 flex-1 truncate">{activeAddressAttachments[0].name}</span>
+                              <span className="text-slate-400">{activeAddressAttachments[0].fileSize}</span>
+                              <button type="button" onClick={() => downloadAttachment(activeAddressAttachments[0])} className="font-bold text-[#004bb1] hover:underline">下载</button>
+                              <button type="button" onClick={removeAddressAttachment} className="font-bold text-red-500 hover:underline">删除</button>
+                            </div>
+                          ) : (
+                            <div className="mt-3 text-[11px] text-slate-400">暂未上传附件</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </section>
 
                 </>
@@ -3391,7 +3463,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                                       </button>
                                       <button
                                         type="button"
-                                        onClick={() => addToast(`正在下载 ${row.name}`, 'info')}
+                                        onClick={() => downloadAttachment(row)}
                                         className="mr-3 font-bold text-[#004bb1] hover:underline"
                                       >
                                         下载
