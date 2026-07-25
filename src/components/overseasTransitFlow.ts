@@ -45,7 +45,7 @@ export type CreatedTransitChildOrder = {
   orderType: string;
   salesman: string;
   merchandiser: string;
-  status: '待确认' | '已确认' | '已下单' | '转运中' | '签收' | '取消';
+  status: '待确认' | '已确认' | '已下单' | '转运中' | '签收' | '驳回' | '取消';
   packages: number;
   weight: string;
   volume: string;
@@ -130,6 +130,29 @@ export const cancelCreatedTransitChildOrders = (orderIds: string[]) => {
 
   if (changed) listeners.forEach((listener) => listener());
 };
+export const rejectCreatedTransitChildOrders = (orderIds: string[]) => {
+  const idSet = new Set(orderIds);
+  let changed = false;
+
+  createdTransitChildOrders.forEach((order) => {
+    if (!idSet.has(order.id) || order.status !== '待确认') return;
+
+    order.status = '驳回';
+    removedStorageBoxCounts[order.parentHeadWaybillNo] = Math.max(
+      0,
+      (removedStorageBoxCounts[order.parentHeadWaybillNo] || 0) - order.boxNumbers.length,
+    );
+
+    const rejectedBoxNumbers = new Set(order.boxNumbers);
+    removedStorageBoxNumbers[order.parentHeadWaybillNo] = (removedStorageBoxNumbers[order.parentHeadWaybillNo] || [])
+      .filter((boxNumber) => !rejectedBoxNumbers.has(boxNumber));
+
+    changed = true;
+  });
+
+  if (changed) listeners.forEach((listener) => listener());
+};
+
 export const markCreatedTransitChildOrdersAsOrdered = (orderIds: string[]) => {
   const idSet = new Set(orderIds);
   let changed = false;

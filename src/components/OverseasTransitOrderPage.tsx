@@ -14,7 +14,7 @@ import {
   warehouseAddressBook,
 } from './overseasTransitAddress';
 import type { AddressFormState } from './overseasTransitAddress';
-import { cancelCreatedTransitChildOrders, confirmCreatedTransitChildOrders, getCreatedTransitChildOrders, markCreatedTransitChildOrdersAsOrdered, rollbackCreatedTransitChildOrdersToConfirmed, rollbackCreatedTransitChildOrdersToOrdered, rollbackSignedCreatedTransitChildOrdersToTransit, shipCreatedTransitChildOrders, signCreatedTransitChildOrders, subscribeOverseasTransitFlow, updateCreatedTransitChildOrderInstructions } from './overseasTransitFlow';
+import { cancelCreatedTransitChildOrders, confirmCreatedTransitChildOrders, getCreatedTransitChildOrders, markCreatedTransitChildOrdersAsOrdered, rejectCreatedTransitChildOrders, rollbackCreatedTransitChildOrdersToConfirmed, rollbackCreatedTransitChildOrdersToOrdered, rollbackSignedCreatedTransitChildOrdersToTransit, shipCreatedTransitChildOrders, signCreatedTransitChildOrders, subscribeOverseasTransitFlow, updateCreatedTransitChildOrderInstructions } from './overseasTransitFlow';
 import type { CreatedTransitChildOrder, CreatedTransitInstruction, OverseasWarehouseArrivalStatus, TransitReconciliationStatus } from './overseasTransitFlow';
 
 interface OverseasTransitOrderPageProps {
@@ -67,9 +67,9 @@ interface TransitTransferRow {
   transferNo: string;
 }
 
-const overseasTransitNodes = ['待确认', '已确认', '已下单', '转运中', '签收', '取消'];
+const overseasTransitNodes = ['待确认', '已确认', '已下单', '转运中', '签收', '驳回', '取消'];
 // 已确认详情与已下单共用运单详情二级页签；仅待确认保留可编辑的下单表单。
-const orderFormStatuses = new Set(['待确认']);
+const orderFormStatuses = new Set(['待确认', '驳回']);
 
 const getOrderDeliveryMethod = (row: OverseasTransitRow) =>
   row.addressForm?.deliveryMethod
@@ -525,7 +525,7 @@ const makeMockTransitRow = (status: string, index: number): OverseasTransitRow =
   const headNo = `YT2507${String(statusIndex + 20).padStart(2, '0')}${String(Math.floor(index / 3) + 1).padStart(4, '0')}`;
   const createdDay = 10 + (index % 4);
   const sequence = (index % 3) + 1;
-  const carrierCode = status === '取消' ? 'CXL' : status === '签收' ? 'POD' : status === '转运中' ? 'TRN' : status === '已下单' ? 'ORD' : status === '已确认' ? 'CFM' : 'WAT';
+  const carrierCode = status === '取消' ? 'CXL' : status === '驳回' ? 'REJ' : status === '签收' ? 'POD' : status === '转运中' ? 'TRN' : status === '已下单' ? 'ORD' : status === '已确认' ? 'CFM' : 'WAT';
   const warehouseCode = overseasWarehouseCodes[index % overseasWarehouseCodes.length];
   const warehouseAddress = warehouseAddressBook[warehouseCode];
 
@@ -560,9 +560,9 @@ const transitRows: OverseasTransitRow[] = [
     return Array.from({ length: Math.max(0, 10 - existingCount) }, (_, index) => makeMockTransitRow(status, existingCount + index));
   }),
 ].map((row) => {
-  const hasOrdered = row.status === '已下单' || row.status === '转运中' || row.status === '签收';
-  const hasOutbound = row.status === '转运中' || row.status === '签收';
-  const hasSigned = row.status === '签收';
+  const hasOrdered = row.status === '已下单' || row.status === '转运中' || row.status === '签收' || row.status === '驳回';
+  const hasOutbound = row.status === '转运中' || row.status === '签收' || row.status === '驳回';
+  const hasSigned = row.status === '签收' || row.status === '驳回';
 
   return {
     ...row,
@@ -1581,7 +1581,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const activeLifecycleDateFilter = activeLifecycleTimeConfig
     ? appliedLifecycleDateFilters[activeLifecycleTimeConfig.key]?.trim()
     : '';
-  const showOverseasWarehouseArrivalStatus = activeTab === '待确认' || activeTab === '已确认' || activeTab === '已下单';
+  const showOverseasWarehouseArrivalStatus = activeTab === '待确认' || activeTab === '已确认' || activeTab === '已下单' || activeTab === '驳回';
   const activeOrderFilterKeys = showOverseasWarehouseArrivalStatus
     ? orderFilterKeys
     : orderFilterKeys.filter((key) => key !== 'overseasWarehouseArrivalStatus');
@@ -1760,6 +1760,35 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
 
     clearSelectedCurrentRows(rows);
     addToast(`已取消 ${rows.length} 条待确认子单，返回状态：取消；已取消子单箱号回流至母单`, 'success');
+  };
+
+  const rejectPendingOrders = () => {
+    if (activeTab !== '待确认') return;
+    const rows = getSelectedCurrentRows();
+    if (rows.length === 0) { addToast('请先勾选需要驳回的待确认子单', 'warning'); return; }
+
+    const createdOrderIds = rows.filter(isCreatedTransitChildOrder).map((row) => row.id);
+    const seedOrderKeys = rows.filter((row) => !isCreatedTransitChildOrder(row)).map(getOrderKey);
+
+    if (createdOrderIds.length > 0) rejectCreatedTransitChildOrders(createdOrderIds);
+    if (seedOrderKeys.length > 0) {
+      setStatusOverridesByOrder((prev) => seedOrderKeys.reduce((next, key) => ({ ...next, [key]: '驳回' }), { ...prev }));
+    }
+
+    rows.forEach((row) => appendQuoteLog(getOrderKey(row), {
+      operatedAt: formatDateTime(),
+      operator: '天朗（付豪）',
+      action: '驳回海外中转单',
+      field: '状态 / 子单箱号',
+      before: '待确认',
+      after: '驳回 / 回流母单',
+      note: row.boxNumbers?.length
+        ? `子单箱号 ${row.boxNumbers.join('、')} 已回流至母单`
+        : '子单状态已驳回，关联数据已回流至母单',
+    }));
+
+    clearSelectedCurrentRows(rows);
+    addToast(`已驳回 ${rows.length} 条待确认子单，状态已流转至驳回；子单数据已回流至母单`, 'success');
   };
 
   const confirmPendingOrders = () => {
@@ -2591,6 +2620,14 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
               </button>
               <button
                 type="button"
+                title="支持批量驳回；驳回后状态流转至驳回，子单数据重新回到母单"
+                onClick={rejectPendingOrders}
+                className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
+              >
+                驳回
+              </button>
+              <button
+                type="button"
                 title="支持批量已确认；确认后子单由待确认流转至已确认"
                 onClick={confirmPendingOrders}
                 className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
@@ -2697,6 +2734,18 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                 className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
               >
                 回退
+              </button>
+              <button type="button" onClick={() => addToast('导出海外中转单功能为展示', 'info')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
+                导出
+              </button>
+              <button type="button" onClick={() => openLog()} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
+                查看日志
+              </button>
+            </>
+          ) : activeTab === '驳回' ? (
+            <>
+              <button type="button" onClick={() => addToast('驳回状态的海外中转单已保存', 'success')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
+                保存
               </button>
               <button type="button" onClick={() => addToast('导出海外中转单功能为展示', 'info')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
                 导出
@@ -2846,7 +2895,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
         <div className="fixed inset-0 z-50 bg-black/55">
           <div className="absolute right-0 top-0 flex h-full w-[66vw] min-w-[980px] flex-col bg-slate-50 shadow-2xl">
             <div className="flex h-11 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-9">
-              <h2 className="text-sm font-bold text-slate-950">{usesOrderFormTemplate(activeOrder.status) ? '中转下单' : '确认运单信息'}</h2>
+              <h2 className="text-sm font-bold text-slate-950">{activeOrder.status === '驳回' ? '驳回单详情' : usesOrderFormTemplate(activeOrder.status) ? '中转下单' : '确认运单信息'}</h2>
               <div className="flex items-center gap-2">
                 <button type="button" onClick={() => { setEditingOrderFormKey(null); setAddressFormSnapshotsByOrder({}); setActiveOrder(null); }} className="rounded p-1 text-slate-700 hover:bg-slate-100" aria-label="关闭">
                   <X className="h-5 w-5" />
