@@ -14,8 +14,8 @@ import {
   warehouseAddressBook,
 } from './overseasTransitAddress';
 import type { AddressFormState } from './overseasTransitAddress';
-import { cancelCreatedTransitChildOrders, confirmCreatedTransitChildOrders, getCreatedTransitChildOrders, markCreatedTransitChildOrdersAsOrdered, rejectCreatedTransitChildOrders, rollbackCreatedTransitChildOrdersToConfirmed, rollbackCreatedTransitChildOrdersToOrdered, rollbackSignedCreatedTransitChildOrdersToTransit, shipCreatedTransitChildOrders, signCreatedTransitChildOrders, subscribeOverseasTransitFlow, updateCreatedTransitChildOrderInstructions } from './overseasTransitFlow';
-import type { CreatedTransitAttachment, CreatedTransitChildOrder, CreatedTransitInstruction, OverseasWarehouseArrivalStatus, TransitReconciliationStatus } from './overseasTransitFlow';
+import { cancelCreatedTransitChildOrders, confirmCreatedTransitChildOrders, getCreatedTransitChildOrders, markCreatedTransitChildOrdersAsOrdered, rejectCreatedTransitChildOrders, rollbackCreatedTransitChildOrdersToConfirmed, rollbackCreatedTransitChildOrdersToOrdered, rollbackSignedCreatedTransitChildOrdersToTransit, shipCreatedTransitChildOrders, signCreatedTransitChildOrders, subscribeOverseasTransitFlow } from './overseasTransitFlow';
+import type { CreatedTransitAttachment, CreatedTransitChildOrder, OverseasWarehouseArrivalStatus } from './overseasTransitFlow';
 
 interface OverseasTransitOrderPageProps {
   addToast: (msg: string, type: 'success' | 'info' | 'warning') => void;
@@ -47,8 +47,6 @@ interface OverseasTransitRow {
   orderType?: string;
   deliveryMethod?: string;
   addressForm?: AddressFormState;
-  instructions?: CreatedTransitInstruction[];
-  reconciliationStatus?: TransitReconciliationStatus;
   overseasWarehouseArrivalStatus?: OverseasWarehouseArrivalStatus;
   salesman?: string;
   merchandiser?: string;
@@ -96,10 +94,6 @@ const getMockShipmentId = (source: string, createdAt: string | undefined, orderS
 
 const getMockReferenceId = (source: string, createdAt: string | undefined, orderSeq = 1) =>
   'REF-FBA-' + getMockIdentifierSerial(source, createdAt, orderSeq);
-
-const getMockReconciliationStatus = (orderSeq = 1): TransitReconciliationStatus => (
-  ['未核销', '部分核销', '已核销'][(Math.max(orderSeq, 1) - 1) % 3] as TransitReconciliationStatus
-);
 
 const getMockOverseasWarehouseArrivalStatus = (orderSeq = 1): OverseasWarehouseArrivalStatus =>
   orderSeq % 2 === 0 ? '是' : '否';
@@ -572,7 +566,6 @@ const transitRows: OverseasTransitRow[] = [
     inboundNo: row.inboundNo || getMockInboundNo(row.id, row.childCreatedAt || row.inboundTime, row.orderSeq),
     shipmentId: row.shipmentId || getMockShipmentId(row.id, row.childCreatedAt || row.inboundTime, row.orderSeq),
     referenceId: row.referenceId || getMockReferenceId(row.id, row.childCreatedAt || row.inboundTime, row.orderSeq),
-    reconciliationStatus: row.reconciliationStatus || getMockReconciliationStatus(row.orderSeq),
     overseasWarehouseArrivalStatus: row.overseasWarehouseArrivalStatus || getMockOverseasWarehouseArrivalStatus(row.orderSeq),
     orderedAt: row.orderedAt || (hasOrdered ? shiftMockDateTime(row.childCreatedAt || row.inboundTime, 2) : undefined),
     outboundAt: row.outboundAt || (hasOutbound ? shiftMockDateTime(row.childCreatedAt || row.inboundTime, 6) : undefined),
@@ -612,8 +605,8 @@ type ExpressCreationRecord = {
 };
 
 type IdentifierSearchKey = 'inboundNo' | 'shipmentId' | 'referenceId';
-type OrderFilterKey = IdentifierSearchKey | 'overseasWarehouseArrivalStatus' | 'reconciliationStatus' | 'deliveryMethod';
-type ConfirmedOrderSubmissionCheck = 'reconciliation' | 'arrival';
+type OrderFilterKey = IdentifierSearchKey | 'overseasWarehouseArrivalStatus' | 'deliveryMethod';
+type ConfirmedOrderSubmissionCheck = 'arrival';
 
 type OrderSearchField = {
   label: string;
@@ -623,13 +616,12 @@ type OrderSearchField = {
   searchKey?: LifecycleTimeKey | OrderFilterKey;
 };
 
-const orderFilterKeys: OrderFilterKey[] = ['inboundNo', 'shipmentId', 'referenceId', 'overseasWarehouseArrivalStatus', 'reconciliationStatus', 'deliveryMethod'];
+const orderFilterKeys: OrderFilterKey[] = ['inboundNo', 'shipmentId', 'referenceId', 'overseasWarehouseArrivalStatus', 'deliveryMethod'];
 const emptyOrderFilterValues: Record<OrderFilterKey, string> = {
   inboundNo: '',
   shipmentId: '',
   referenceId: '',
   overseasWarehouseArrivalStatus: '',
-  reconciliationStatus: '',
   deliveryMethod: '',
 };
 
@@ -650,17 +642,11 @@ const orderSearchLabelClass = 'w-32 shrink-0 text-right font-semibold text-slate
 const baseOrderSearchFields: OrderSearchField[] = [
   { label: '头程运单号', type: 'input', placeholder: '支持批量' },
   { label: 'FBA单号', type: 'input', placeholder: '支持批量' },
-  { label: '柜号', type: 'input', placeholder: '支持批量' },
-  { label: '提单号', type: 'input', placeholder: '支持批量' },
   { label: '入仓号', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'inboundNo' },
   { label: 'Shipment ID', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'shipmentId' },
   { label: 'Reference ID', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'referenceId' },
-  { label: '核销状态', type: 'select', options: ['已核销', '未核销', '部分核销'], searchKey: 'reconciliationStatus' },
-  { label: '客户简称', type: 'select', options: ['深圳天图电子有限公司', '博创跨境贸易', '广州跨境供应链'] },
   { label: '仓库代码', type: 'select', options: overseasWarehouseCodes },
   { label: '派送方式', type: 'select', options: overseasDeliveryMethods, searchKey: 'deliveryMethod' },
-  { label: '业务员', type: 'select', options: ['安一', '天朗'] },
-  { label: '跟单员', type: 'select', options: ['安逸', '李客服'] },
   { label: '入仓时间', type: 'select', options: ['今日', '本周', '本月'] },
 ];
 
@@ -668,18 +654,12 @@ const fullOrderSearchFields: OrderSearchField[] = [
   { label: '头程运单号', type: 'input', placeholder: '支持批量' },
   { label: '海外仓运单号', type: 'input', placeholder: '支持批量' },
   { label: 'FBA单号', type: 'input', placeholder: '支持批量' },
-  { label: '柜号', type: 'input', placeholder: '支持批量' },
-  { label: '提单号', type: 'input', placeholder: '支持批量' },
   { label: '入仓号', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'inboundNo' },
   { label: 'Shipment ID', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'shipmentId' },
   { label: 'Reference ID', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'referenceId' },
-  { label: '核销状态', type: 'select', options: ['已核销', '未核销', '部分核销'], searchKey: 'reconciliationStatus' },
-  { label: '客户简称', type: 'select', options: ['深圳天图电子有限公司', '博创跨境贸易', '广州跨境供应链'] },
   { label: '仓库代码', type: 'select', options: overseasWarehouseCodes },
   { label: '下单类型', type: 'select', options: overseasOrderTypes },
   { label: '派送方式', type: 'select', options: overseasDeliveryMethods, searchKey: 'deliveryMethod' },
-  { label: '业务员', type: 'select', options: ['安一', '天朗'] },
-  { label: '跟单员', type: 'select', options: ['安逸', '李客服'] },
   { label: '入仓时间', type: 'select', options: ['今日', '本周', '本月'] },
 ];
 
@@ -745,45 +725,16 @@ const getCargoInfoRowsForOrder = (row: OverseasTransitRow) => {
   }));
 };
 
-const instructionFeeRows = [
-  { code: 'FY202509260001', name: '仓储渠道-免仓30天', type: '仓储费', unit: '票', price: '3', currency: '人民币', description: '提柜入仓当天起算' },
-  { code: 'FY202509260002', name: '仓储渠道-31-90天', type: '仓储费', unit: '票', price: '4', currency: '人民币', description: '按1级单价收取' },
-  { code: 'FY202509260003', name: '仓储渠道-90天以上', type: '仓储费', unit: '票', price: '2', currency: '人民币', description: '按2级单价收取' },
-  { code: 'FY202509260004', name: '拦截-免仓7天', type: '仓储费', unit: '票', price: '4', currency: '人民币', description: '提柜入仓当天起算' },
-  { code: 'FY202509260005', name: '拦截-免仓8-90天', type: '仓储费', unit: '票', price: '3', currency: '人民币', description: '按1级单价收取' },
-  { code: 'FY202509260006', name: '拦截-免仓90天以上', type: '仓储费', unit: '票', price: '2', currency: '人民币', description: '按2级单价收取' },
-  { code: 'FY202509260007', name: '扣货-无免仓期', type: '仓储费', unit: '票', price: '2', currency: '人民币', description: '按1级单价收取' },
-];
-
-const downstreamDetailTabs = ['费用信息', '货箱信息', '运踪信息', '其它信息'] as const;
-
-const quoteFeeRows = [
-  { code: 'BJ202606050001', name: '哈哈', type: '操作费', price: '1.89', currency: '美元', exchangeRate: '7.014', unit: '哈哈', quantity: '1票', amount: '13.26', addedAt: '2026-06-05 14:28:00', addedBy: '天未', description: '海外仓操作附加费用' },
-];
+const downstreamDetailTabs = ['货箱信息', '运踪信息', '其它信息'] as const;
 
 const attachmentRows = [
   { id: 'ATT-202608260001', name: '快递标.pdf', type: '其他', customerVisible: '可见', uploadedAt: '2026-08-26 17:36:00', uploadedBy: '安逸', fileSize: '1.2MB' },
 ];
 
-type InstructionFeeRow = (typeof instructionFeeRows)[number] & {
-  quantity?: string;
-  addedAt?: string;
-  addedBy?: string;
-};
-type QuoteFeeRow = (typeof quoteFeeRows)[number];
 type AttachmentRow = (typeof attachmentRows)[number] & { file?: File };
-
-const getReconciliationStatus = (row: Pick<OverseasTransitRow, 'reconciliationStatus'>): TransitReconciliationStatus =>
-  row.reconciliationStatus || '未核销';
 
 const getOverseasWarehouseArrivalStatus = (row: Pick<OverseasTransitRow, 'overseasWarehouseArrivalStatus'>): OverseasWarehouseArrivalStatus =>
   row.overseasWarehouseArrivalStatus || '否';
-
-const reconciliationStatusStyles: Record<TransitReconciliationStatus, { badge: string; fee: string }> = {
-  已核销: { badge: 'bg-emerald-50 text-emerald-600', fee: 'text-emerald-600' },
-  未核销: { badge: 'bg-yellow-50 text-yellow-600', fee: 'text-yellow-600' },
-  部分核销: { badge: 'bg-blue-50 text-blue-600', fee: 'text-blue-600' },
-};
 
 const overseasWarehouseArrivalStatusStyles: Record<OverseasWarehouseArrivalStatus, string> = {
   是: 'bg-emerald-50 text-emerald-600',
@@ -814,7 +765,6 @@ const emptyTrackingForm: TrackingFormState = {
   description: '',
 };
 type DownstreamDetailTab = (typeof downstreamDetailTabs)[number];
-type FeeModalTarget = 'instruction' | 'quote';
 type AttachmentFormState = {
   fileName: string;
   fileSize: string;
@@ -1043,7 +993,7 @@ function ExpressOrderCreationWorkspace({
     const validationMessage = getExpressValidationMessage(row);
     const rowStatus = record ? '已创建' : validationMessage ? '资料异常' : '待创建';
     const normalizedKeyword = keyword.trim().toLowerCase();
-    const matchesKeyword = !normalizedKeyword || [getOrderKey(row), row.id, row.fbaCode, row.customerName, row.warehouseCode || '']
+    const matchesKeyword = !normalizedKeyword || [getOrderKey(row), row.id, row.fbaCode, row.warehouseCode || '']
       .some((value) => value.toLowerCase().includes(normalizedKeyword));
     return matchesKeyword
       && (!warehouseFilter || row.warehouseCode === warehouseFilter)
@@ -1222,7 +1172,7 @@ function ExpressOrderCreationWorkspace({
             </div>
 
             <div className="overflow-x-auto border border-slate-200">
-              <table className="w-full min-w-[2380px] table-fixed border-collapse text-[11px]">
+              <table className="w-full min-w-[2204px] table-fixed border-collapse text-[11px]">
                 <thead className="bg-slate-50 text-slate-700">
                   <tr>
                     <th className="w-10 border border-slate-200 px-2 py-2 text-center"><input type="checkbox" checked={selectableVisibleKeys.length > 0 && selectableVisibleKeys.every((key) => selectedKeys.includes(key))} onChange={toggleAllVisibleRows} className="h-3.5 w-3.5 rounded border-slate-300" /></th>
@@ -1230,7 +1180,6 @@ function ExpressOrderCreationWorkspace({
                     <th className="w-52 border border-slate-200 px-3 py-2 text-center">海外仓运单号</th>
                     <th className="w-40 border border-slate-200 px-3 py-2 text-center">头程运单号</th>
                     <th className="w-40 border border-slate-200 px-3 py-2 text-center">FBA单号</th>
-                    <th className="w-44 border border-slate-200 px-3 py-2 text-center">客户简称</th>
                     <th className="w-28 border border-slate-200 px-3 py-2 text-center">目的地 / 仓库</th>
                     <th className="w-64 border border-slate-200 px-3 py-2 text-center">收件人 / 地址</th>
                     <th className="w-24 border border-slate-200 px-3 py-2 text-center">邮编</th>
@@ -1267,7 +1216,6 @@ function ExpressOrderCreationWorkspace({
                         <td className="border border-slate-200 px-3 text-center font-mono font-semibold text-blue-600">{orderKey}</td>
                         <td className="border border-slate-200 px-3 text-center font-mono">{row.id}</td>
                         <td className="border border-slate-200 px-3 text-center font-mono">{row.fbaCode}</td>
-                        <td className="border border-slate-200 px-3 text-center"><div className="truncate" title={row.customerName}>{row.customerName}</div></td>
                         <td className="border border-slate-200 px-3 text-center"><div>{row.destination}</div><div className="mt-1 font-mono text-slate-500">{row.warehouseCode || '-'}</div></td>
                         <td className="border border-slate-200 px-3">
                           <div className="font-semibold text-slate-800">{address.consignee || '-'}</div>
@@ -1321,27 +1269,7 @@ function ExpressOrderCreationWorkspace({
   );
 }
 
-const parseFeeNumber = (value: string | undefined) => Number(String(value || '0').replace(/[^\d.]/g, '')) || 0;
-const formatInstructionFeeAmount = (value: number) => Number(value.toFixed(2)).toString();
-const formatInstructionFeeCurrency = (currency: string) => {
-  const normalized = currency.trim().toUpperCase();
-  if (currency === '人民币' || normalized === 'RMB' || normalized === 'CNY') return 'CNY';
-  if (currency === '美元' || normalized === 'USD') return 'USD';
-  return normalized || 'CNY';
-};
-const formatInstructionFee = (row: InstructionFeeRow) => {
-  const quantity = row.quantity?.trim() ? parseFeeNumber(row.quantity) : 1;
-  const total = parseFeeNumber(row.price) * quantity;
-  return formatInstructionFeeAmount(total) + ' ' + formatInstructionFeeCurrency(row.currency) + ' ' + row.name + ' (' + row.price + '/' + row.unit + ')';
-};
-
-function ReconciliationStatusBadge({ status }: { status: TransitReconciliationStatus }) {
-  return (
-    <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${reconciliationStatusStyles[status].badge}`}>
-      {status}
-    </span>
-  );
-}
+const parseNumericValue = (value: string | undefined) => Number(String(value || '0').replace(/[^\d.]/g, '')) || 0;
 
 function OverseasWarehouseArrivalBadge({ status }: { status: OverseasWarehouseArrivalStatus }) {
   return (
@@ -1350,59 +1278,6 @@ function OverseasWarehouseArrivalBadge({ status }: { status: OverseasWarehouseAr
     </span>
   );
 }
-
-function InstructionFeeCell({
-  rows,
-  reconciliationStatus,
-}: {
-  rows: InstructionFeeRow[];
-  reconciliationStatus: TransitReconciliationStatus;
-}) {
-  return (
-    <td className='border border-slate-200 px-3 py-1.5 align-top text-left'>
-      {rows.length > 0 ? (
-        <div className={`space-y-0.5 ${reconciliationStatusStyles[reconciliationStatus].fee}`}>
-          {rows.map((row) => (
-            <div key={row.code} className='whitespace-nowrap leading-5'>
-              {formatInstructionFee(row)}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <span className='block text-center text-slate-400'>-</span>
-      )}
-    </td>
-  );
-}
-
-const getExchangeRate = (currency: string) => (currency === 'USD' || currency === '美元' ? '7.014' : '1');
-const normalizeCurrency = (currency: string) => (currency === 'USD' ? '美元' : currency);
-const getQuoteAmount = (row: Pick<QuoteFeeRow, 'price' | 'quantity' | 'exchangeRate'>) => {
-  const amount = parseFeeNumber(row.price) * parseFeeNumber(row.quantity) * parseFeeNumber(row.exchangeRate);
-  return amount.toFixed(2).replace(/\.00$/, '');
-};
-const describeQuoteFee = (row: QuoteFeeRow) => `${row.name} / ${row.price} ${row.currency} / ${row.quantity} / ${row.amount}`;
-
-const createQuoteFeeRow = (fee: InstructionFeeRow, sequence: number): QuoteFeeRow => {
-  const currency = normalizeCurrency(fee.currency);
-  const exchangeRate = getExchangeRate(currency);
-  const quantity = fee.quantity || '1票';
-  const baseRow = {
-    code: `${fee.code}-Q${sequence}`,
-    name: fee.name,
-    type: fee.type,
-    price: fee.price,
-    currency,
-    exchangeRate,
-    unit: fee.unit,
-    quantity,
-    amount: '0',
-    addedAt: formatDateTime(),
-    addedBy: '天朗（付豪）',
-    description: fee.description,
-  };
-  return { ...baseRow, amount: getQuoteAmount(baseRow) };
-};
 
 const getOrderLogRows = (row: OverseasTransitRow): OrderLogRow[] => [
   {
@@ -1541,12 +1416,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const [rollbackConfirmOrderKeys, setRollbackConfirmOrderKeys] = useState<string[]>([]);
   const [transitRollbackConfirmOrderKeys, setTransitRollbackConfirmOrderKeys] = useState<string[]>([]);
   const [signedRollbackConfirmOrderKeys, setSignedRollbackConfirmOrderKeys] = useState<string[]>([]);
-  const [showInstructionModal, setShowInstructionModal] = useState(false);
-  const [feeModalTarget, setFeeModalTarget] = useState<FeeModalTarget>('instruction');
-  const [selectedFeeCodes, setSelectedFeeCodes] = useState<string[]>(instructionFeeRows.slice(0, 3).map((row) => row.code));
-  const [instructionRowsByOrder, setInstructionRowsByOrder] = useState<Record<string, InstructionFeeRow[]>>({});
-  const [quoteRowsByOrder, setQuoteRowsByOrder] = useState<Record<string, QuoteFeeRow[]>>({});
-  const [quoteLogsByOrder, setQuoteLogsByOrder] = useState<Record<string, OrderLogRow[]>>({});
+  const [operationLogsByOrder, setOperationLogsByOrder] = useState<Record<string, OrderLogRow[]>>({});
   const [attachmentRowsByOrder, setAttachmentRowsByOrder] = useState<Record<string, AttachmentRow[]>>({});
   const [addressAttachmentsByOrder, setAddressAttachmentsByOrder] = useState<Record<string, AttachmentRow[]>>({});
   const [trackingRowsByOrder, setTrackingRowsByOrder] = useState<Record<string, TrackingEvent[]>>({});
@@ -1555,10 +1425,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const [transferPanelOpen, setTransferPanelOpen] = useState(false);
   const [transferDraftsByOrder, setTransferDraftsByOrder] = useState<Record<string, TransitTransferRow[]>>({});
   const [savedTransferRowsByOrder, setSavedTransferRowsByOrder] = useState<Record<string, TransitTransferRow[]>>({});
-  const [editingInstruction, setEditingInstruction] = useState<InstructionFeeRow | null>(null);
-  const [deletingInstruction, setDeletingInstruction] = useState<InstructionFeeRow | null>(null);
-  const [editingQuoteFee, setEditingQuoteFee] = useState<QuoteFeeRow | null>(null);
-  const [deletingQuoteFee, setDeletingQuoteFee] = useState<QuoteFeeRow | null>(null);
   const [showAttachmentModal, setShowAttachmentModal] = useState(false);
   const [editingAttachment, setEditingAttachment] = useState<AttachmentRow | null>(null);
   const [deletingAttachment, setDeletingAttachment] = useState<AttachmentRow | null>(null);
@@ -1566,7 +1432,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const [addressFormsByOrder, setAddressFormsByOrder] = useState<Record<string, AddressFormState>>({});
   const [editingOrderFormKey, setEditingOrderFormKey] = useState<string | null>(null);
   const [addressFormSnapshotsByOrder, setAddressFormSnapshotsByOrder] = useState<Record<string, AddressFormState>>({});
-  const [downstreamDetailTab, setDownstreamDetailTab] = useState<DownstreamDetailTab>('费用信息');
+  const [downstreamDetailTab, setDownstreamDetailTab] = useState<DownstreamDetailTab>('货箱信息');
   const [expressOrderKeys, setExpressOrderKeys] = useState<string[]>([]);
   const [expressRecordsByOrder, setExpressRecordsByOrder] = useState<Record<string, ExpressCreationRecord>>({});
   const displayedSeedRows = transitRows.map((row) => ({
@@ -1601,25 +1467,19 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const signedRollbackConfirmRows = allRows.filter((row) => signedRollbackConfirmOrderKeys.includes(getOrderKey(row)) && row.status === '签收');
   const usesOrderFormTemplate = (status: string) => orderFormStatuses.has(status);
   const showOverseasWaybillNo = true;
-  const orderTableColumnCount = (showOverseasWaybillNo ? 21 : 17) + (activeLifecycleTimeConfig ? 1 : 0) + 6 + (showOverseasWarehouseArrivalStatus ? 1 : 0);
+  const orderTableColumnCount = (showOverseasWaybillNo ? 21 : 17) + (activeLifecycleTimeConfig ? 1 : 0) - 1 + (showOverseasWarehouseArrivalStatus ? 1 : 0);
   const orderTableMinWidthClass = showOverseasWaybillNo
-    ? (activeLifecycleTimeConfig ? 'min-w-[3920px]' : showOverseasWarehouseArrivalStatus ? 'min-w-[3880px]' : 'min-w-[3760px]')
-    : (activeLifecycleTimeConfig ? 'min-w-[3440px]' : showOverseasWarehouseArrivalStatus ? 'min-w-[3400px]' : 'min-w-[3280px]');
+    ? (activeLifecycleTimeConfig ? 'min-w-[2848px]' : showOverseasWarehouseArrivalStatus ? 'min-w-[2808px]' : 'min-w-[2688px]')
+    : (activeLifecycleTimeConfig ? 'min-w-[2368px]' : showOverseasWarehouseArrivalStatus ? 'min-w-[2328px]' : 'min-w-[2208px]');
   const commonOrderSearchFields = showOverseasWaybillNo ? fullOrderSearchFields : baseOrderSearchFields;
   const orderSearchFields: OrderSearchField[] = [
     ...commonOrderSearchFields,
     ...(showOverseasWarehouseArrivalStatus ? [overseasWarehouseArrivalSearchField] : []),
     ...(activeLifecycleTimeConfig ? [{ label: activeLifecycleTimeConfig.label, type: 'date' as const, searchKey: activeLifecycleTimeConfig.key }] : []),
   ];
-  const quoteEditableStatuses = new Set(['已确认', '已下单', '转运中', '签收']);
   const activeOrderKey = activeOrder ? getOrderKey(activeOrder) : '';
   const addressForm = activeOrder ? (addressFormsByOrder[activeOrderKey] || getParentStorageAddressForm(activeOrder)) : emptyAddressForm;
   const isOrderFormEditing = !!activeOrder && usesOrderFormTemplate(activeOrder.status) && editingOrderFormKey === activeOrderKey;
-  const getInstructionRowsForOrder = (row: OverseasTransitRow): InstructionFeeRow[] =>
-    instructionRowsByOrder[getOrderKey(row)] ?? row.instructions ?? [];
-  const activeInstructionRows = activeOrder ? getInstructionRowsForOrder(activeOrder) : [];
-  const activeQuoteRows = activeOrder ? (quoteRowsByOrder[activeOrderKey] || quoteFeeRows) : [];
-  const canEditQuoteFees = !!activeOrder && quoteEditableStatuses.has(activeOrder.status);
   const activeAttachmentRows = activeOrder
     ? [...(attachmentRowsByOrder[activeOrderKey] || attachmentRows), ...(activeOrder.attachments || []), ...(addressAttachmentsByOrder[activeOrderKey] || [])]
     : [];
@@ -1640,11 +1500,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
 
   const openOrder = (row: OverseasTransitRow) => {
     setActiveOrder(row);
-    setShowInstructionModal(false);
-    setEditingInstruction(null);
-    setDeletingInstruction(null);
-    setEditingQuoteFee(null);
-    setDeletingQuoteFee(null);
     setShowAttachmentModal(false);
     setEditingAttachment(null);
     setDeletingAttachment(null);
@@ -1652,11 +1507,10 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     setTransferPanelOpen(false);
     setEditingOrderFormKey(null);
     setAddressFormSnapshotsByOrder({});
-    setDownstreamDetailTab('费用信息');
+    setDownstreamDetailTab('货箱信息');
     if (usesOrderFormTemplate(row.status)) {
       const orderKey = getOrderKey(row);
       setAddressFormsByOrder((prev) => (prev[orderKey] ? prev : { ...prev, [orderKey]: getParentStorageAddressForm(row) }));
-      if (row.instructions) setInstructionRowsByOrder((prev) => (prev[orderKey] ? prev : { ...prev, [orderKey]: row.instructions || [] }));
     }
     addToast(`已打开 ${getOrderKey(row)} 中转下单页面`, 'info');
   };
@@ -1670,15 +1524,15 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     setActiveLogOrder(selectedCurrentRow);
     addToast(`已打开 ${selectedCurrentRow.id} 操作日志`, 'info');
   };
-  const appendQuoteLog = (orderId: string, log: Omit<OrderLogRow, 'id'>) => {
-    setQuoteLogsByOrder((prev) => {
+  const appendOperationLog = (orderId: string, log: Omit<OrderLogRow, 'id'>) => {
+    setOperationLogsByOrder((prev) => {
       const currentLogs = prev[orderId] || [];
       return {
         ...prev,
         [orderId]: [
           ...currentLogs,
           {
-            id: `${orderId}-quote-${currentLogs.length + 1}`,
+            id: `${orderId}-operation-${currentLogs.length + 1}`,
             ...log,
           },
         ],
@@ -1686,15 +1540,47 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     });
   };
 
-  const openFeeSelector = (target: FeeModalTarget) => {
-    setFeeModalTarget(target);
-    if (target === 'quote') {
-      setSelectedFeeCodes([instructionFeeRows[0].code]);
-    }
-    setShowInstructionModal(true);
-  };
-
   const getSelectedCurrentRows = () => filteredRows.filter((row) => selectedIds.includes(getOrderKey(row)));
+
+  const exportTransitOrders = () => {
+    const selectedRows = getSelectedCurrentRows();
+    const rows = selectedRows.length > 0 ? selectedRows : filteredRows;
+    if (rows.length === 0) {
+      addToast('当前没有可导出的海外中转单', 'warning');
+      return;
+    }
+
+    const csvRows = [
+      ['头程运单号', '海外仓运单号', '子单创建时间', '转单号', 'FBA单号', '仓库代码', '派送方式', '目的地', '状态', '发货件数', '重量', '方数'],
+      ...rows.map((row) => [
+        row.id,
+        getOverseasWaybillNo(row),
+        row.childCreatedAt || '-',
+        row.transferNo || '-',
+        row.fbaCode,
+        row.warehouseCode || '-',
+        row.deliveryMethod || '-',
+        row.destination,
+        row.status,
+        row.packages,
+        row.weight,
+        row.volume,
+      ]),
+    ];
+    const csv = csvRows
+      .map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(','))
+      .join('\r\n');
+    const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `海外中转单导出-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    addToast(`已导出 ${rows.length} 条海外中转单`, 'success');
+  };
 
   const updateSeedLifecycleTimes = (orderKeys: string[], updates: LifecycleTimeValues) => {
     if (orderKeys.length === 0) return;
@@ -1718,7 +1604,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
       shipmentId: searchValues.shipmentId?.trim() || '',
       referenceId: searchValues.referenceId?.trim() || '',
       overseasWarehouseArrivalStatus: searchValues.overseasWarehouseArrivalStatus || '',
-      reconciliationStatus: searchValues.reconciliationStatus || '',
       deliveryMethod: searchValues.deliveryMethod || '',
     });
     addToast('已查询海外中转单数据', 'success');
@@ -1780,7 +1665,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
       setStatusOverridesByOrder((prev) => seedOrderKeys.reduce((next, key) => ({ ...next, [key]: '驳回' }), { ...prev }));
     }
 
-    rows.forEach((row) => appendQuoteLog(getOrderKey(row), {
+    rows.forEach((row) => appendOperationLog(getOrderKey(row), {
       operatedAt: formatDateTime(),
       operator: '天朗（付豪）',
       action: '驳回海外中转单',
@@ -1836,6 +1721,32 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     const rows = getSelectedCurrentRows();
     if (rows.length === 0) { addToast('请先勾选需要取消下单的已确认子单', 'warning'); return; }
     setCancelConfirmOrderKeys(rows.map(getOrderKey));
+  };
+
+  const placeTransitOrders = () => {
+    if (activeTab === '待确认') {
+      confirmPendingOrders();
+      return;
+    }
+    if (activeTab === '已确认') {
+      submitConfirmedOrders();
+      return;
+    }
+    if (activeTab === '驳回') {
+      const selectedRow = getSelectedCurrentRows()[0];
+      if (!selectedRow) {
+        addToast('请先勾选需要重新下单的驳回中转单', 'warning');
+        return;
+      }
+      openOrder(selectedRow);
+      return;
+    }
+    addToast('当前状态暂无可下单的中转单', 'warning');
+  };
+
+  const cancelTransitOrders = () => {
+    if (activeTab !== '待确认') return;
+    cancelPendingOrders();
   };
 
   const openExpressCreationWorkspace = () => {
@@ -1928,10 +1839,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     if (rows.length === 0) { addToast('请先勾选需要下单确定的已确认子单', 'warning'); return; }
 
     setConfirmedOrderSubmissionKeys(rows.map(getOrderKey));
-    if (rows.some((row) => getReconciliationStatus(row) !== '已核销')) {
-      setConfirmedOrderSubmissionCheck('reconciliation');
-      return;
-    }
     if (rows.some((row) => getOverseasWarehouseArrivalStatus(row) === '否')) {
       setConfirmedOrderSubmissionCheck('arrival');
       return;
@@ -1945,14 +1852,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     if (rows.length === 0) {
       clearConfirmedOrderSubmission();
       addToast('当前没有可下单的已确认子单', 'warning');
-      return;
-    }
-
-    if (
-      confirmedOrderSubmissionCheck === 'reconciliation'
-      && rows.some((row) => getOverseasWarehouseArrivalStatus(row) === '否')
-    ) {
-      setConfirmedOrderSubmissionCheck('arrival');
       return;
     }
 
@@ -2090,158 +1989,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     addToast(`已回退 ${rows.length} 条签收子单，返回状态：转运中`, 'success');
   };
 
-  const toggleFeeCode = (code: string) => {
-    setSelectedFeeCodes((prev) => (prev.includes(code) ? prev.filter((item) => item !== code) : [...prev, code]));
-  };
-
-  const setOrderInstructionRows = (row: OverseasTransitRow, rows: InstructionFeeRow[]) => {
-    const timestamp = formatDateTime();
-    const normalizedRows: CreatedTransitInstruction[] = rows.map((instruction) => ({
-      ...instruction,
-      quantity: instruction.quantity || '1',
-      addedAt: instruction.addedAt || timestamp,
-      addedBy: instruction.addedBy || '天朗（付豪）',
-    }));
-    setInstructionRowsByOrder((prev) => ({
-      ...prev,
-      [getOrderKey(row)]: normalizedRows,
-    }));
-    if (isCreatedTransitChildOrder(row)) {
-      updateCreatedTransitChildOrderInstructions(row.id, normalizedRows);
-    }
-  };
-
-  const confirmInstructionFees = () => {
-    const selectedFees = instructionFeeRows
-      .filter((row) => selectedFeeCodes.includes(row.code))
-      .map((row) => ({
-        ...row,
-        quantity: '1',
-        addedAt: formatDateTime(),
-        addedBy: '天朗（付豪）',
-      }));
-    if (feeModalTarget === 'quote') {
-      if (!activeOrder) return;
-      const orderKey = getOrderKey(activeOrder);
-      const existingRows = quoteRowsByOrder[orderKey] || quoteFeeRows;
-      const nextRows = selectedFees.map((row, index) => createQuoteFeeRow(row, existingRows.length + index + 1));
-      setQuoteRowsByOrder((prev) => ({
-        ...prev,
-        [orderKey]: [...existingRows, ...nextRows],
-      }));
-      appendQuoteLog(orderKey, {
-        operatedAt: formatDateTime(),
-        operator: '天朗（付豪）',
-        action: '新增报价费用明细',
-        field: '费用明细',
-        before: '-',
-        after: nextRows.map(describeQuoteFee).join('；'),
-        note: `新增 ${nextRows.length} 条报价费用明细`,
-      });
-      setShowInstructionModal(false);
-      addToast(`已添加 ${nextRows.length} 条报价费用明细`, 'success');
-      return;
-    }
-    if (activeOrder) {
-      const orderKey = getOrderKey(activeOrder);
-      setOrderInstructionRows(activeOrder, selectedFees);
-
-      if (activeOrder.status === '已确认') {
-        const existingRows = quoteRowsByOrder[orderKey] || quoteFeeRows;
-        const nextRows = selectedFees.map((row, index) => createQuoteFeeRow(row, existingRows.length + index + 1));
-        setQuoteRowsByOrder((prev) => ({
-          ...prev,
-          [orderKey]: [...existingRows, ...nextRows],
-        }));
-        appendQuoteLog(orderKey, {
-          operatedAt: formatDateTime(),
-          operator: '客户',
-          action: '新增操作指令',
-          field: '费用信息',
-          before: '-',
-          after: nextRows.map(describeQuoteFee).join('；'),
-          note: '已确认状态新增操作指令并同步费用明细',
-        });
-      }
-    }
-    setShowInstructionModal(false);
-    addToast(`已添加 ${selectedFees.length} 条操作指令`, 'success');
-  };
-
-  const saveEditingInstruction = () => {
-    if (!editingInstruction) return;
-    if (activeOrder) {
-      setOrderInstructionRows(
-        activeOrder,
-        getInstructionRowsForOrder(activeOrder).map((row) => (row.code === editingInstruction.code ? editingInstruction : row)),
-      );
-    }
-    setEditingInstruction(null);
-    addToast('操作指令已更新', 'success');
-  };
-
-  const confirmDeleteInstruction = () => {
-    if (!deletingInstruction) return;
-    if (activeOrder) {
-      setOrderInstructionRows(
-        activeOrder,
-        getInstructionRowsForOrder(activeOrder).filter((item) => item.code !== deletingInstruction.code),
-      );
-    }
-    setDeletingInstruction(null);
-    addToast('操作指令已删除', 'info');
-  };
-
-  const saveEditingQuoteFee = () => {
-    if (!editingQuoteFee || !activeOrder) return;
-    const orderKey = getOrderKey(activeOrder);
-    const existingRows = quoteRowsByOrder[orderKey] || quoteFeeRows;
-    const previousRow = existingRows.find((row) => row.code === editingQuoteFee.code);
-    const exchangeRate = getExchangeRate(editingQuoteFee.currency);
-    const nextRow = {
-      ...editingQuoteFee,
-      currency: normalizeCurrency(editingQuoteFee.currency),
-      exchangeRate,
-      amount: getQuoteAmount({ ...editingQuoteFee, exchangeRate }),
-    };
-    setQuoteRowsByOrder((prev) => ({
-      ...prev,
-      [orderKey]: existingRows.map((row) => (row.code === nextRow.code ? nextRow : row)),
-    }));
-    appendQuoteLog(orderKey, {
-      operatedAt: formatDateTime(),
-      operator: '天朗（付豪）',
-      action: '编辑报价费用明细',
-      field: nextRow.name,
-      before: previousRow ? describeQuoteFee(previousRow) : '-',
-      after: describeQuoteFee(nextRow),
-      note: '报价费用明细已更新',
-    });
-    setEditingQuoteFee(null);
-    addToast('报价费用明细已更新', 'success');
-  };
-
-  const confirmDeleteQuoteFee = () => {
-    if (!deletingQuoteFee || !activeOrder) return;
-    const orderKey = getOrderKey(activeOrder);
-    const existingRows = quoteRowsByOrder[orderKey] || quoteFeeRows;
-    setQuoteRowsByOrder((prev) => ({
-      ...prev,
-      [orderKey]: existingRows.filter((row) => row.code !== deletingQuoteFee.code),
-    }));
-    appendQuoteLog(orderKey, {
-      operatedAt: formatDateTime(),
-      operator: '天朗（付豪）',
-      action: '删除报价费用明细',
-      field: deletingQuoteFee.name,
-      before: describeQuoteFee(deletingQuoteFee),
-      after: '-',
-      note: '报价费用明细已删除',
-    });
-    setDeletingQuoteFee(null);
-    addToast('报价费用明细已删除', 'info');
-  };
-
   const openAttachmentModal = (row?: AttachmentRow) => {
     setEditingAttachment(row || null);
     setAttachmentForm(row
@@ -2324,7 +2071,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
         ...prev,
         [orderKey]: existingRows.map((row) => (row.id === nextRow.id ? nextRow : row)),
       }));
-      appendQuoteLog(orderKey, {
+      appendOperationLog(orderKey, {
         operatedAt: formatDateTime(),
         operator: '天朗（付豪）',
         action: '编辑附件',
@@ -2348,7 +2095,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
         ...prev,
         [orderKey]: [...existingRows, nextRow],
       }));
-      appendQuoteLog(orderKey, {
+      appendOperationLog(orderKey, {
         operatedAt: formatDateTime(),
         operator: '天朗（付豪）',
         action: '上传附件',
@@ -2372,7 +2119,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
       ...prev,
       [orderKey]: existingRows.filter((row) => row.id !== deletingAttachment.id),
     }));
-    appendQuoteLog(orderKey, {
+    appendOperationLog(orderKey, {
       operatedAt: formatDateTime(),
       operator: '天朗（付豪）',
       action: '删除附件',
@@ -2413,7 +2160,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const getSavedTransferRows = (row: OverseasTransitRow) => savedTransferRowsByOrder[getOrderKey(row)] || getDefaultTransferRows(row);
 
   const getTransitCargoBoxRows = (row: OverseasTransitRow) => {
-    const totalWeight = parseFeeNumber(row.weight);
+    const totalWeight = parseNumericValue(row.weight);
     const perBoxWeight = (totalWeight / Math.max(row.packages, 1)).toFixed(2).replace(/\.00$/, '');
     return getSavedTransferRows(row)
       .filter((item) => item.systemBoxNo || item.fbaBoxNo)
@@ -2465,7 +2212,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
       ...prev,
       [activeOrderKey]: [...(prev[activeOrderKey] || getDefaultTrackingRows(activeOrder)), nextEvent],
     }));
-    appendQuoteLog(activeOrderKey, {
+    appendOperationLog(activeOrderKey, {
       operatedAt: formatDateTime(),
       operator: '客户',
       action: '客户手动更新运踪',
@@ -2514,7 +2261,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
       ...prev,
       [activeOrderKey]: nextRows.map((row) => ({ ...row })),
     }));
-    appendQuoteLog(activeOrderKey, {
+    appendOperationLog(activeOrderKey, {
       operatedAt: formatDateTime(),
       operator: '天朗（付豪）',
       action: '维护转单号',
@@ -2651,184 +2398,25 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
         </div>
 
         <div className="mb-3 flex items-center gap-3">
-          {activeTab === '待确认' ? (
+          {activeTab === '待确认' && (
             <>
               <button
                 type="button"
-                title="支持批量取消；取消后状态流转至取消，对应子单箱号重新回到母单"
-                onClick={cancelPendingOrders}
+                title="仅待确认状态支持取消下单"
+                onClick={cancelTransitOrders}
                 className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
               >
                 取消下单
-              </button>
-              <button
-                type="button"
-                title="支持批量驳回；驳回后状态流转至驳回，子单数据重新回到母单"
-                onClick={rejectPendingOrders}
-                className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
-              >
-                驳回
-              </button>
-              <button
-                type="button"
-                title="支持批量已确认；确认后子单由待确认流转至已确认"
-                onClick={confirmPendingOrders}
-                className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
-              >
-                已确认
-              </button>
-              <button type="button" onClick={() => addToast('导出海外中转单功能为展示', 'info')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                导出
-              </button>
-              <button type="button" onClick={() => openLog()} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                查看日志
-              </button>
-            </>
-          ) : activeTab === '已确认' ? (
-            <>
-              <button
-                type="button"
-                title="支持批量取消；取消后状态流转至取消，对应子单箱号重新回到母单"
-                onClick={requestCancelConfirmedOrders}
-                className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
-              >
-                取消下单
-              </button>
-              <button
-                type="button"
-                title="勾选已确认子单后，按目的国家进入美线打单或欧线打单"
-                onClick={openExpressCreationWorkspace}
-                className="flex items-center gap-1.5 rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
-              >
-                <Printer className="h-3.5 w-3.5" />
-                创建快递单
-              </button>
-              <button
-                type="button"
-                title="支持批量确认下单；存在待核销费用或货物未到海外仓时需二次确认"
-                onClick={submitConfirmedOrders}
-                className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
-              >
-                确认下单
-              </button>
-              <button type="button" onClick={() => addToast('导出海外中转单功能为展示', 'info')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                导出
-              </button>
-              <button type="button" onClick={() => openLog()} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                查看日志
-              </button>
-            </>
-          ) : activeTab === '已下单' ? (
-            <>
-              <button
-                type="button"
-                title="支持批量回退；回退后状态流转至已确认"
-                onClick={requestRollbackOrderedRows}
-                className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
-              >
-                回退
-              </button>
-              <button
-                type="button"
-                title="支持批量出运；出运后状态流转至转运中"
-                onClick={shipOrderedRows}
-                className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
-              >
-                出运
-              </button>
-              <button type="button" onClick={() => addToast('导出海外中转单功能为展示', 'info')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                导出
-              </button>
-              <button type="button" onClick={() => openLog()} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                查看日志
-              </button>
-            </>
-          ) : activeTab === '转运中' ? (
-            <>
-              <button
-                type="button"
-                title="支持批量签收；签收后状态流转至签收"
-                onClick={signTransitRows}
-                className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
-              >
-                签收
-              </button>
-              <button
-                type="button"
-                title="支持批量回退；回退后状态流转至已下单"
-                onClick={requestRollbackTransitRows}
-                className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
-              >
-                回退
-              </button>
-              <button type="button" onClick={() => addToast('导出海外中转单功能为展示', 'info')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                导出
-              </button>
-              <button type="button" onClick={() => openLog()} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                查看日志
-              </button>
-            </>
-          ) : activeTab === '签收' ? (
-            <>
-              <button
-                type="button"
-                title="支持批量回退；回退后状态流转至转运中"
-                onClick={requestRollbackSignedRows}
-                className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
-              >
-                回退
-              </button>
-              <button type="button" onClick={() => addToast('导出海外中转单功能为展示', 'info')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                导出
-              </button>
-              <button type="button" onClick={() => openLog()} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                查看日志
-              </button>
-            </>
-          ) : activeTab === '驳回' ? (
-            <>
-              <button type="button" onClick={() => addToast('驳回状态的海外中转单已保存', 'success')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                保存
-              </button>
-              <button type="button" onClick={() => addToast('导出海外中转单功能为展示', 'info')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                导出
-              </button>
-              <button type="button" onClick={() => openLog()} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                查看日志
-              </button>
-            </>
-          ) : activeTab === '取消' ? (
-            <>
-              <button type="button" onClick={() => addToast('导出海外中转单功能为展示', 'info')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                导出
-              </button>
-              <button type="button" onClick={() => openLog()} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                查看日志
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  const selectedCurrentRow = filteredRows.find((row) => selectedIds.includes(getOrderKey(row)));
-                  selectedCurrentRow ? openOrder(selectedCurrentRow) : addToast('请选择当前节点下需要下单的中转运单', 'warning');
-                }}
-                className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
-              >
-                下单
-              </button>
-              <button type="button" onClick={() => addToast('导出海外中转单功能为展示', 'info')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                导出
-              </button>
-              <button type="button" onClick={() => addToast('批量修改功能为展示', 'info')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                批量修改
-              </button>
-              <button type="button" onClick={() => openLog()} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                查看日志
               </button>
             </>
           )}
+          <button
+            type="button"
+            onClick={exportTransitOrders}
+            className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
+          >
+            导出
+          </button>
         </div>
 
         <div className="overflow-x-auto border border-slate-200">
@@ -2847,20 +2435,13 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                 <th className="w-40 border border-slate-200 px-3 py-2 text-center">入仓号</th>
                 <th className="w-40 border border-slate-200 px-3 py-2 text-center">Shipment ID</th>
                 <th className="w-40 border border-slate-200 px-3 py-2 text-center">Reference ID</th>
-                <th className="w-36 border border-slate-200 px-3 py-2 text-center">柜号</th>
-                <th className="w-40 border border-slate-200 px-3 py-2 text-center">提单号</th>
-                <th className="w-44 border border-slate-200 px-3 py-2 text-center">客户简称</th>
                 <th className="w-28 border border-slate-200 px-3 py-2 text-center">仓库代码</th>
                 {showOverseasWaybillNo && <th className="w-24 border border-slate-200 px-3 py-2 text-center">邮编</th>}
                 {showOverseasWaybillNo && <th className="w-28 border border-slate-200 px-3 py-2 text-center">下单类型</th>}
                 <th className="w-28 border border-slate-200 px-3 py-2 text-center">派送方式</th>
                 <th className="w-20 border border-slate-200 px-3 py-2 text-center">目的地</th>
-                <th className="w-28 border border-slate-200 px-3 py-2 text-center">核销状态</th>
-                <th className="w-72 border border-slate-200 px-3 py-2 text-center">指令费用</th>
                 <th className="w-36 border border-slate-200 px-3 py-2 text-center">客户备注</th>
                 <th className="w-36 border border-slate-200 px-3 py-2 text-center">海外仓备注</th>
-                <th className="w-24 border border-slate-200 px-3 py-2 text-center">业务员</th>
-                <th className="w-24 border border-slate-200 px-3 py-2 text-center">跟单员</th>
                 <th className="w-24 border border-slate-200 px-3 py-2 text-center">发货件数</th>
                 <th className="w-24 border border-slate-200 px-3 py-2 text-center">重量</th>
                 <th className="w-36 border border-slate-200 px-3 py-2 text-center">方数</th>
@@ -2895,22 +2476,13 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                   <td className="border border-slate-200 px-3 text-center font-mono">{row.inboundNo || '-'}</td>
                   <td className="border border-slate-200 px-3 text-center font-mono">{row.shipmentId || '-'}</td>
                   <td className="border border-slate-200 px-3 text-center font-mono">{row.referenceId || '-'}</td>
-                  <td className="border border-slate-200 px-3 text-center font-mono">{row.containerNo || '-'}</td>
-                  <td className="border border-slate-200 px-3 text-center font-mono">{row.billOfLadingNo || '-'}</td>
-                  <td className="truncate border border-slate-200 px-3 text-center">{row.customerName}</td>
                   <td className="border border-slate-200 px-3 text-center font-mono">{row.warehouseCode || '-'}</td>
                   {showOverseasWaybillNo && <td className="border border-slate-200 px-3 text-center font-mono">{row.zipCode || '-'}</td>}
                   {showOverseasWaybillNo && <td className="border border-slate-200 px-3 text-center">{row.orderType || '-'}</td>}
                   <td className="border border-slate-200 px-3 text-center">{row.deliveryMethod || '-'}</td>
                   <td className="border border-slate-200 px-3 text-center">{row.destination}</td>
-                  <td className="border border-slate-200 px-3 text-center">
-                    <ReconciliationStatusBadge status={getReconciliationStatus(row)} />
-                  </td>
-                  <InstructionFeeCell rows={getInstructionRowsForOrder(row)} reconciliationStatus={getReconciliationStatus(row)} />
                   <td className="truncate border border-slate-200 px-3 text-center">{row.customerRemark || '-'}</td>
                   <td className="truncate border border-slate-200 px-3 text-center">{row.overseasWarehouseRemark || '-'}</td>
-                  <td className="border border-slate-200 px-3 text-center">{row.salesman || '-'}</td>
-                  <td className="border border-slate-200 px-3 text-center">{row.merchandiser || '-'}</td>
                   <td className="border border-slate-200 px-3 text-center">{row.packages}</td>
                   <td className="border border-slate-200 px-3 text-center">{row.weight}</td>
                   <td className="border border-slate-200 px-3 text-center">{row.volume}</td>
@@ -2967,20 +2539,8 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                       <span className="font-mono">{activeOrder.referenceId || '-'}</span>
                     </div>
                     <div>
-                      <span className="font-bold text-slate-900">核销状态：</span>
-                      <ReconciliationStatusBadge status={getReconciliationStatus(activeOrder)} />
-                    </div>
-                    <div>
                       <span className="font-bold text-slate-900">是否到达海外仓：</span>
                       <OverseasWarehouseArrivalBadge status={getOverseasWarehouseArrivalStatus(activeOrder)} />
-                    </div>
-                    <div>
-                      <span className="font-bold text-slate-900">柜号：</span>
-                      <span className="font-mono">{activeOrder.containerNo || '-'}</span>
-                    </div>
-                    <div>
-                      <span className="font-bold text-slate-900">提单号：</span>
-                      <span className="font-mono">{activeOrder.billOfLadingNo || '-'}</span>
                     </div>
                     <div>
                       <span className="font-bold text-slate-900">目的地：</span>
@@ -3175,7 +2735,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                     <h3 className="mb-7 text-sm font-bold text-slate-950">基础信息</h3>
                     <div className="grid grid-cols-[1.2fr_0.9fr_0.9fr_1.15fr] gap-x-16 gap-y-6">
                       <DetailField label="海外仓运单号" highlight>{getOverseasWaybillNo(activeOrder)}</DetailField>
-                      <DetailField label="客户简称">{activeOrder.customerName}</DetailField>
                       <DetailField label="目的地">{activeOrder.destination}</DetailField>
                       <DetailField label="下单类型">{activeOrder.orderType || '-'}</DetailField>
                       <DetailField label="仓库代码">{activeOrder.warehouseCode || '-'}</DetailField>
@@ -3183,12 +2742,9 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                       <DetailField label="入仓号">{activeOrder.inboundNo || '-'}</DetailField>
                       <DetailField label="Shipment ID">{activeOrder.shipmentId || '-'}</DetailField>
                       <DetailField label="Reference ID">{activeOrder.referenceId || '-'}</DetailField>
-                      <DetailField label="核销状态"><ReconciliationStatusBadge status={getReconciliationStatus(activeOrder)} /></DetailField>
                       {(activeOrder.status === '已确认' || activeOrder.status === '已下单') && (
                         <DetailField label="是否到达海外仓"><OverseasWarehouseArrivalBadge status={getOverseasWarehouseArrivalStatus(activeOrder)} /></DetailField>
                       )}
-                      <DetailField label="柜号">{activeOrder.containerNo || '-'}</DetailField>
-                      <DetailField label="提单号">{activeOrder.billOfLadingNo || '-'}</DetailField>
                       <DetailField label="发货件数">{activeOrder.packages}</DetailField>
                       <DetailField label="收费重">{activeOrder.weight.replace('kg', '')}kg</DetailField>
                       <DetailField label="实重">{activeOrder.weight.replace('kg', '')}kg</DetailField>
@@ -3200,8 +2756,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                       <DetailField label="邮编">{activeOrder.zipCode || '-'}</DetailField>
                       <DetailField label="邮箱">customer@tiantu.com</DetailField>
                       <DetailField label="入仓时间">{activeOrder.inboundTime}</DetailField>
-                      <DetailField label="业务员">{activeOrder.salesman || '-'}</DetailField>
-                      <DetailField label="跟单员">{activeOrder.merchandiser || '-'}</DetailField>
                       <DetailField label="客户备注">{activeOrder.customerRemark || '-'}</DetailField>
                       <DetailField label="海外仓备注">{activeOrder.overseasWarehouseRemark || '-'}</DetailField>
                     </div>
@@ -3224,82 +2778,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                   </div>
 
                   <div className="mt-2 min-h-[300px]">
-                    {downstreamDetailTab === '费用信息' && (
-                      <section className="rounded-md bg-white p-4 shadow-sm">
-                        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                          <h3 className="text-sm font-bold text-slate-950">费用信息</h3>
-                          {canEditQuoteFees && (
-                            <button
-                              type="button"
-                              onClick={() => openFeeSelector(activeOrder.status === '已确认' ? 'instruction' : 'quote')}
-                              className="rounded border border-slate-300 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                              新增
-                            </button>
-                          )}
-                        </div>
-                        <div className="overflow-x-auto border border-slate-200">
-                          <table className="w-full min-w-[980px] table-fixed border-collapse text-[11px]">
-                            <thead className="bg-slate-50 text-slate-600">
-                              <tr>
-                                {['费用名称', '单价', '币种', '汇率', '单位', '数量', '金额', '添加时间', '添加人', '操作'].map((head) => (
-                                  <th key={head} className="border border-slate-200 px-3 py-2 text-left font-semibold">
-                                    {head}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {activeQuoteRows.length > 0 ? (
-                                activeQuoteRows.map((row) => (
-                                  <tr key={row.code} className="h-10 text-slate-700 odd:bg-white even:bg-slate-50/70">
-                                    <td className="border border-slate-200 px-3">{row.name}</td>
-                                    <td className="border border-slate-200 px-3">{row.price}</td>
-                                    <td className="border border-slate-200 px-3">{row.currency}</td>
-                                    <td className="border border-slate-200 px-3">{row.exchangeRate}</td>
-                                    <td className="border border-slate-200 px-3">{row.unit}</td>
-                                    <td className="border border-slate-200 px-3">{row.quantity}</td>
-                                    <td className="border border-slate-200 px-3 font-semibold text-slate-900">{row.amount}</td>
-                                    <td className="border border-slate-200 px-3 font-mono text-slate-500">{row.addedAt}</td>
-                                    <td className="border border-slate-200 px-3">{row.addedBy}</td>
-                                    <td className="border border-slate-200 px-3">
-                                      {canEditQuoteFees ? (
-                                        <>
-                                          <button
-                                            type="button"
-                                            onClick={() => setEditingQuoteFee(row)}
-                                            className="mr-3 font-bold text-[#004bb1] hover:underline"
-                                          >
-                                            编辑
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => setDeletingQuoteFee(row)}
-                                            className="font-bold text-red-500 hover:underline"
-                                          >
-                                            删除
-                                          </button>
-                                        </>
-                                      ) : (
-                                        <span className="text-slate-300">-</span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))
-                              ) : (
-                                <tr>
-                                  <td colSpan={10} className="h-24 border border-slate-200 text-center text-slate-300">
-                                    <FileText className="mx-auto mb-2 h-8 w-8 text-slate-200" />
-                                    暂无数据
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </section>
-                    )}
-
                     {downstreamDetailTab === '货箱信息' && (
                       <section className="rounded-md bg-white p-4 shadow-sm">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -3585,415 +3063,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                 </section>
               )}
 
-              {usesOrderFormTemplate(activeOrder.status) && (
-              <section className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                <h3 className="mb-4 pl-3 text-sm font-bold text-slate-950">操作指令</h3>
-                  <button
-                    type="button"
-                    onClick={() => openFeeSelector('instruction')}
-                    className="mb-5 ml-3 rounded bg-blue-600 px-7 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
-                  >
-                  新增
-                </button>
-                <table className="w-full table-fixed border-collapse text-xs">
-                  <thead className="bg-slate-50 text-slate-900">
-                    <tr>
-                      {['费用名称', '费用类型', '*计费单位', '*计费单价（元）', '*计费数量', '*币种', '总价（元）', '添加时间', '添加人', '描述', '操作'].map((head) => (
-                        <th key={head} className="border border-slate-200 px-3 py-3 text-center font-bold">
-                          {head}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeInstructionRows.length > 0 ? (
-                      activeInstructionRows.map((row) => (
-                        <tr key={row.code} className="h-9 text-slate-700">
-                          <td className="border border-slate-200 px-3 text-center">{row.name}</td>
-                          <td className="border border-slate-200 px-3 text-center">{row.type}</td>
-                          <td className="border border-slate-200 px-3 text-center">{row.unit}</td>
-                          <td className="border border-slate-200 px-3 text-center">{row.price}</td>
-                          <td className="border border-slate-200 px-3 text-center">{row.quantity || '1'}</td>
-                          <td className="border border-slate-200 px-3 text-center">{row.currency}</td>
-                          <td className="border border-slate-200 px-3 text-center">{formatInstructionFeeAmount(parseFeeNumber(row.price) * (row.quantity?.trim() ? parseFeeNumber(row.quantity) : 1))}</td>
-                          <td className="border border-slate-200 px-3 text-center">{row.addedAt || '-'}</td>
-                          <td className="border border-slate-200 px-3 text-center">{row.addedBy || '-'}</td>
-                          <td className="border border-slate-200 px-3 text-center">{row.description}</td>
-                          <td className="border border-slate-200 px-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => setEditingInstruction(row)}
-                              className="mr-3 font-semibold text-blue-600 hover:underline"
-                            >
-                              编辑
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeletingInstruction(row)}
-                              className="font-semibold text-red-500 hover:underline"
-                            >
-                              删除
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={11} className="h-24 border border-slate-200 text-center text-slate-300">
-                          <FileText className="mx-auto mb-2 h-8 w-8 text-slate-200" />
-                          暂无数据
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </section>
-              )}
-              {showInstructionModal && (
-                <div className="absolute inset-0 z-[90] bg-black/50">
-                  <div className="absolute right-0 top-0 flex h-full w-[72vw] min-w-[980px] flex-col bg-white shadow-2xl">
-                    <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-8">
-                      <h3 className="text-sm font-bold text-slate-950">{feeModalTarget === 'quote' ? '添加报价费用明细' : '添加指令'}</h3>
-                      <button
-                        type="button"
-                        onClick={() => setShowInstructionModal(false)}
-                        className="rounded p-1 text-slate-600 hover:bg-slate-100"
-                        aria-label="关闭添加指令"
-                      >
-                        <X className="h-5 w-5" />
-                      </button>
-                    </div>
-
-                    <div className="min-h-0 flex-1 overflow-auto bg-[#f3f7fd] p-4">
-                      <div className="rounded-2xl bg-white p-4 shadow-sm">
-                        <div className="mb-4 grid grid-cols-[auto_220px_auto_220px_auto_auto] items-center gap-4 text-xs">
-                          <span className="font-bold text-slate-900">费用名称：</span>
-                          <input className={fieldClass} placeholder="请输入代码/名称" />
-                          <span className="font-bold text-slate-900">费用类型：</span>
-                          <select className={fieldClass} defaultValue="">
-                            <option value="">请选择费用类型</option>
-                            <option>仓储费</option>
-                            <option>操作费</option>
-                          </select>
-                          <button className="h-8 rounded bg-blue-600 px-8 text-xs font-bold text-white hover:bg-blue-700" type="button">
-                            搜索
-                          </button>
-                          <button className="h-8 rounded border border-slate-300 bg-white px-8 text-xs font-semibold text-slate-700 hover:bg-slate-50" type="button">
-                            重置
-                          </button>
-                        </div>
-
-                        <table className="w-full table-fixed border-collapse text-xs">
-                          <thead className="bg-slate-50 text-slate-900">
-                            <tr>
-                              <th className="w-12 border border-slate-200 px-2 py-2 text-center">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedFeeCodes.length === instructionFeeRows.length}
-                                  onChange={(event) => setSelectedFeeCodes(event.target.checked ? instructionFeeRows.map((row) => row.code) : [])}
-                                  className="h-3.5 w-3.5 rounded border-slate-300"
-                                />
-                              </th>
-                              {['费用代码', '费用名称', '费用类型', '计费单位', '计费单价', '币种', '描述'].map((head) => (
-                                <th key={head} className="border border-slate-200 px-3 py-2 text-center font-bold">
-                                  {head}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {Array.from({ length: 18 }).map((_, index) => {
-                              const row = instructionFeeRows[index];
-                              const isSelectedFee = !!row && selectedFeeCodes.includes(row.code);
-                              return (
-                                <tr key={index} className={`h-8 ${index % 2 === 1 ? 'bg-slate-50' : 'bg-white'}`}>
-                                  <td className="border border-slate-200 px-2 text-center">
-                                    <input
-                                      type="checkbox"
-                                      disabled={!row}
-                                      checked={isSelectedFee}
-                                      onChange={() => row && toggleFeeCode(row.code)}
-                                      className="h-3.5 w-3.5 rounded border-slate-300"
-                                    />
-                                  </td>
-                                  <td className="border border-slate-200 px-3 text-center font-mono">{row?.code || ''}</td>
-                                  <td className="border border-slate-200 px-3 text-center">{row?.name || ''}</td>
-                                  <td className="border border-slate-200 px-3 text-center">{row?.type || ''}</td>
-                                  <td className="border border-slate-200 px-3 text-center">{row?.unit || ''}</td>
-                                  <td className="border border-slate-200 px-3 text-center">{row?.price || ''}</td>
-                                  <td className="border border-slate-200 px-3 text-center">{row?.currency || ''}</td>
-                                  <td className="border border-slate-200 px-3 text-center">{row?.description || ''}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-
-                        <div className="mt-4 flex items-center justify-between text-xs text-slate-600">
-                          <span>已选中{selectedFeeCodes.length}条</span>
-                          <div className="flex items-center gap-2">
-                            <span>共 50 条</span>
-                            {[1, 2, 3, 4, 5].map((page) => (
-                              <button
-                                key={page}
-                                type="button"
-                                className={`h-7 w-7 rounded border text-xs ${page === 1 ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-200 bg-white text-slate-600'}`}
-                              >
-                                {page}
-                              </button>
-                            ))}
-                            <span>...</span>
-                            <button type="button" className="h-7 rounded border border-slate-200 bg-white px-2 text-xs">50</button>
-                            <select className="h-7 rounded border border-slate-200 bg-white px-2 text-xs" defaultValue="10">
-                              <option value="10">10/页</option>
-                              <option value="20">20/页</option>
-                            </select>
-                            <span>转到</span>
-                            <input className="h-7 w-12 rounded border border-slate-200 px-2 text-xs" defaultValue="8" />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex h-14 shrink-0 items-center justify-center gap-5 border-t border-slate-200 bg-white">
-                      <button
-                        type="button"
-                        onClick={confirmInstructionFees}
-                        className="rounded bg-blue-600 px-8 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
-                      >
-                        确认
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowInstructionModal(false)}
-                        className="rounded border border-slate-300 bg-white px-8 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        取消
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {editingInstruction && (
-                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/50">
-                  <div className="w-[520px] bg-white shadow-2xl">
-                    <div className="border-b border-slate-200 px-5 py-4">
-                      <h3 className="text-sm font-bold text-slate-950">编辑费用项</h3>
-                    </div>
-                    <div className="space-y-4 px-12 py-6 text-xs">
-                      <FormRow label="费用代码" requiredMark>
-                        <input className={`${fieldClass} bg-slate-100`} value={editingInstruction.code} readOnly />
-                      </FormRow>
-                      <FormRow label="费用名称" requiredMark>
-                        <input className={`${fieldClass} bg-slate-100`} value={editingInstruction.name} readOnly />
-                      </FormRow>
-                      <FormRow label="费用类型" requiredMark>
-                        <select
-                          className={fieldClass}
-                          value={editingInstruction.type}
-                          onChange={(event) => setEditingInstruction({ ...editingInstruction, type: event.target.value })}
-                        >
-                          <option>仓储费</option>
-                          <option>操作费</option>
-                        </select>
-                      </FormRow>
-                      <FormRow label="计费单位" requiredMark>
-                        <select
-                          className={fieldClass}
-                          value={editingInstruction.unit}
-                          onChange={(event) => setEditingInstruction({ ...editingInstruction, unit: event.target.value })}
-                        >
-                          <option>票</option>
-                          <option>箱</option>
-                          <option>KG</option>
-                        </select>
-                      </FormRow>
-                      <FormRow label="计费单价" requiredMark>
-                        <input
-                          className={fieldClass}
-                          value={editingInstruction.price}
-                          onChange={(event) => setEditingInstruction({ ...editingInstruction, price: event.target.value })}
-                        />
-                      </FormRow>
-                      <FormRow label="计费数量" requiredMark>
-                        <input
-                          className={fieldClass}
-                          value={editingInstruction.quantity || '1'}
-                          onChange={(event) => setEditingInstruction({ ...editingInstruction, quantity: event.target.value })}
-                        />
-                      </FormRow>
-                      <FormRow label="币种" requiredMark>
-                        <select
-                          className={fieldClass}
-                          value={editingInstruction.currency}
-                          onChange={(event) => setEditingInstruction({ ...editingInstruction, currency: event.target.value })}
-                        >
-                          <option>人民币</option>
-                          <option>USD</option>
-                        </select>
-                      </FormRow>
-                    </div>
-                    <div className="flex justify-end gap-3 px-12 pb-8">
-                      <button
-                        type="button"
-                        onClick={() => setEditingInstruction(null)}
-                        className="rounded border border-slate-300 bg-white px-6 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        取消
-                      </button>
-                      <button
-                        type="button"
-                        onClick={saveEditingInstruction}
-                        className="rounded bg-blue-600 px-6 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
-                      >
-                        确定
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {deletingInstruction && (
-                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/50">
-                  <div className="w-[460px] bg-white shadow-2xl">
-                    <div className="border-b border-slate-200 px-5 py-4">
-                      <h3 className="text-sm font-bold text-slate-950">删除费用项</h3>
-                    </div>
-                    <div className="px-10 py-8 text-center text-sm text-slate-800">
-                      确定删除费用项“{deletingInstruction.name}”吗？
-                    </div>
-                    <div className="flex justify-end gap-3 px-8 pb-7">
-                      <button
-                        type="button"
-                        onClick={() => setDeletingInstruction(null)}
-                        className="rounded border border-slate-300 bg-white px-6 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        取消
-                      </button>
-                      <button
-                        type="button"
-                        onClick={confirmDeleteInstruction}
-                        className="rounded bg-blue-600 px-6 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
-                      >
-                        确定
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {editingQuoteFee && (
-                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/50">
-                  <div className="w-[520px] bg-white shadow-2xl">
-                    <div className="border-b border-slate-200 px-5 py-4">
-                      <h3 className="text-sm font-bold text-slate-950">编辑报价费用明细</h3>
-                    </div>
-                    <div className="space-y-4 px-12 py-6 text-xs">
-                      <FormRow label="费用代码" requiredMark>
-                        <input className={`${fieldClass} bg-slate-100`} value={editingQuoteFee.code} readOnly />
-                      </FormRow>
-                      <FormRow label="费用名称" requiredMark>
-                        <input className={`${fieldClass} bg-slate-100`} value={editingQuoteFee.name} readOnly />
-                      </FormRow>
-                      <FormRow label="费用类型" requiredMark>
-                        <select
-                          className={fieldClass}
-                          value={editingQuoteFee.type}
-                          onChange={(event) => setEditingQuoteFee({ ...editingQuoteFee, type: event.target.value })}
-                        >
-                          <option>仓储费</option>
-                          <option>操作费</option>
-                        </select>
-                      </FormRow>
-                      <FormRow label="计费单位" requiredMark>
-                        <select
-                          className={fieldClass}
-                          value={editingQuoteFee.unit}
-                          onChange={(event) => setEditingQuoteFee({ ...editingQuoteFee, unit: event.target.value })}
-                        >
-                          <option>票</option>
-                          <option>箱</option>
-                          <option>KG</option>
-                          <option>哈哈</option>
-                        </select>
-                      </FormRow>
-                      <FormRow label="计费单价" requiredMark>
-                        <input
-                          className={fieldClass}
-                          value={editingQuoteFee.price}
-                          onChange={(event) => setEditingQuoteFee({ ...editingQuoteFee, price: event.target.value })}
-                        />
-                      </FormRow>
-                      <FormRow label="计费数量" requiredMark>
-                        <input
-                          className={fieldClass}
-                          value={editingQuoteFee.quantity}
-                          onChange={(event) => setEditingQuoteFee({ ...editingQuoteFee, quantity: event.target.value })}
-                        />
-                      </FormRow>
-                      <FormRow label="币种" requiredMark>
-                        <select
-                          className={fieldClass}
-                          value={editingQuoteFee.currency}
-                          onChange={(event) => setEditingQuoteFee({ ...editingQuoteFee, currency: event.target.value, exchangeRate: getExchangeRate(event.target.value) })}
-                        >
-                          <option>人民币</option>
-                          <option>美元</option>
-                        </select>
-                      </FormRow>
-                      <FormRow label="汇率">
-                        <input className={`${fieldClass} bg-slate-100`} value={getExchangeRate(editingQuoteFee.currency)} readOnly />
-                      </FormRow>
-                    </div>
-                    <div className="flex justify-end gap-3 px-12 pb-8">
-                      <button
-                        type="button"
-                        onClick={() => setEditingQuoteFee(null)}
-                        className="rounded border border-slate-300 bg-white px-6 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        取消
-                      </button>
-                      <button
-                        type="button"
-                        onClick={saveEditingQuoteFee}
-                        className="rounded bg-blue-600 px-6 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
-                      >
-                        确定
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {deletingQuoteFee && (
-                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/50">
-                  <div className="w-[460px] bg-white shadow-2xl">
-                    <div className="border-b border-slate-200 px-5 py-4">
-                      <h3 className="text-sm font-bold text-slate-950">删除报价费用明细</h3>
-                    </div>
-                    <div className="px-10 py-8 text-center text-sm text-slate-800">
-                      确定删除报价费用“{deletingQuoteFee.name}”吗？
-                    </div>
-                    <div className="flex justify-end gap-3 px-8 pb-7">
-                      <button
-                        type="button"
-                        onClick={() => setDeletingQuoteFee(null)}
-                        className="rounded border border-slate-300 bg-white px-6 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        取消
-                      </button>
-                      <button
-                        type="button"
-                        onClick={confirmDeleteQuoteFee}
-                        className="rounded bg-blue-600 px-6 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
-                      >
-                        确定
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {showAttachmentModal && (
                 <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/50">
@@ -4308,13 +3377,11 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
           <div className="w-[500px] rounded bg-white shadow-2xl">
             <div className="border-b border-slate-200 px-5 py-4">
               <h3 className="text-sm font-bold text-slate-950">
-                {confirmedOrderSubmissionCheck === 'reconciliation' ? '存在待核销费用' : '货物尚未到达海外仓'}
+                货物尚未到达海外仓
               </h3>
             </div>
             <div className="px-8 py-7 text-sm leading-6 text-slate-700">
-              {confirmedOrderSubmissionCheck === 'reconciliation'
-                ? <>所选 {confirmedOrderSubmissionRows.length} 条运单中包含未核销或部分核销的指令费用。是否仍要下单？</>
-                : <>所选 {confirmedOrderSubmissionRows.length} 条运单中有货物尚未到达海外仓。继续下单将进入下单流程，是否仍要下单？</>}
+              所选 {confirmedOrderSubmissionRows.length} 条运单中有货物尚未到达海外仓。继续下单将进入下单流程，是否仍要下单？
             </div>
             <div className="flex justify-end gap-3 px-8 pb-6">
               <button
@@ -4452,7 +3519,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
       {activeLogOrder && (
         <OrderLogDrawer
           row={activeLogOrder}
-          extraLogs={quoteLogsByOrder[getOrderKey(activeLogOrder)] || []}
+          extraLogs={operationLogsByOrder[getOrderKey(activeLogOrder)] || []}
           onClose={() => setActiveLogOrder(null)}
         />
       )}
