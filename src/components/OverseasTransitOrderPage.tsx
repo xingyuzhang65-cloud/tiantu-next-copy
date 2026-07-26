@@ -888,7 +888,6 @@ const getParentStorageAddressForm = (row: OverseasTransitRow): AddressFormState 
     zipCode: row.zipCode || warehouseAddress?.zipCode || '',
     phone: row.orderType === '私人地址' ? '972-555-0188' : '',
     remark: row.customerRemark || '',
-    overseasWarehouseRemark: row.overseasWarehouseRemark || '',
   };
 };
 
@@ -1305,10 +1304,10 @@ const getOrderLogRows = (row: OverseasTransitRow): OrderLogRow[] => [
     operatedAt: row.inboundTime,
     operator: row.merchandiser || '安逸',
     action: '备注维护',
-    field: '客户备注 / 海外仓备注',
+    field: '客户备注',
     before: '-',
-    after: `${row.customerRemark || '-'} / ${row.overseasWarehouseRemark || '-'}`,
-    note: '同步客户要求与海外仓操作备注',
+    after: row.customerRemark || '-',
+    note: '同步客户要求',
   },
   {
     id: `${row.id}-status`,
@@ -1467,10 +1466,10 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const signedRollbackConfirmRows = allRows.filter((row) => signedRollbackConfirmOrderKeys.includes(getOrderKey(row)) && row.status === '签收');
   const usesOrderFormTemplate = (status: string) => orderFormStatuses.has(status);
   const showOverseasWaybillNo = true;
-  const orderTableColumnCount = (showOverseasWaybillNo ? 21 : 17) + (activeLifecycleTimeConfig ? 1 : 0) - 1 + (showOverseasWarehouseArrivalStatus ? 1 : 0);
+  const orderTableColumnCount = (showOverseasWaybillNo ? 21 : 17) + (activeLifecycleTimeConfig ? 1 : 0) - 2 + (showOverseasWarehouseArrivalStatus ? 1 : 0);
   const orderTableMinWidthClass = showOverseasWaybillNo
-    ? (activeLifecycleTimeConfig ? 'min-w-[2848px]' : showOverseasWarehouseArrivalStatus ? 'min-w-[2808px]' : 'min-w-[2688px]')
-    : (activeLifecycleTimeConfig ? 'min-w-[2368px]' : showOverseasWarehouseArrivalStatus ? 'min-w-[2328px]' : 'min-w-[2208px]');
+    ? (activeLifecycleTimeConfig ? 'min-w-[2704px]' : showOverseasWarehouseArrivalStatus ? 'min-w-[2664px]' : 'min-w-[2544px]')
+    : (activeLifecycleTimeConfig ? 'min-w-[2224px]' : showOverseasWarehouseArrivalStatus ? 'min-w-[2184px]' : 'min-w-[2064px]');
   const commonOrderSearchFields = showOverseasWaybillNo ? fullOrderSearchFields : baseOrderSearchFields;
   const orderSearchFields: OrderSearchField[] = [
     ...commonOrderSearchFields,
@@ -2333,7 +2332,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
           ...(matchedWarehouse || {}),
           company: current.company,
           remark: current.remark,
-          overseasWarehouseRemark: current.overseasWarehouseRemark,
         },
       };
     });
@@ -2441,7 +2439,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                 <th className="w-28 border border-slate-200 px-3 py-2 text-center">派送方式</th>
                 <th className="w-20 border border-slate-200 px-3 py-2 text-center">目的地</th>
                 <th className="w-36 border border-slate-200 px-3 py-2 text-center">客户备注</th>
-                <th className="w-36 border border-slate-200 px-3 py-2 text-center">海外仓备注</th>
                 <th className="w-24 border border-slate-200 px-3 py-2 text-center">发货件数</th>
                 <th className="w-24 border border-slate-200 px-3 py-2 text-center">重量</th>
                 <th className="w-36 border border-slate-200 px-3 py-2 text-center">方数</th>
@@ -2482,7 +2479,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                   <td className="border border-slate-200 px-3 text-center">{row.deliveryMethod || '-'}</td>
                   <td className="border border-slate-200 px-3 text-center">{row.destination}</td>
                   <td className="truncate border border-slate-200 px-3 text-center">{row.customerRemark || '-'}</td>
-                  <td className="truncate border border-slate-200 px-3 text-center">{row.overseasWarehouseRemark || '-'}</td>
                   <td className="border border-slate-200 px-3 text-center">{row.packages}</td>
                   <td className="border border-slate-200 px-3 text-center">{row.weight}</td>
                   <td className="border border-slate-200 px-3 text-center">{row.volume}</td>
@@ -2549,10 +2545,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                     <div>
                       <span className="font-bold text-slate-900">客户备注：</span>
                       <span>{activeOrder.customerRemark || '-'}</span>
-                    </div>
-                    <div>
-                      <span className="font-bold text-slate-900">海外仓备注：</span>
-                      <span>{activeOrder.overseasWarehouseRemark || '-'}</span>
                     </div>
                   </div>
 
@@ -2688,14 +2680,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                           ))}
                         </select>
                       </FormRow>
-                      <TextareaRow
-                        label="海外仓备注"
-                        placeholder="请输入海外仓备注"
-                        limit={`${addressForm.overseasWarehouseRemark.length}/500`}
-                        value={addressForm.overseasWarehouseRemark}
-                        disabled={!isOrderFormEditing}
-                        onChange={(value) => updateAddressField('overseasWarehouseRemark', value)}
-                      />
                     </div>
                     <div className="mt-5 border-t border-slate-100 pt-4">
                       <div className="flex items-start gap-3 text-xs">
@@ -2757,7 +2741,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                       <DetailField label="邮箱">customer@tiantu.com</DetailField>
                       <DetailField label="入仓时间">{activeOrder.inboundTime}</DetailField>
                       <DetailField label="客户备注">{activeOrder.customerRemark || '-'}</DetailField>
-                      <DetailField label="海外仓备注">{activeOrder.overseasWarehouseRemark || '-'}</DetailField>
                     </div>
                   </section>
 
