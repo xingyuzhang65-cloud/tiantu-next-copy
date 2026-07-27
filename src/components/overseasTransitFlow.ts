@@ -105,6 +105,18 @@ export const updateCreatedTransitChildOrderInstructions = (
   listeners.forEach((listener) => listener());
 };
 
+export const updateCreatedTransitChildOrderRemarks = (
+  orderId: string,
+  remarks: Pick<CreatedTransitChildOrder, 'customerRemark' | 'overseasWarehouseRemark'>,
+) => {
+  const order = createdTransitChildOrders.find((item) => item.id === orderId);
+  if (!order) return;
+
+  order.customerRemark = remarks.customerRemark;
+  order.overseasWarehouseRemark = remarks.overseasWarehouseRemark;
+  listeners.forEach((listener) => listener());
+};
+
 export const confirmCreatedTransitChildOrders = (orderIds: string[]) => {
   const idSet = new Set(orderIds);
   let changed = false;
