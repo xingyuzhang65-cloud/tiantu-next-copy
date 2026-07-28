@@ -48,6 +48,8 @@ export type CreatedTransitChildOrder = {
   orderedAt?: string;
   outboundAt?: string;
   signedAt?: string;
+  rejectionReason?: string;
+  rejectedAt?: string;
   customerRemark: string;
   overseasWarehouseRemark: string;
   warehouseCode: string;
@@ -153,7 +155,7 @@ export const cancelCreatedTransitChildOrders = (orderIds: string[]) => {
 
   if (changed) listeners.forEach((listener) => listener());
 };
-export const rejectCreatedTransitChildOrders = (orderIds: string[]) => {
+export const rejectCreatedTransitChildOrders = (orderIds: string[], rejectionReason: string) => {
   const idSet = new Set(orderIds);
   let changed = false;
 
@@ -161,6 +163,8 @@ export const rejectCreatedTransitChildOrders = (orderIds: string[]) => {
     if (!idSet.has(order.id) || order.status !== '待确认') return;
 
     order.status = '驳回';
+    order.rejectionReason = rejectionReason;
+    order.rejectedAt = getCurrentFlowDateTime();
     removedStorageBoxCounts[order.parentHeadWaybillNo] = Math.max(
       0,
       (removedStorageBoxCounts[order.parentHeadWaybillNo] || 0) - order.boxNumbers.length,
@@ -170,6 +174,40 @@ export const rejectCreatedTransitChildOrders = (orderIds: string[]) => {
     removedStorageBoxNumbers[order.parentHeadWaybillNo] = (removedStorageBoxNumbers[order.parentHeadWaybillNo] || [])
       .filter((boxNumber) => !rejectedBoxNumbers.has(boxNumber));
 
+    changed = true;
+  });
+
+  if (changed) listeners.forEach((listener) => listener());
+};
+
+export const reopenRejectedCreatedTransitChildOrders = (orderIds: string[]) => {
+  const idSet = new Set(orderIds);
+  let changed = false;
+
+  createdTransitChildOrders.forEach((order) => {
+    if (!idSet.has(order.id) || order.status !== '驳回') return;
+
+    order.status = '待确认';
+    order.rejectionReason = undefined;
+    order.rejectedAt = undefined;
+    removedStorageBoxCounts[order.parentHeadWaybillNo] = (removedStorageBoxCounts[order.parentHeadWaybillNo] || 0) + order.boxNumbers.length;
+    removedStorageBoxNumbers[order.parentHeadWaybillNo] = [
+      ...(removedStorageBoxNumbers[order.parentHeadWaybillNo] || []),
+      ...order.boxNumbers,
+    ];
+    changed = true;
+  });
+
+  if (changed) listeners.forEach((listener) => listener());
+};
+
+export const voidRejectedCreatedTransitChildOrders = (orderIds: string[]) => {
+  const idSet = new Set(orderIds);
+  let changed = false;
+
+  createdTransitChildOrders.forEach((order) => {
+    if (!idSet.has(order.id) || order.status !== '驳回') return;
+    order.status = '取消';
     changed = true;
   });
 

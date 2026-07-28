@@ -14,7 +14,7 @@ import {
   warehouseAddressBook,
 } from './overseasTransitAddress';
 import type { AddressFormState } from './overseasTransitAddress';
-import { cancelCreatedTransitChildOrders, confirmCreatedTransitChildOrders, getCreatedTransitChildOrders, markCreatedTransitChildOrdersAsOrdered, rejectCreatedTransitChildOrders, rollbackCreatedTransitChildOrdersToConfirmed, rollbackCreatedTransitChildOrdersToOrdered, rollbackSignedCreatedTransitChildOrdersToTransit, shipCreatedTransitChildOrders, signCreatedTransitChildOrders, subscribeOverseasTransitFlow, updateCreatedTransitChildOrderInstructions, updateCreatedTransitChildOrderRemarks } from './overseasTransitFlow';
+import { cancelCreatedTransitChildOrders, confirmCreatedTransitChildOrders, getCreatedTransitChildOrders, markCreatedTransitChildOrdersAsOrdered, rejectCreatedTransitChildOrders, reopenRejectedCreatedTransitChildOrders, rollbackCreatedTransitChildOrdersToConfirmed, rollbackCreatedTransitChildOrdersToOrdered, rollbackSignedCreatedTransitChildOrdersToTransit, shipCreatedTransitChildOrders, signCreatedTransitChildOrders, subscribeOverseasTransitFlow, updateCreatedTransitChildOrderInstructions, updateCreatedTransitChildOrderRemarks, voidRejectedCreatedTransitChildOrders } from './overseasTransitFlow';
 import type { CreatedTransitAttachment, CreatedTransitChildOrder, CreatedTransitInstruction, OverseasWarehouseArrivalStatus, TransitReconciliationStatus } from './overseasTransitFlow';
 
 interface OverseasTransitOrderPageProps {
@@ -40,6 +40,8 @@ interface OverseasTransitRow {
   orderedAt?: string;
   outboundAt?: string;
   signedAt?: string;
+  rejectionReason?: string;
+  rejectedAt?: string;
   customerRemark?: string;
   overseasWarehouseRemark?: string;
   warehouseCode?: string;
@@ -70,7 +72,7 @@ interface TransitTransferRow {
 
 const overseasTransitNodes = ['待确认', '已确认', '已下单', '转运中', '签收', '驳回', '取消'];
 // 已确认详情与已下单共用运单详情二级页签；仅待确认保留可编辑的下单表单。
-const orderFormStatuses = new Set(['待确认', '驳回']);
+const orderFormStatuses = new Set(['待确认']);
 const remarkEditableStatuses = new Set(['已确认', '已下单', '转运中', '签收']);
 
 const getOrderDeliveryMethod = (row: OverseasTransitRow) =>
@@ -578,6 +580,8 @@ const transitRows: OverseasTransitRow[] = [
     orderedAt: row.orderedAt || (hasOrdered ? shiftMockDateTime(row.childCreatedAt || row.inboundTime, 2) : undefined),
     outboundAt: row.outboundAt || (hasOutbound ? shiftMockDateTime(row.childCreatedAt || row.inboundTime, 6) : undefined),
     signedAt: row.signedAt || (hasSigned ? shiftMockDateTime(row.childCreatedAt || row.inboundTime, 30) : undefined),
+    rejectionReason: row.rejectionReason || (row.status === '驳回' ? '目的仓信息不完整，请补充后重新提交' : undefined),
+    rejectedAt: row.rejectedAt || (row.status === '驳回' ? shiftMockDateTime(row.childCreatedAt || row.inboundTime, 1) : undefined),
   };
 });
 
@@ -650,7 +654,6 @@ const orderSearchLabelClass = 'w-32 shrink-0 text-right font-semibold text-slate
 
 const baseOrderSearchFields: OrderSearchField[] = [
   { label: '头程运单号', type: 'input', placeholder: '支持批量' },
-  { label: 'FBA单号', type: 'input', placeholder: '支持批量' },
   { label: '柜号', type: 'input', placeholder: '支持批量' },
   { label: '提单号', type: 'input', placeholder: '支持批量' },
   { label: '入仓号', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'inboundNo' },
@@ -668,7 +671,6 @@ const baseOrderSearchFields: OrderSearchField[] = [
 const fullOrderSearchFields: OrderSearchField[] = [
   { label: '头程运单号', type: 'input', placeholder: '支持批量' },
   { label: '海外仓运单号', type: 'input', placeholder: '支持批量' },
-  { label: 'FBA单号', type: 'input', placeholder: '支持批量' },
   { label: '柜号', type: 'input', placeholder: '支持批量' },
   { label: '提单号', type: 'input', placeholder: '支持批量' },
   { label: '入仓号', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'inboundNo' },
@@ -1136,7 +1138,7 @@ function ExpressOrderCreationWorkspace({
             <div className="grid grid-cols-1 items-end gap-3 text-xs lg:grid-cols-[minmax(280px,2fr)_minmax(160px,1fr)_minmax(160px,1fr)_100px_100px]">
               <label className="min-w-0">
                 <span className="mb-1.5 block font-semibold text-slate-700">关键字</span>
-                <input value={keyword} onChange={(event) => setKeyword(event.target.value)} className={fieldClass} placeholder="海外仓运单号 / 头程运单号 / FBA单号 / 客户" />
+                <input value={keyword} onChange={(event) => setKeyword(event.target.value)} className={fieldClass} placeholder="海外仓运单号 / 头程运单号 / 客户" />
               </label>
               <label className="min-w-0">
                 <span className="mb-1.5 block font-semibold text-slate-700">仓库代码</span>
@@ -1230,14 +1232,13 @@ function ExpressOrderCreationWorkspace({
             </div>
 
             <div className="overflow-x-auto border border-slate-200">
-              <table className="w-full min-w-[2380px] table-fixed border-collapse text-[11px]">
+              <table className="w-full min-w-[2240px] table-fixed border-collapse text-[11px]">
                 <thead className="bg-slate-50 text-slate-700">
                   <tr>
                     <th className="w-10 border border-slate-200 px-2 py-2 text-center"><input type="checkbox" checked={selectableVisibleKeys.length > 0 && selectableVisibleKeys.every((key) => selectedKeys.includes(key))} onChange={toggleAllVisibleRows} className="h-3.5 w-3.5 rounded border-slate-300" /></th>
                     <th className="w-24 border border-slate-200 px-3 py-2 text-center">校验 / 状态</th>
                     <th className="w-52 border border-slate-200 px-3 py-2 text-center">海外仓运单号</th>
                     <th className="w-40 border border-slate-200 px-3 py-2 text-center">头程运单号</th>
-                    <th className="w-40 border border-slate-200 px-3 py-2 text-center">FBA单号</th>
                     <th className="w-44 border border-slate-200 px-3 py-2 text-center">客户简称</th>
                     <th className="w-28 border border-slate-200 px-3 py-2 text-center">目的地 / 仓库</th>
                     <th className="w-64 border border-slate-200 px-3 py-2 text-center">收件人 / 地址</th>
@@ -1274,7 +1275,6 @@ function ExpressOrderCreationWorkspace({
                         </td>
                         <td className="border border-slate-200 px-3 text-center font-mono font-semibold text-blue-600">{orderKey}</td>
                         <td className="border border-slate-200 px-3 text-center font-mono">{row.id}</td>
-                        <td className="border border-slate-200 px-3 text-center font-mono">{row.fbaCode}</td>
                         <td className="border border-slate-200 px-3 text-center"><div className="truncate" title={row.customerName}>{row.customerName}</div></td>
                         <td className="border border-slate-200 px-3 text-center"><div>{row.destination}</div><div className="mt-1 font-mono text-slate-500">{row.warehouseCode || '-'}</div></td>
                         <td className="border border-slate-200 px-3">
@@ -1301,7 +1301,7 @@ function ExpressOrderCreationWorkspace({
                     );
                   })}
                   {visibleRows.length === 0 && (
-                    <tr><td colSpan={16} className="h-32 border border-slate-200 text-center text-slate-400">当前筛选条件下暂无{activeLine}子单</td></tr>
+                    <tr><td colSpan={15} className="h-32 border border-slate-200 text-center text-slate-400">当前筛选条件下暂无{activeLine}子单</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1537,6 +1537,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const [selectedIds, setSelectedIds] = useState<string[]>(['YT2507100001_0710_1', 'YT2507100002_0710_1', 'YT2507100004_0711_1']);
   const [createdTransitRows, setCreatedTransitRows] = useState<CreatedTransitChildOrder[]>(getCreatedTransitChildOrders);
   const [statusOverridesByOrder, setStatusOverridesByOrder] = useState<Record<string, string>>({});
+  const [rejectionDetailsByOrder, setRejectionDetailsByOrder] = useState<Record<string, Pick<OverseasTransitRow, 'rejectionReason' | 'rejectedAt'>>>({});
   const [lifecycleTimeOverridesByOrder, setLifecycleTimeOverridesByOrder] = useState<Record<string, LifecycleTimeValues>>({});
   const [remarkOverridesByOrder, setRemarkOverridesByOrder] = useState<Record<string, EditableOrderRemarks>>({});
   const [searchValues, setSearchValues] = useState<Record<string, string>>({});
@@ -1545,6 +1546,11 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const [activeOrder, setActiveOrder] = useState<OverseasTransitRow | null>(null);
   const [activeLogOrder, setActiveLogOrder] = useState<OverseasTransitRow | null>(null);
   const [cancelConfirmOrderKeys, setCancelConfirmOrderKeys] = useState<string[]>([]);
+  const [rejectConfirmOrderKeys, setRejectConfirmOrderKeys] = useState<string[]>([]);
+  const [voidConfirmOrderKeys, setVoidConfirmOrderKeys] = useState<string[]>([]);
+  const [rejectionReasonDraft, setRejectionReasonDraft] = useState('');
+  const [reorderingRejectedOrderKeys, setReorderingRejectedOrderKeys] = useState<string[]>([]);
+  const [reorderInstructionSnapshotsByOrder, setReorderInstructionSnapshotsByOrder] = useState<Record<string, InstructionFeeRow[]>>({});
   const [confirmedOrderSubmissionKeys, setConfirmedOrderSubmissionKeys] = useState<string[]>([]);
   const [confirmedOrderSubmissionCheck, setConfirmedOrderSubmissionCheck] = useState<ConfirmedOrderSubmissionCheck | null>(null);
   const [rollbackConfirmOrderKeys, setRollbackConfirmOrderKeys] = useState<string[]>([]);
@@ -1589,6 +1595,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const allRows: OverseasTransitRow[] = [...displayedSeedRows, ...createdTransitRows].map((row) => ({
     ...row,
     ...remarkOverridesByOrder[getOrderKey(row)],
+    ...rejectionDetailsByOrder[getOrderKey(row)],
     deliveryMethod: addressFormsByOrder[getOrderKey(row)]?.deliveryMethod || getOrderDeliveryMethod(row),
   }));
   const expressWorkspaceRows = allRows.filter((row) => expressOrderKeys.includes(getOrderKey(row)) && row.status === '已确认');
@@ -1608,13 +1615,16 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     && activeOrderFilterKeys.every((key) => matchesOrderFilterQuery(row[key], appliedOrderFilters[key]))
   ));
   const cancelConfirmRows = allRows.filter((row) => cancelConfirmOrderKeys.includes(getOrderKey(row)) && row.status === '已确认');
+  const rejectConfirmRows = allRows.filter((row) => rejectConfirmOrderKeys.includes(getOrderKey(row)) && row.status === '待确认');
+  const voidConfirmRows = allRows.filter((row) => voidConfirmOrderKeys.includes(getOrderKey(row)) && row.status === '驳回');
   const confirmedOrderSubmissionRows = allRows.filter((row) => confirmedOrderSubmissionKeys.includes(getOrderKey(row)) && row.status === '已确认');
   const rollbackConfirmRows = allRows.filter((row) => rollbackConfirmOrderKeys.includes(getOrderKey(row)) && row.status === '已下单');
   const transitRollbackConfirmRows = allRows.filter((row) => transitRollbackConfirmOrderKeys.includes(getOrderKey(row)) && row.status === '转运中');
   const signedRollbackConfirmRows = allRows.filter((row) => signedRollbackConfirmOrderKeys.includes(getOrderKey(row)) && row.status === '签收');
   const usesOrderFormTemplate = (status: string) => orderFormStatuses.has(status);
   const showOverseasWaybillNo = true;
-  const orderTableColumnCount = (showOverseasWaybillNo ? 21 : 17) + (activeLifecycleTimeConfig ? 1 : 0) + 6 + (showOverseasWarehouseArrivalStatus ? 1 : 0);
+  const showRejectionFields = activeTab === '驳回';
+  const orderTableColumnCount = (showOverseasWaybillNo ? 21 : 17) + (activeLifecycleTimeConfig ? 1 : 0) + 6 + (showOverseasWarehouseArrivalStatus ? 1 : 0) + (showRejectionFields ? 2 : 0);
   const orderTableMinWidthClass = showOverseasWaybillNo
     ? (activeLifecycleTimeConfig ? 'min-w-[3920px]' : showOverseasWarehouseArrivalStatus ? 'min-w-[3880px]' : 'min-w-[3760px]')
     : (activeLifecycleTimeConfig ? 'min-w-[3440px]' : showOverseasWarehouseArrivalStatus ? 'min-w-[3400px]' : 'min-w-[3280px]');
@@ -1626,8 +1636,10 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   ];
   const quoteEditableStatuses = new Set(['已确认', '已下单', '转运中', '签收']);
   const activeOrderKey = activeOrder ? getOrderKey(activeOrder) : '';
+  const isReorderingRejectedOrder = !!activeOrder && reorderingRejectedOrderKeys.includes(activeOrderKey);
+  const showsOrderForm = !!activeOrder && (usesOrderFormTemplate(activeOrder.status) || isReorderingRejectedOrder);
   const addressForm = activeOrder ? (addressFormsByOrder[activeOrderKey] || getParentStorageAddressForm(activeOrder)) : emptyAddressForm;
-  const isOrderFormEditing = !!activeOrder && usesOrderFormTemplate(activeOrder.status) && editingOrderFormKey === activeOrderKey;
+  const isOrderFormEditing = showsOrderForm && editingOrderFormKey === activeOrderKey;
   const getInstructionRowsForOrder = (row: OverseasTransitRow): InstructionFeeRow[] =>
     instructionRowsByOrder[getOrderKey(row)] ?? row.instructions ?? [];
   const activeInstructionRows = activeOrder ? getInstructionRowsForOrder(activeOrder) : [];
@@ -1837,33 +1849,165 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     addToast(`已取消 ${rows.length} 条待确认子单，返回状态：取消；已取消子单箱号回流至母单`, 'success');
   };
 
-  const rejectPendingOrders = () => {
+  const requestRejectPendingOrders = () => {
     if (activeTab !== '待确认') return;
     const rows = getSelectedCurrentRows();
     if (rows.length === 0) { addToast('请先勾选需要驳回的待确认子单', 'warning'); return; }
 
+    setRejectConfirmOrderKeys(rows.map(getOrderKey));
+    setRejectionReasonDraft('');
+  };
+
+  const rejectPendingOrders = () => {
+    if (activeTab !== '待确认') return;
+    const rows = rejectConfirmRows;
+    const rejectionReason = rejectionReasonDraft.trim();
+    if (rows.length === 0) { setRejectConfirmOrderKeys([]); return; }
+    if (!rejectionReason) { addToast('请填写驳回原因', 'warning'); return; }
+
     const createdOrderIds = rows.filter(isCreatedTransitChildOrder).map((row) => row.id);
     const seedOrderKeys = rows.filter((row) => !isCreatedTransitChildOrder(row)).map(getOrderKey);
 
-    if (createdOrderIds.length > 0) rejectCreatedTransitChildOrders(createdOrderIds);
+    if (createdOrderIds.length > 0) rejectCreatedTransitChildOrders(createdOrderIds, rejectionReason);
     if (seedOrderKeys.length > 0) {
       setStatusOverridesByOrder((prev) => seedOrderKeys.reduce((next, key) => ({ ...next, [key]: '驳回' }), { ...prev }));
+      setRejectionDetailsByOrder((prev) => seedOrderKeys.reduce((next, key) => ({
+        ...next,
+        [key]: { rejectionReason, rejectedAt: formatDateTime() },
+      }), { ...prev }));
     }
 
     rows.forEach((row) => appendQuoteLog(getOrderKey(row), {
       operatedAt: formatDateTime(),
       operator: '天朗（付豪）',
       action: '驳回海外中转单',
-      field: '状态 / 子单箱号',
+      field: '状态 / 驳回原因 / 子单箱号',
       before: '待确认',
       after: '驳回 / 回流母单',
       note: row.boxNumbers?.length
-        ? `子单箱号 ${row.boxNumbers.join('、')} 已回流至母单`
-        : '子单状态已驳回，关联数据已回流至母单',
+        ? `驳回原因：${rejectionReason}；子单箱号 ${row.boxNumbers.join('、')} 已回流至母单`
+        : `驳回原因：${rejectionReason}；子单状态已驳回，关联数据已回流至母单`,
     }));
 
     clearSelectedCurrentRows(rows);
+    setRejectConfirmOrderKeys([]);
+    setRejectionReasonDraft('');
     addToast(`已驳回 ${rows.length} 条待确认子单，状态已流转至驳回；子单数据已回流至母单`, 'success');
+  };
+
+  const startRejectedOrderReorder = () => {
+    if (activeTab !== '驳回') return;
+    const rows = getSelectedCurrentRows();
+    if (rows.length !== 1) {
+      addToast('请勾选一条驳回子单后重新下单', 'warning');
+      return;
+    }
+
+    const row = rows[0];
+    const orderKey = getOrderKey(row);
+    const originalInstructions = getInstructionRowsForOrder(row).map((instruction) => ({ ...instruction }));
+    openOrder(row);
+    setReorderingRejectedOrderKeys((prev) => Array.from(new Set([...prev, orderKey])));
+    const reorderAddressForm = getParentStorageAddressForm(row);
+    setAddressFormsByOrder((prev) => ({ ...prev, [orderKey]: reorderAddressForm }));
+    setAddressFormSnapshotsByOrder((prev) => ({ ...prev, [orderKey]: reorderAddressForm }));
+    setEditingOrderFormKey(orderKey);
+    setReorderInstructionSnapshotsByOrder((prev) => ({ ...prev, [orderKey]: originalInstructions }));
+    setInstructionRowsByOrder((prev) => ({ ...prev, [orderKey]: [] }));
+    addToast('请完善下单信息并重新选择操作指令后完成下单', 'info');
+  };
+
+  const completeRejectedOrderReorder = () => {
+    if (!activeOrder || !isReorderingRejectedOrder) return;
+    const orderKey = getOrderKey(activeOrder);
+    const instructions = getInstructionRowsForOrder(activeOrder);
+    if (!addressForm.scheduledShippingTime) {
+      addToast('请选择预约发货时间后再下单', 'warning');
+      return;
+    }
+    if (!addressForm.deliveryMethod) {
+      addToast('请选择派送方式后再下单', 'warning');
+      return;
+    }
+    if (!addressForm.orderType || !addressForm.warehouseCode || !addressForm.zipCode || !addressForm.city || !addressForm.addressDetail) {
+      addToast('请先填写完整的收件地址信息后再下单', 'warning');
+      return;
+    }
+    if (instructions.length === 0) {
+      addToast('请至少选择一条操作指令后再下单', 'warning');
+      return;
+    }
+
+    if (isCreatedTransitChildOrder(activeOrder)) {
+      reopenRejectedCreatedTransitChildOrders([activeOrder.id]);
+    } else {
+      setStatusOverridesByOrder((prev) => ({ ...prev, [orderKey]: '待确认' }));
+      setRejectionDetailsByOrder((prev) => {
+        const next = { ...prev };
+        delete next[orderKey];
+        return next;
+      });
+      updateSeedLifecycleTimes([orderKey], { orderedAt: undefined, outboundAt: undefined, signedAt: undefined });
+    }
+
+    appendQuoteLog(orderKey, {
+      operatedAt: formatDateTime(),
+      operator: '天朗（付豪）',
+      action: '重新下单',
+      field: '操作指令 / 中转状态',
+      before: '驳回',
+      after: '待确认',
+      note: `已重新选择 ${instructions.length} 条操作指令并提交下单`,
+    });
+    setReorderingRejectedOrderKeys((prev) => prev.filter((key) => key !== orderKey));
+    setReorderInstructionSnapshotsByOrder((prev) => {
+      const next = { ...prev };
+      delete next[orderKey];
+      return next;
+    });
+    clearSelectedCurrentRows([activeOrder]);
+    setActiveOrder(null);
+    handleNodeChange('待确认');
+    addToast(`海外中转单 ${orderKey} 已重新下单，进入待确认状态`, 'success');
+  };
+
+  const requestVoidRejectedOrders = () => {
+    if (activeTab !== '驳回') return;
+    const rows = getSelectedCurrentRows();
+    if (rows.length === 0) {
+      addToast('请先勾选需要作废的驳回子单', 'warning');
+      return;
+    }
+    setVoidConfirmOrderKeys(rows.map(getOrderKey));
+  };
+
+  const confirmVoidRejectedOrders = () => {
+    if (activeTab !== '驳回') return;
+    const rows = voidConfirmRows;
+    if (rows.length === 0) {
+      setVoidConfirmOrderKeys([]);
+      return;
+    }
+
+    const createdOrderIds = rows.filter(isCreatedTransitChildOrder).map((row) => row.id);
+    const seedOrderKeys = rows.filter((row) => !isCreatedTransitChildOrder(row)).map(getOrderKey);
+    if (createdOrderIds.length > 0) voidRejectedCreatedTransitChildOrders(createdOrderIds);
+    if (seedOrderKeys.length > 0) {
+      setStatusOverridesByOrder((prev) => seedOrderKeys.reduce((next, key) => ({ ...next, [key]: '取消' }), { ...prev }));
+    }
+    rows.forEach((row) => appendQuoteLog(getOrderKey(row), {
+      operatedAt: formatDateTime(),
+      operator: '天朗（付豪）',
+      action: '作废海外中转单',
+      field: '中转状态',
+      before: '驳回',
+      after: '取消',
+      note: '驳回子单已作废并进入取消界面',
+    }));
+    clearSelectedCurrentRows(rows);
+    setVoidConfirmOrderKeys([]);
+    handleNodeChange('取消');
+    addToast(`已作废 ${rows.length} 条驳回子单，进入取消界面`, 'success');
   };
 
   const confirmPendingOrders = () => {
@@ -2179,6 +2323,31 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     if (isCreatedTransitChildOrder(row)) {
       updateCreatedTransitChildOrderInstructions(row.id, normalizedRows);
     }
+  };
+
+  const cancelRejectedOrderReorder = () => {
+    if (!activeOrder || !isReorderingRejectedOrder) return;
+    const orderKey = getOrderKey(activeOrder);
+    const originalInstructions = reorderInstructionSnapshotsByOrder[orderKey] || [];
+    setOrderInstructionRows(activeOrder, originalInstructions);
+    setAddressFormsByOrder((prev) => ({
+      ...prev,
+      [orderKey]: addressFormSnapshotsByOrder[orderKey] || getParentStorageAddressForm(activeOrder),
+    }));
+    setAddressFormSnapshotsByOrder((prev) => {
+      const next = { ...prev };
+      delete next[orderKey];
+      return next;
+    });
+    setReorderInstructionSnapshotsByOrder((prev) => {
+      const next = { ...prev };
+      delete next[orderKey];
+      return next;
+    });
+    setEditingOrderFormKey(null);
+    setReorderingRejectedOrderKeys((prev) => prev.filter((key) => key !== orderKey));
+    setActiveOrder(null);
+    addToast('已取消重新下单，驳回单保持原状态', 'info');
   };
 
   const confirmInstructionFees = () => {
@@ -2734,7 +2903,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
               <button
                 type="button"
                 title="支持批量驳回；驳回后状态流转至驳回，子单数据重新回到母单"
-                onClick={rejectPendingOrders}
+                onClick={requestRejectPendingOrders}
                 className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
               >
                 驳回
@@ -2857,8 +3026,21 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
             </>
           ) : activeTab === '驳回' ? (
             <>
-              <button type="button" onClick={() => addToast('驳回状态的海外中转单已保存', 'success')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
-                保存
+              <button
+                type="button"
+                title="选择一条驳回子单，重新选择操作指令并下单；完成后将进入待确认状态"
+                onClick={startRejectedOrderReorder}
+                className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
+              >
+                重新下单
+              </button>
+              <button
+                type="button"
+                title="作废已选驳回子单并进入取消界面"
+                onClick={requestVoidRejectedOrders}
+                className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
+              >
+                作废
               </button>
               <button type="button" onClick={() => addToast('导出海外中转单功能为展示', 'info')} className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
                 导出
@@ -2912,8 +3094,9 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                 {showOverseasWaybillNo && <th className="w-56 border border-slate-200 px-3 py-2 text-center">海外仓运单号</th>}
                 {showOverseasWaybillNo && <th className="w-36 border border-slate-200 px-3 py-2 text-center">子单创建时间</th>}
                 {activeLifecycleTimeConfig && <th className="w-40 border border-slate-200 px-3 py-2 text-center">{activeLifecycleTimeConfig.label}</th>}
+                {showRejectionFields && <th className="w-48 border border-slate-200 px-3 py-2 text-center">驳回原因</th>}
+                {showRejectionFields && <th className="w-40 border border-slate-200 px-3 py-2 text-center">驳回时间</th>}
                 <th className="w-36 border border-slate-200 px-3 py-2 text-center">转单号</th>
-                <th className="w-36 border border-slate-200 px-3 py-2 text-center">FBA单号</th>
                 <th className="w-40 border border-slate-200 px-3 py-2 text-center">入仓号</th>
                 <th className="w-40 border border-slate-200 px-3 py-2 text-center">Shipment ID</th>
                 <th className="w-40 border border-slate-200 px-3 py-2 text-center">Reference ID</th>
@@ -2960,8 +3143,9 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                   {showOverseasWaybillNo && <td className="border border-slate-200 px-3 text-center font-mono text-blue-600">{getOverseasWaybillNo(row)}</td>}
                   {showOverseasWaybillNo && <td className="border border-slate-200 px-3 text-center font-mono text-slate-500">{row.childCreatedAt || '-'}</td>}
                   {activeLifecycleTimeConfig && <td className="border border-slate-200 px-3 text-center font-mono text-slate-500">{row[activeLifecycleTimeConfig.key] || '-'}</td>}
+                  {showRejectionFields && <td className="border border-slate-200 px-3 text-left">{row.rejectionReason || '-'}</td>}
+                  {showRejectionFields && <td className="border border-slate-200 px-3 text-center font-mono text-slate-500">{row.rejectedAt || '-'}</td>}
                   <td className="border border-slate-200 px-3 text-center font-mono">{row.transferNo || '-'}</td>
-                  <td className="border border-slate-200 px-3 text-center font-mono">{row.fbaCode}</td>
                   <td className="border border-slate-200 px-3 text-center font-mono">{row.inboundNo || '-'}</td>
                   <td className="border border-slate-200 px-3 text-center font-mono">{row.shipmentId || '-'}</td>
                   <td className="border border-slate-200 px-3 text-center font-mono">{row.referenceId || '-'}</td>
@@ -3004,20 +3188,110 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
         </div>
       </div>
 
+      {rejectConfirmOrderKeys.length > 0 && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50">
+          <div className="w-[540px] rounded bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-950">驳回待确认中转单</h3>
+                <p className="mt-1 text-[11px] text-slate-500">本次将驳回 {rejectConfirmRows.length} 条子单，相关货箱将回流至母单。</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setRejectConfirmOrderKeys([]); setRejectionReasonDraft(''); }}
+                className="rounded p-1 text-slate-500 hover:bg-slate-100"
+                aria-label="关闭驳回弹窗"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="px-8 py-6">
+              <label className="block text-xs font-bold text-slate-900">
+                <span className="mr-1 text-red-500">*</span>驳回原因
+              </label>
+              <textarea
+                autoFocus
+                maxLength={500}
+                rows={5}
+                value={rejectionReasonDraft}
+                onChange={(event) => setRejectionReasonDraft(event.target.value)}
+                placeholder="请描述驳回原因"
+                className="mt-2 w-full resize-y rounded border border-slate-300 px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#004bb1] focus:ring-1 focus:ring-[#004bb1]"
+              />
+              <div className="mt-2 text-right text-[11px] text-slate-400">{rejectionReasonDraft.length}/500</div>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-slate-200 px-8 py-4">
+              <button
+                type="button"
+                onClick={() => { setRejectConfirmOrderKeys([]); setRejectionReasonDraft(''); }}
+                className="rounded border border-slate-300 bg-white px-7 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={rejectPendingOrders}
+                className="rounded bg-[#004bb1] px-7 py-1.5 text-xs font-bold text-white hover:bg-[#003b91]"
+              >
+                确认
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {voidConfirmOrderKeys.length > 0 && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50">
+          <div className="w-[460px] rounded bg-white shadow-2xl">
+            <div className="border-b border-slate-200 px-6 py-4">
+              <h3 className="text-sm font-bold text-slate-950">作废确认</h3>
+            </div>
+            <div className="px-8 py-7 text-sm leading-6 text-slate-700">
+              确认作废已选 {voidConfirmRows.length} 条驳回子单吗？作废后将进入取消界面，且不可恢复。
+            </div>
+            <div className="flex justify-end gap-3 px-8 pb-6">
+              <button
+                type="button"
+                onClick={() => setVoidConfirmOrderKeys([])}
+                className="rounded border border-slate-300 bg-white px-6 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={confirmVoidRejectedOrders}
+                className="rounded bg-rose-600 px-6 py-1.5 text-xs font-bold text-white hover:bg-rose-700"
+              >
+                确认作废
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeOrder && (
         <div className="fixed inset-0 z-50 bg-black/55">
           <div className="absolute right-0 top-0 flex h-full w-[66vw] min-w-[980px] flex-col bg-slate-50 shadow-2xl">
             <div className="flex h-11 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-9">
-              <h2 className="text-sm font-bold text-slate-950">{activeOrder.status === '驳回' ? '驳回单详情' : usesOrderFormTemplate(activeOrder.status) ? '中转下单' : '确认运单信息'}</h2>
+              <h2 className="text-sm font-bold text-slate-950">{isReorderingRejectedOrder ? '中转下单' : activeOrder.status === '驳回' ? '驳回单详情' : usesOrderFormTemplate(activeOrder.status) ? '中转下单' : '确认运单信息'}</h2>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={() => { setEditingOrderFormKey(null); setAddressFormSnapshotsByOrder({}); setEditingRemarkOrderKey(null); setEditingRemarkField(null); setRemarkDraft(null); setActiveOrder(null); }} className="rounded p-1 text-slate-700 hover:bg-slate-100" aria-label="关闭">
+                <button type="button" onClick={() => { if (isReorderingRejectedOrder) { cancelRejectedOrderReorder(); return; } setEditingOrderFormKey(null); setAddressFormSnapshotsByOrder({}); setEditingRemarkOrderKey(null); setEditingRemarkField(null); setRemarkDraft(null); setActiveOrder(null); }} className="rounded p-1 text-slate-700 hover:bg-slate-100" aria-label="关闭">
                   <X className="h-5 w-5" />
                 </button>
               </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              {usesOrderFormTemplate(activeOrder.status) ? (
+              {activeOrder.status === '驳回' && (
+                <section className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-6 py-4">
+                  <h3 className="mb-3 text-sm font-bold text-rose-900">驳回信息</h3>
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-xs">
+                    <DetailField label="驳回原因">{activeOrder.rejectionReason || '-'}</DetailField>
+                    <DetailField label="驳回时间">{activeOrder.rejectedAt || '-'}</DetailField>
+                  </div>
+                </section>
+              )}
+              {showsOrderForm ? (
                 <>
                   <div className="mb-3 grid grid-cols-3 gap-x-8 gap-y-3 rounded-2xl border border-slate-200 bg-white px-8 py-5 text-xs">
                     <div>
@@ -3069,7 +3343,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                   <section className="rounded-2xl border border-slate-200 bg-white px-7 py-4">
                     <div className="mb-5 flex items-center justify-between">
                       <h3 className="text-sm font-bold text-slate-950">收件地址信息</h3>
-                      {isOrderFormEditing ? (
+                      {isReorderingRejectedOrder ? null : isOrderFormEditing ? (
                         <div className="flex items-center gap-2">
                           <button type="button" onClick={saveOrderFormEdit} className="rounded bg-blue-600 px-5 py-1.5 text-xs font-bold text-white hover:bg-blue-700">保存</button>
                           <button type="button" onClick={cancelOrderFormEdit} className="rounded border border-slate-300 bg-white px-5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">取消</button>
@@ -3257,7 +3531,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                       <DetailField label="目的地">{activeOrder.destination}</DetailField>
                       <DetailField label="下单类型">{activeOrder.orderType || '-'}</DetailField>
                       <DetailField label="仓库代码">{activeOrder.warehouseCode || '-'}</DetailField>
-                      <DetailField label="FBA单号">{activeOrder.fbaCode}</DetailField>
                       <DetailField label="入仓号">{activeOrder.inboundNo || '-'}</DetailField>
                       <DetailField label="Shipment ID">{activeOrder.shipmentId || '-'}</DetailField>
                       <DetailField label="Reference ID">{activeOrder.referenceId || '-'}</DetailField>
@@ -3441,13 +3714,15 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                       <section className="rounded-md bg-white p-4 shadow-sm">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                           <h3 className="text-sm font-bold text-slate-950">货箱信息</h3>
-                          <button
-                            type="button"
-                            onClick={() => openTransferPanel(activeOrder)}
-                            className="rounded border border-slate-300 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                          >
-                            转单号
-                          </button>
+                          {activeOrder.status !== '驳回' && (
+                            <button
+                              type="button"
+                              onClick={() => openTransferPanel(activeOrder)}
+                              className="rounded border border-slate-300 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              转单号
+                            </button>
+                          )}
                         </div>
 
                         <div className="overflow-x-auto border border-slate-200">
@@ -3510,13 +3785,15 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                             <h3 className="text-sm font-bold text-slate-950">运踪节点信息</h3>
                             <p className="mt-1 text-[11px] text-slate-500">支持客户手动补充和更新运踪节点，更新后同步记录操作日志。</p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={openTrackingModal}
-                            className="rounded bg-[#004bb1] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#003b91]"
-                          >
-                            新增运踪
-                          </button>
+                          {activeOrder.status !== '驳回' && (
+                            <button
+                              type="button"
+                              onClick={openTrackingModal}
+                              className="rounded bg-[#004bb1] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#003b91]"
+                            >
+                              新增运踪
+                            </button>
+                          )}
                         </div>
 
                         <div className="mb-4 flex items-center justify-between rounded bg-blue-50 px-4 py-2 text-xs">
@@ -3561,13 +3838,15 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                       <section className="rounded-md bg-white p-4 shadow-sm">
                         <div className="mb-3 flex items-center justify-between">
                           <h3 className="text-sm font-bold text-slate-950">其它信息</h3>
-                          <button
-                            type="button"
-                            onClick={() => openAttachmentModal()}
-                            className="rounded border border-slate-300 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                          >
-                            上传附件
-                          </button>
+                          {activeOrder.status !== '驳回' && (
+                            <button
+                              type="button"
+                              onClick={() => openAttachmentModal()}
+                              className="rounded border border-slate-300 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              上传附件
+                            </button>
+                          )}
                         </div>
                         <div className="overflow-x-auto border border-slate-200">
                           <table className="w-full min-w-[920px] table-fixed border-collapse text-[11px]">
@@ -3591,13 +3870,15 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                                     <td className="border border-slate-200 px-3">{row.uploadedBy}</td>
                                     <td className="border border-slate-200 px-3 font-mono text-slate-500">{row.uploadedAt}</td>
                                     <td className="border border-slate-200 px-3">
-                                      <button
-                                        type="button"
-                                        onClick={() => openAttachmentModal(row)}
-                                        className="mr-3 font-bold text-[#004bb1] hover:underline"
-                                      >
-                                        编辑
-                                      </button>
+                                      {activeOrder.status !== '驳回' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => openAttachmentModal(row)}
+                                          className="mr-3 font-bold text-[#004bb1] hover:underline"
+                                        >
+                                          编辑
+                                        </button>
+                                      )}
                                       <button
                                         type="button"
                                         onClick={() => downloadAttachment(row)}
@@ -3605,13 +3886,15 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                                       >
                                         下载
                                       </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setDeletingAttachment(row)}
-                                        className="font-bold text-red-500 hover:underline"
-                                      >
-                                        删除
-                                      </button>
+                                      {activeOrder.status !== '驳回' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setDeletingAttachment(row)}
+                                          className="font-bold text-red-500 hover:underline"
+                                        >
+                                          删除
+                                        </button>
+                                      )}
                                     </td>
                                   </tr>
                                 ))
@@ -3632,7 +3915,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                 </>
               )}
 
-              {usesOrderFormTemplate(activeOrder.status) && (
+              {showsOrderForm && (
                 <section className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4">
                   <div className="mb-4 flex items-center justify-between">
                     <h3 className="text-sm font-bold text-slate-950">货箱信息</h3>
@@ -3722,7 +4005,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                 </section>
               )}
 
-              {usesOrderFormTemplate(activeOrder.status) && (
+              {showsOrderForm && (
               <section className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4">
                 <h3 className="mb-4 pl-3 text-sm font-bold text-slate-950">操作指令</h3>
                   <button
@@ -3730,7 +4013,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                     onClick={() => openFeeSelector('instruction')}
                     className="mb-5 ml-3 rounded bg-blue-600 px-7 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
                   >
-                  新增
+                  {isReorderingRejectedOrder ? '重新选择指令' : '新增'}
                 </button>
                 <table className="w-full table-fixed border-collapse text-xs">
                   <thead className="bg-slate-50 text-slate-900">
@@ -3785,6 +4068,24 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                   </tbody>
                 </table>
               </section>
+              )}
+              {isReorderingRejectedOrder && (
+                <div className="mt-6 flex justify-end gap-3 border-t border-slate-200 px-2 pt-5 pb-2">
+                  <button
+                    type="button"
+                    onClick={cancelRejectedOrderReorder}
+                    className="rounded border border-slate-300 bg-white px-7 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={completeRejectedOrderReorder}
+                    className="rounded bg-[#004bb1] px-7 py-2 text-xs font-bold text-white hover:bg-[#003b91]"
+                  >
+                    提交下单
+                  </button>
+                </div>
               )}
               {showInstructionModal && (
                 <div className="absolute inset-0 z-[90] bg-black/50">
