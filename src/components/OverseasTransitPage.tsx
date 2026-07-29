@@ -451,9 +451,6 @@ const matchesStorageIdentifierQuery = (value: string | undefined, query: string)
 const tableHeaders = ['头程运单号', 'FBA单号', '客户单号', '客户简称', '中转单类型', '总件数', '库存件数', '可用件数', '服务', '客户备注', '海外仓备注', '代理', '入仓时间', '仓租时间', '操作'];
 const storageExtendedHeaders = [
   '头程运单号',
-  'FBA单号',
-  '柜号',
-  '提单号',
   '入仓号',
   'Shipment ID',
   'Reference ID',
@@ -462,11 +459,9 @@ const storageExtendedHeaders = [
   '可下单箱数',
   '备注',
   '入仓时间（海外仓）',
-  '仓租时间',
   '库龄',
   '转单号',
   '仓库代码',
-  '财务代表',
   '收费重',
   '实重',
   '材积重',
@@ -474,7 +469,7 @@ const storageExtendedHeaders = [
   '邮编',
 ];
 const storageIdentifierHeaders = new Set(['入仓号', 'Shipment ID', 'Reference ID']);
-const transportationHiddenStorageHeaders = new Set(['入仓号', '入仓时间（海外仓）', '仓租时间', '库龄']);
+const transportationHiddenStorageHeaders = new Set(['入仓号', '入仓时间（海外仓）', '库龄']);
 
 const overseasSearchFields: SearchField[] = [
   { label: '头程运单号', type: 'input', placeholder: '支持批量' },
@@ -495,17 +490,12 @@ const overseasSearchFields: SearchField[] = [
 
 const storageSearchFields: SearchField[] = [
   { label: '头程运单号', type: 'input', placeholder: '支持批量' },
-  { label: 'FBA单号', type: 'input', placeholder: '支持批量' },
-  { label: '柜号', type: 'input', placeholder: '支持批量' },
-  { label: '提单号', type: 'input', placeholder: '支持批量' },
   { label: '入仓号', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'inboundNo' },
   { label: 'Shipment ID', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'shipmentId' },
   { label: 'Reference ID', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'referenceId' },
   { label: '客户单号', type: 'input', placeholder: '支持批量' },
   { label: '服务', type: 'select', options: ['美森15日达-快递派', '美森15日达-卡派包税', '美线海卡'] },
   { label: '入仓时间', type: 'select', options: ['近 7 天', '近 30 天'] },
-  { label: '仓租时间', type: 'select', options: ['近 7 天', '近 30 天'] },
-  { label: '财务代表', type: 'input', placeholder: '请输入' },
 ];
 
 const getCompletedStorageAddressForm = (row: OverseasTransitRow): AddressFormState => {
@@ -730,10 +720,20 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
   const [appliedStorageIdentifierFilters, setAppliedStorageIdentifierFilters] = useState<Record<StorageIdentifierSearchKey, string>>({ ...emptyStorageIdentifierSearchValues });
   const [selectedStorageBoxIndexesByOrder, setSelectedStorageBoxIndexesByOrder] = useState<Record<string, number[]>>({});
   const [storageAddressForm, setStorageAddressForm] = useState<AddressFormState>({ ...emptyAddressForm });
+  const [storageShippingEnabled, setStorageShippingEnabled] = useState(true);
   const [storageAttachments, setStorageAttachments] = useState<CreatedTransitAttachment[]>([]);
   const [storageInstructionRowsByOrder, setStorageInstructionRowsByOrder] = useState<Record<string, StorageInstructionRow[]>>({});
   const [showStorageInstructionModal, setShowStorageInstructionModal] = useState(false);
   const [selectedStorageInstructionCodes, setSelectedStorageInstructionCodes] = useState<string[]>(storageInstructionFeeRows.slice(0, 3).map((row) => row.code));
+  const [storageInstructionUnits, setStorageInstructionUnits] = useState<Record<string, string>>(
+    () => Object.fromEntries(storageInstructionFeeRows.map((row) => [row.code, row.unit])),
+  );
+  const [storageInstructionPrices, setStorageInstructionPrices] = useState<Record<string, string>>(
+    () => Object.fromEntries(storageInstructionFeeRows.map((row) => [row.code, row.price])),
+  );
+  const [storageInstructionQuantities, setStorageInstructionQuantities] = useState<Record<string, string>>(
+    () => Object.fromEntries(storageInstructionFeeRows.map((row) => [row.code, '1'])),
+  );
   const [editingStorageInstruction, setEditingStorageInstruction] = useState<StorageInstructionRow | null>(null);
   const [deletingStorageInstruction, setDeletingStorageInstruction] = useState<StorageInstructionRow | null>(null);
   useEffect(() => subscribeOverseasTransitFlow(() => setPageTransitRows(getTransitRowsWithRemovedBoxes())), []);
@@ -760,7 +760,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
   const visibleTableHeaders = isStorageListMode
     ? storageExtendedHeaders.filter((header) => !hideStorageTimingColumns || !transportationHiddenStorageHeaders.has(header))
     : tableHeaders;
-  const storageTableMinWidthClass = hideStorageTimingColumns ? 'min-w-[3070px]' : 'min-w-[3630px]';
+  const storageTableMinWidthClass = hideStorageTimingColumns ? 'min-w-[2550px]' : 'min-w-[2980px]';
 
   const getTabCount = (tab: TransitStatus) => {
     const scopedRows = mode === 'storage'
@@ -788,6 +788,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
         return;
       }
       setStorageAddressForm(nextRow.status === '暂存已完成' ? getCompletedStorageAddressForm(nextRow) : { ...emptyAddressForm });
+      setStorageShippingEnabled(true);
       setStorageAttachments([]);
       setActiveStorageOrder(nextRow);
       addToast(`已打开 ${nextRow.headWaybillNo} ${nextRow.status === '暂存已完成' ? '暂存已完成详情' : '中转下单页面'}`, 'info');
@@ -834,6 +835,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
 
   const cancelStorageSubmission = () => {
     if (activeStorageOrderKey) setSelectedStorageBoxIndexesByOrder((prev) => ({ ...prev, [activeStorageOrderKey]: [] }));
+    setStorageShippingEnabled(true);
     setStorageAttachments([]);
     setActiveStorageOrder(null);
   };
@@ -858,15 +860,18 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
     if (!activeStorageOrder || !activeStorageOrderKey || !isStorageSubmissionStatus) return;
     const boxNumbers = activeStorageSelectedBoxIndexes.map(getStorageBoxNumber).filter(Boolean);
     if (boxNumbers.length === 0) { addToast('请先勾选需要提交的箱号', 'warning'); return; }
-    if (!storageAddressForm.scheduledShippingTime) { addToast('请选择预约发货时间', 'warning'); return; }
-    if (!storageAddressForm.deliveryMethod) { addToast('请选择派送方式', 'warning'); return; }
-    if (!storageAddressForm.orderType || !storageAddressForm.warehouseCode || !storageAddressForm.zipCode || !storageAddressForm.city || !storageAddressForm.addressDetail) { addToast('请先填写完整的收件地址信息', 'warning'); return; }
+    if (storageShippingEnabled) {
+      if (!storageAddressForm.scheduledShippingTime) { addToast('请选择预约发货时间', 'warning'); return; }
+      if (!storageAddressForm.deliveryMethod) { addToast('请选择派送方式', 'warning'); return; }
+      if (!storageAddressForm.orderType || !storageAddressForm.warehouseCode || !storageAddressForm.zipCode || !storageAddressForm.city || !storageAddressForm.addressDetail) { addToast('请先填写完整的收件地址信息', 'warning'); return; }
+    }
     const orderSeq = getCreatedTransitChildOrders().filter((item) => item.parentHeadWaybillNo === activeStorageOrderKey).length + 1;
     const now = formatLocalDateTime();
     const child: CreatedTransitChildOrder = {
       id: `${activeStorageOrderKey}_${now.slice(5, 10).replace('-', '')}_${orderSeq}`,
       parentHeadWaybillNo: activeStorageOrderKey,
       addressForm: { ...storageAddressForm },
+      shippingEnabled: storageShippingEnabled,
       instructions: activeStorageInstructionRows.map((row) => ({ ...row })),
       reconciliationStatus: '未核销',
       overseasWarehouseArrivalStatus: '否',
@@ -902,11 +907,31 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
     setStorageInstructionRowsByOrder((prev) => ({ ...prev, [activeStorageOrderKey]: [] }));
     setStorageAttachments([]);
     setStorageAddressForm({ ...emptyAddressForm });
+    setStorageShippingEnabled(true);
     setActiveStorageOrder(null);
     addToast(`已提交 ${boxNumbers.length} 箱，已生成海外中转单并流转至待确认状态`, 'success');
   };
   const openStorageInstructionSelector = () => {
     if (!activeStorageOrderKey) return;
+    const existingRows = storageInstructionRowsByOrder[activeStorageOrderKey] || [];
+    setStorageInstructionUnits((prev) => Object.fromEntries(
+      storageInstructionFeeRows.map((row) => [
+        row.code,
+        existingRows.find((item) => item.code === row.code)?.unit || prev[row.code] || row.unit,
+      ]),
+    ));
+    setStorageInstructionPrices((prev) => Object.fromEntries(
+      storageInstructionFeeRows.map((row) => [
+        row.code,
+        existingRows.find((item) => item.code === row.code)?.price || prev[row.code] || row.price,
+      ]),
+    ));
+    setStorageInstructionQuantities((prev) => Object.fromEntries(
+      storageInstructionFeeRows.map((row) => [
+        row.code,
+        existingRows.find((item) => item.code === row.code)?.quantity || prev[row.code] || '1',
+      ]),
+    ));
     setShowStorageInstructionModal(true);
   };
 
@@ -921,7 +946,9 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
       .filter((row) => selectedStorageInstructionCodes.includes(row.code))
       .map((row) => ({
         ...row,
-        quantity: '1',
+        unit: storageInstructionUnits[row.code]?.trim() || row.unit,
+        price: storageInstructionPrices[row.code]?.trim() || row.price,
+        quantity: storageInstructionQuantities[row.code]?.trim() || '1',
         addedAt: createdAt,
         addedBy: '天朗（付豪）',
       }));
@@ -1244,12 +1271,10 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                 {visibleTableHeaders.map((head, index) => (
                   <th
                     key={head}
-                    className={'border border-slate-300 py-2 font-semibold ' + (isStorageListMode && index < 4 ? 'px-2 ' : 'px-3 ') + (
+                    className={'border border-slate-300 py-2 font-semibold ' + (isStorageListMode && index < 3 ? 'px-2 ' : 'px-3 ') + (
                       isStorageListMode && index === 0
-                        ? 'sticky left-10 z-30 bg-[#f2f2f2] text-left'
-                        : isStorageListMode && index === 1
-                          ? 'sticky left-[224px] z-30 bg-[#f2f2f2] text-left shadow-[1px_0_0_0_rgba(148,163,184,0.45)]'
-                          : 'text-center'
+                        ? 'sticky left-10 z-30 bg-[#f2f2f2] text-left shadow-[1px_0_0_0_rgba(148,163,184,0.45)]'
+                        : 'text-center'
                     )}
                   >
                     {head}
@@ -1273,11 +1298,6 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                           <td className="sticky left-10 z-20 border border-slate-300 bg-white px-2 text-left font-mono group-hover:bg-blue-50">
                             <span className="block truncate font-semibold text-slate-800" title={row.headWaybillNo}>{row.headWaybillNo}</span>
                           </td>
-                          <td className="sticky left-[224px] z-20 border border-slate-300 bg-white px-2 text-left font-mono shadow-[1px_0_0_0_rgba(148,163,184,0.35)] group-hover:bg-blue-50">
-                            <span className="block truncate font-semibold text-slate-800" title={row.fbaNo || '-'}>{row.fbaNo || '-'}</span>
-                          </td>
-                          <td className="border border-slate-300 px-2 text-center font-mono">{row.containerNo || '-'}</td>
-                          <td className="border border-slate-300 px-2 text-center font-mono">{row.billOfLadingNo || '-'}</td>
                           {!hideStorageTimingColumns && (
                             <td className="border border-slate-300 px-2 text-center font-mono">{row.inboundNo || '-'}</td>
                           )}
@@ -1290,13 +1310,11 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                           {!hideStorageTimingColumns && (
                             <>
                               <td className="border border-slate-300 px-3 text-center font-mono">{row.inboundAt}</td>
-                              <td className="border border-slate-300 px-3 text-center font-mono">{row.warehouseAt}</td>
                               <td className="border border-slate-300 px-3 text-center">{getStorageAgeText(row.inboundAt)}</td>
                             </>
                           )}
                           <td className="border border-slate-300 px-3 text-center font-mono">{row.transferNo || '-'}</td>
                           <td className="border border-slate-300 px-3 text-center">{row.warehouseCode || '-'}</td>
-                          <td className="border border-slate-300 px-3 text-center">{row.financeRepresentative || '-'}</td>
                           <td className="border border-slate-300 px-3 text-center">{row.chargeWeight || '-'}</td>
                           <td className="border border-slate-300 px-3 text-center">{row.actualWeight || '-'}</td>
                           <td className="border border-slate-300 px-3 text-center">{row.volumetricWeight || '-'}</td>
@@ -1369,9 +1387,6 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                   <h3 className="mb-5 text-sm font-bold text-slate-950">基础信息</h3>
                   <div className="grid grid-cols-2 gap-x-16 gap-y-4">
                     <DrawerReadonlyField label="头程运单号">{activeStorageOrder.headWaybillNo}</DrawerReadonlyField>
-                    <DrawerReadonlyField label="FBA单号">{activeStorageOrder.fbaNo || '-'}</DrawerReadonlyField>
-                    <DrawerReadonlyField label="柜号">{activeStorageOrder.containerNo || '-'}</DrawerReadonlyField>
-                    <DrawerReadonlyField label="提单号">{activeStorageOrder.billOfLadingNo || '-'}</DrawerReadonlyField>
                     <DrawerReadonlyField label="入仓号">{activeStorageOrder.inboundNo || '-'}</DrawerReadonlyField>
                     <DrawerReadonlyField label="Shipment ID">{activeStorageOrder.shipmentId || '-'}</DrawerReadonlyField>
                     <DrawerReadonlyField label="Reference ID">{activeStorageOrder.referenceId || '-'}</DrawerReadonlyField>
@@ -1381,9 +1396,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                     <DrawerReadonlyField label="可下单箱数">{getRemainingBoxCount(activeStorageOrder)}</DrawerReadonlyField>
                     <DrawerReadonlyField label="服务" className="col-span-2">{activeStorageOrder.service}</DrawerReadonlyField>
                     <DrawerReadonlyField label="入仓时间">{activeStorageOrder.inboundAt}</DrawerReadonlyField>
-                    <DrawerReadonlyField label="仓租时间">{activeStorageOrder.warehouseAt}</DrawerReadonlyField>
                     <DrawerReadonlyField label="库龄">{getStorageAgeText(activeStorageOrder.inboundAt)}</DrawerReadonlyField>
-                    <DrawerReadonlyField label="财务代表">{activeStorageOrder.financeRepresentative || '-'}</DrawerReadonlyField>
                     <DrawerReadonlyField label="备注" className="col-span-2">{activeStorageOrder.customerRemark || '-'}</DrawerReadonlyField>
                   </div>
                 </section>
@@ -1392,14 +1405,6 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                   <div>
                     <span className="font-bold text-blue-600">头程运单号：</span>
                     <span className="font-mono text-blue-600">{activeStorageOrder.headWaybillNo}</span>
-                  </div>
-                  <div>
-                    <span className="font-bold text-slate-900">柜号：</span>
-                    <span className="font-mono">{activeStorageOrder.containerNo || '-'}</span>
-                  </div>
-                  <div>
-                    <span className="font-bold text-slate-900">提单号：</span>
-                    <span className="font-mono">{activeStorageOrder.billOfLadingNo || '-'}</span>
                   </div>
                   {activeStorageOrder.status !== '运输中' && (
                     <div>
@@ -1431,6 +1436,24 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
               )}
 
               <section className="rounded-2xl border border-slate-200 bg-white px-7 py-4">
+                {!isCompletedStorageOrder && (
+                  <div className="mb-5 flex items-center gap-5 border-b border-slate-100 pb-4 text-xs">
+                    <span className="font-bold text-slate-950">是否出货</span>
+                    {[{ label: '是', value: true }, { label: '否', value: false }].map((option) => (
+                      <label key={option.label} className="inline-flex items-center gap-1.5 font-semibold text-slate-700">
+                        <input
+                          type="radio"
+                          className="h-3.5 w-3.5 accent-[#004bb1]"
+                          checked={storageShippingEnabled === option.value}
+                          onChange={() => setStorageShippingEnabled(option.value)}
+                        />
+                        {option.label}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {(isCompletedStorageOrder || storageShippingEnabled) ? (
+                  <>
                 <h3 className="mb-5 text-sm font-bold text-slate-950">收件地址信息</h3>
                 <div className="grid grid-cols-2 gap-x-16 gap-y-4">
                   {isCompletedStorageOrder ? (
@@ -1597,6 +1620,46 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                     </div>
                   </div>
                 </div>
+                  </>
+                ) : (
+                  <div className="flex gap-8">
+                    <div className="min-w-0 flex-1">
+                      <DrawerTextareaRow
+                        label="备注"
+                        placeholder="请输入备注"
+                        limit={`${storageAddressForm.remark.length}/500`}
+                        value={storageAddressForm.remark}
+                        onChange={(value) => updateStorageAddressField('remark', value)}
+                      />
+                    </div>
+                    <div className="flex items-start gap-3 text-xs" style={{ width: '380px', flexShrink: 0 }}>
+                      <span className="w-20 shrink-0 pt-1.5 text-right font-bold text-slate-900">附件上传：</span>
+                      <div className="min-w-0 flex-1">
+                        <label className="inline-flex h-8 cursor-pointer items-center rounded bg-[#004bb1] px-5 text-xs font-bold text-white hover:bg-[#003b91]">
+                          选择附件
+                          <input
+                            type="file"
+                            className="hidden"
+                            onChange={(event) => {
+                              handleStorageAttachmentFileChange(event.target.files?.[0]);
+                              event.currentTarget.value = '';
+                            }}
+                          />
+                        </label>
+                        {storageAttachments.length > 0 ? (
+                          <div className="mt-3 flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+                            <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                            <span className="min-w-0 flex-1 truncate">{storageAttachments[0].name}</span>
+                            <span className="text-slate-400">{storageAttachments[0].fileSize}</span>
+                            <button type="button" onClick={() => setStorageAttachments([])} className="font-bold text-red-500 hover:underline">删除</button>
+                          </div>
+                        ) : (
+                          <div className="mt-3 text-[11px] text-slate-400">暂未上传附件</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </section>
 
               <section className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4">
@@ -1760,7 +1823,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                                   className="h-3.5 w-3.5 rounded border-slate-300"
                                 />
                               </th>
-                              {['费用代码', '费用名称', '费用类型', '计费单位', '计费单价', '币种', '描述'].map((head) => (
+                              {['费用代码', '费用名称', '费用类型', '计费单位', '计费单价', '计费数量', '币种', '描述'].map((head) => (
                                 <th key={head} className="border border-slate-200 px-3 py-2 text-center font-bold">{head}</th>
                               ))}
                             </tr>
@@ -1777,8 +1840,48 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                                   <td className="border border-slate-200 px-3 text-center font-mono">{row?.code || ''}</td>
                                   <td className="border border-slate-200 px-3 text-center">{row?.name || ''}</td>
                                   <td className="border border-slate-200 px-3 text-center">{row?.type || ''}</td>
-                                  <td className="border border-slate-200 px-3 text-center">{row?.unit || ''}</td>
-                                  <td className="border border-slate-200 px-3 text-center">{row?.price || ''}</td>
+                                  <td className="border border-slate-200 px-2 text-center">
+                                    {row ? (
+                                      <select
+                                        value={storageInstructionUnits[row.code] ?? row.unit}
+                                        onChange={(event) => setStorageInstructionUnits((prev) => ({ ...prev, [row.code]: event.target.value }))}
+                                        className="h-7 w-full min-w-0 rounded border border-slate-200 bg-white px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                                        aria-label={`${row.name}计费单位`}
+                                      >
+                                        <option value="票">票</option>
+                                        <option value="箱">箱</option>
+                                        <option value="KG">KG</option>
+                                      </select>
+                                    ) : null}
+                                  </td>
+                                  <td className="border border-slate-200 px-2 text-center">
+                                    {row ? (
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        value={storageInstructionPrices[row.code] ?? row.price}
+                                        onChange={(event) => setStorageInstructionPrices((prev) => ({ ...prev, [row.code]: event.target.value }))}
+                                        onBlur={() => setStorageInstructionPrices((prev) => ({ ...prev, [row.code]: prev[row.code]?.trim() || row.price }))}
+                                        className="h-7 w-full min-w-0 rounded border border-slate-200 px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                                        aria-label={`${row.name}计费单价`}
+                                      />
+                                    ) : null}
+                                  </td>
+                                  <td className="border border-slate-200 px-2 text-center">
+                                    {row ? (
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        value={storageInstructionQuantities[row.code] ?? '1'}
+                                        onChange={(event) => setStorageInstructionQuantities((prev) => ({ ...prev, [row.code]: event.target.value }))}
+                                        onBlur={() => setStorageInstructionQuantities((prev) => ({ ...prev, [row.code]: prev[row.code]?.trim() || '1' }))}
+                                        className="h-7 w-full min-w-0 rounded border border-slate-200 px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                                        aria-label={`${row.name}计费数量`}
+                                      />
+                                    ) : null}
+                                  </td>
                                   <td className="border border-slate-200 px-3 text-center">{row?.currency || ''}</td>
                                   <td className="border border-slate-200 px-3 text-center">{row?.description || ''}</td>
                                 </tr>

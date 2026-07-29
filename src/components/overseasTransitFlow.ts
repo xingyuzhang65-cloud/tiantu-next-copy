@@ -30,6 +30,7 @@ export type CreatedTransitChildOrder = {
   id: string;
   parentHeadWaybillNo: string;
   addressForm: AddressFormState;
+  shippingEnabled?: boolean;
   instructions: CreatedTransitInstruction[];
   reconciliationStatus: TransitReconciliationStatus;
   overseasWarehouseArrivalStatus: OverseasWarehouseArrivalStatus;

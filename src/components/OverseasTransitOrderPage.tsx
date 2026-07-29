@@ -49,6 +49,7 @@ interface OverseasTransitRow {
   orderType?: string;
   deliveryMethod?: string;
   addressForm?: AddressFormState;
+  shippingEnabled?: boolean;
   instructions?: CreatedTransitInstruction[];
   reconciliationStatus?: TransitReconciliationStatus;
   overseasWarehouseArrivalStatus?: OverseasWarehouseArrivalStatus;
@@ -933,6 +934,7 @@ const getOverseasWaybillNo = (row: OverseasTransitRow) => {
 
 const getOrderKey = (row: OverseasTransitRow) => getOverseasWaybillNo(row);
 const isCreatedTransitChildOrder = (row: OverseasTransitRow): row is CreatedTransitChildOrder => 'parentHeadWaybillNo' in row;
+const getOrderShippingEnabled = (row: OverseasTransitRow) => row.shippingEnabled ?? true;
 
 const getParentStorageAddressForm = (row: OverseasTransitRow): AddressFormState => {
   if (row.addressForm) return { ...emptyAddressForm, ...row.addressForm, deliveryMethod: getOrderDeliveryMethod(row) };
@@ -1559,6 +1561,15 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [feeModalTarget, setFeeModalTarget] = useState<FeeModalTarget>('instruction');
   const [selectedFeeCodes, setSelectedFeeCodes] = useState<string[]>(instructionFeeRows.slice(0, 3).map((row) => row.code));
+  const [instructionFeeUnits, setInstructionFeeUnits] = useState<Record<string, string>>(
+    () => Object.fromEntries(instructionFeeRows.map((row) => [row.code, row.unit])),
+  );
+  const [instructionFeePrices, setInstructionFeePrices] = useState<Record<string, string>>(
+    () => Object.fromEntries(instructionFeeRows.map((row) => [row.code, row.price])),
+  );
+  const [instructionFeeQuantities, setInstructionFeeQuantities] = useState<Record<string, string>>(
+    () => Object.fromEntries(instructionFeeRows.map((row) => [row.code, '1'])),
+  );
   const [instructionRowsByOrder, setInstructionRowsByOrder] = useState<Record<string, InstructionFeeRow[]>>({});
   const [quoteRowsByOrder, setQuoteRowsByOrder] = useState<Record<string, QuoteFeeRow[]>>({});
   const [quoteLogsByOrder, setQuoteLogsByOrder] = useState<Record<string, OrderLogRow[]>>({});
@@ -1581,6 +1592,8 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const [addressFormsByOrder, setAddressFormsByOrder] = useState<Record<string, AddressFormState>>({});
   const [editingOrderFormKey, setEditingOrderFormKey] = useState<string | null>(null);
   const [addressFormSnapshotsByOrder, setAddressFormSnapshotsByOrder] = useState<Record<string, AddressFormState>>({});
+  const [shippingEnabledByOrder, setShippingEnabledByOrder] = useState<Record<string, boolean>>({});
+  const [shippingEnabledSnapshotsByOrder, setShippingEnabledSnapshotsByOrder] = useState<Record<string, boolean>>({});
   const [editingRemarkOrderKey, setEditingRemarkOrderKey] = useState<string | null>(null);
   const [editingRemarkField, setEditingRemarkField] = useState<EditableRemarkField | null>(null);
   const [remarkDraft, setRemarkDraft] = useState<EditableOrderRemarks | null>(null);
@@ -1638,7 +1651,10 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const activeOrderKey = activeOrder ? getOrderKey(activeOrder) : '';
   const isReorderingRejectedOrder = !!activeOrder && reorderingRejectedOrderKeys.includes(activeOrderKey);
   const showsOrderForm = !!activeOrder && (usesOrderFormTemplate(activeOrder.status) || isReorderingRejectedOrder);
+  const canEditFeeSelectionFields = feeModalTarget === 'instruction' && showsOrderForm;
   const addressForm = activeOrder ? (addressFormsByOrder[activeOrderKey] || getParentStorageAddressForm(activeOrder)) : emptyAddressForm;
+  const getOrderShippingEnabledForRow = (row: OverseasTransitRow) => shippingEnabledByOrder[getOrderKey(row)] ?? getOrderShippingEnabled(row);
+  const isActiveOrderShippingEnabled = activeOrder ? getOrderShippingEnabledForRow(activeOrder) : true;
   const isOrderFormEditing = showsOrderForm && editingOrderFormKey === activeOrderKey;
   const getInstructionRowsForOrder = (row: OverseasTransitRow): InstructionFeeRow[] =>
     instructionRowsByOrder[getOrderKey(row)] ?? row.instructions ?? [];
@@ -1686,6 +1702,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     if (usesOrderFormTemplate(row.status)) {
       const orderKey = getOrderKey(row);
       setAddressFormsByOrder((prev) => (prev[orderKey] ? prev : { ...prev, [orderKey]: getParentStorageAddressForm(row) }));
+      setShippingEnabledByOrder((prev) => (orderKey in prev ? prev : { ...prev, [orderKey]: getOrderShippingEnabled(row) }));
       if (row.instructions) setInstructionRowsByOrder((prev) => (prev[orderKey] ? prev : { ...prev, [orderKey]: row.instructions || [] }));
     }
     addToast(`已打开 ${getOrderKey(row)} 中转下单页面`, 'info');
@@ -1770,6 +1787,25 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
 
   const openFeeSelector = (target: FeeModalTarget) => {
     setFeeModalTarget(target);
+    const existingRows = activeOrder ? getInstructionRowsForOrder(activeOrder) : [];
+    setInstructionFeeUnits((prev) => Object.fromEntries(
+      instructionFeeRows.map((row) => [
+        row.code,
+        existingRows.find((item) => item.code === row.code)?.unit || prev[row.code] || row.unit,
+      ]),
+    ));
+    setInstructionFeePrices((prev) => Object.fromEntries(
+      instructionFeeRows.map((row) => [
+        row.code,
+        existingRows.find((item) => item.code === row.code)?.price || prev[row.code] || row.price,
+      ]),
+    ));
+    setInstructionFeeQuantities((prev) => Object.fromEntries(
+      instructionFeeRows.map((row) => [
+        row.code,
+        existingRows.find((item) => item.code === row.code)?.quantity || prev[row.code] || '1',
+      ]),
+    ));
     if (target === 'quote') {
       setSelectedFeeCodes([instructionFeeRows[0].code]);
     }
@@ -1911,6 +1947,8 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     const reorderAddressForm = getParentStorageAddressForm(row);
     setAddressFormsByOrder((prev) => ({ ...prev, [orderKey]: reorderAddressForm }));
     setAddressFormSnapshotsByOrder((prev) => ({ ...prev, [orderKey]: reorderAddressForm }));
+    setShippingEnabledByOrder((prev) => ({ ...prev, [orderKey]: true }));
+    setShippingEnabledSnapshotsByOrder((prev) => ({ ...prev, [orderKey]: true }));
     setEditingOrderFormKey(orderKey);
     setReorderInstructionSnapshotsByOrder((prev) => ({ ...prev, [orderKey]: originalInstructions }));
     setInstructionRowsByOrder((prev) => ({ ...prev, [orderKey]: [] }));
@@ -1921,17 +1959,19 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     if (!activeOrder || !isReorderingRejectedOrder) return;
     const orderKey = getOrderKey(activeOrder);
     const instructions = getInstructionRowsForOrder(activeOrder);
-    if (!addressForm.scheduledShippingTime) {
-      addToast('请选择预约发货时间后再下单', 'warning');
-      return;
-    }
-    if (!addressForm.deliveryMethod) {
-      addToast('请选择派送方式后再下单', 'warning');
-      return;
-    }
-    if (!addressForm.orderType || !addressForm.warehouseCode || !addressForm.zipCode || !addressForm.city || !addressForm.addressDetail) {
-      addToast('请先填写完整的收件地址信息后再下单', 'warning');
-      return;
+    if (getOrderShippingEnabledForRow(activeOrder)) {
+      if (!addressForm.scheduledShippingTime) {
+        addToast('请选择预约发货时间后再下单', 'warning');
+        return;
+      }
+      if (!addressForm.deliveryMethod) {
+        addToast('请选择派送方式后再下单', 'warning');
+        return;
+      }
+      if (!addressForm.orderType || !addressForm.warehouseCode || !addressForm.zipCode || !addressForm.city || !addressForm.addressDetail) {
+        addToast('请先填写完整的收件地址信息后再下单', 'warning');
+        return;
+      }
     }
     if (instructions.length === 0) {
       addToast('请至少选择一条操作指令后再下单', 'warning');
@@ -2016,6 +2056,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     if (rows.length === 0) { addToast('请先勾选需要确认的待确认子单', 'warning'); return; }
     const missingScheduledShippingRows = rows.filter((row) => {
       const orderKey = getOrderKey(row);
+      if (!getOrderShippingEnabledForRow(row)) return false;
       const currentAddressForm = addressFormsByOrder[orderKey] || getParentStorageAddressForm(row);
       return !currentAddressForm.scheduledShippingTime;
     });
@@ -2025,6 +2066,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     }
     const missingDeliveryMethodRows = rows.filter((row) => {
       const orderKey = getOrderKey(row);
+      if (!getOrderShippingEnabledForRow(row)) return false;
       const currentAddressForm = addressFormsByOrder[orderKey] || getParentStorageAddressForm(row);
       return !currentAddressForm.deliveryMethod;
     });
@@ -2355,7 +2397,9 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
       .filter((row) => selectedFeeCodes.includes(row.code))
       .map((row) => ({
         ...row,
-        quantity: '1',
+        unit: instructionFeeUnits[row.code]?.trim() || row.unit,
+        price: instructionFeePrices[row.code]?.trim() || row.price,
+        quantity: instructionFeeQuantities[row.code]?.trim() || '1',
         addedAt: formatDateTime(),
         addedBy: '天朗（付豪）',
       }));
@@ -2771,15 +2815,23 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     const currentAddressForm = { ...(addressFormsByOrder[activeOrderKey] || getParentStorageAddressForm(activeOrder)) };
     setAddressFormsByOrder((prev) => (prev[activeOrderKey] ? prev : { ...prev, [activeOrderKey]: currentAddressForm }));
     setAddressFormSnapshotsByOrder((prev) => ({ ...prev, [activeOrderKey]: currentAddressForm }));
+    setShippingEnabledSnapshotsByOrder((prev) => ({ ...prev, [activeOrderKey]: getOrderShippingEnabledForRow(activeOrder) }));
     setEditingOrderFormKey(activeOrderKey);
   };
 
   const saveOrderFormEdit = () => {
     if (!activeOrder || !activeOrderKey || !isOrderFormEditing) return;
-    if (!addressForm.scheduledShippingTime) { addToast('请选择预约发货时间', 'warning'); return; }
-    if (!addressForm.deliveryMethod) { addToast('请选择派送方式', 'warning'); return; }
-    if (!addressForm.orderType || !addressForm.warehouseCode || !addressForm.zipCode || !addressForm.city || !addressForm.addressDetail) { addToast('请先填写完整的收件地址信息', 'warning'); return; }
+    if (isActiveOrderShippingEnabled) {
+      if (!addressForm.scheduledShippingTime) { addToast('请选择预约发货时间', 'warning'); return; }
+      if (!addressForm.deliveryMethod) { addToast('请选择派送方式', 'warning'); return; }
+      if (!addressForm.orderType || !addressForm.warehouseCode || !addressForm.zipCode || !addressForm.city || !addressForm.addressDetail) { addToast('请先填写完整的收件地址信息', 'warning'); return; }
+    }
     setAddressFormSnapshotsByOrder((prev) => {
+      const next = { ...prev };
+      delete next[activeOrderKey];
+      return next;
+    });
+    setShippingEnabledSnapshotsByOrder((prev) => {
       const next = { ...prev };
       delete next[activeOrderKey];
       return next;
@@ -2795,6 +2847,12 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
       [activeOrderKey]: addressFormSnapshotsByOrder[activeOrderKey] || getParentStorageAddressForm(activeOrder),
     }));
     setAddressFormSnapshotsByOrder((prev) => {
+      const next = { ...prev };
+      delete next[activeOrderKey];
+      return next;
+    });
+    setShippingEnabledByOrder((prev) => ({ ...prev, [activeOrderKey]: shippingEnabledSnapshotsByOrder[activeOrderKey] ?? true }));
+    setShippingEnabledSnapshotsByOrder((prev) => {
       const next = { ...prev };
       delete next[activeOrderKey];
       return next;
@@ -3341,8 +3399,22 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                   </div>
 
                   <section className="rounded-2xl border border-slate-200 bg-white px-7 py-4">
-                    <div className="mb-5 flex items-center justify-between">
-                      <h3 className="text-sm font-bold text-slate-950">收件地址信息</h3>
+                    <div className="mb-5 flex items-center justify-between border-b border-slate-100 pb-4">
+                      <div className="flex items-center gap-5 text-xs">
+                        <span className="font-bold text-slate-950">是否出货</span>
+                        {[{ label: '是', value: true }, { label: '否', value: false }].map((option) => (
+                          <label key={option.label} className="inline-flex items-center gap-1.5 font-semibold text-slate-700">
+                            <input
+                              type="radio"
+                              className="h-3.5 w-3.5 accent-[#004bb1]"
+                              checked={isActiveOrderShippingEnabled === option.value}
+                              disabled={!isOrderFormEditing}
+                              onChange={() => setShippingEnabledByOrder((prev) => ({ ...prev, [activeOrderKey]: option.value }))}
+                            />
+                            {option.label}
+                          </label>
+                        ))}
+                      </div>
                       {isReorderingRejectedOrder ? null : isOrderFormEditing ? (
                         <div className="flex items-center gap-2">
                           <button type="button" onClick={saveOrderFormEdit} className="rounded bg-blue-600 px-5 py-1.5 text-xs font-bold text-white hover:bg-blue-700">保存</button>
@@ -3352,6 +3424,9 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                         <button type="button" onClick={startOrderFormEdit} className="rounded border border-slate-300 bg-white px-5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">编辑</button>
                       )}
                     </div>
+                    {isActiveOrderShippingEnabled ? (
+                      <>
+                    <h3 className="mb-5 text-sm font-bold text-slate-950">收件地址信息</h3>
                     <div className="grid grid-cols-2 gap-x-16 gap-y-4">
                       <FormRow label="下单类型" requiredMark>
                         <select
@@ -3518,6 +3593,58 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                         </div>
                       </div>
                     </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-x-16 gap-y-4">
+                          <TextareaRow
+                            label="客户备注"
+                            placeholder="请输入客户备注"
+                            limit={`${addressForm.remark.length}/500`}
+                            value={addressForm.remark}
+                            disabled={!isOrderFormEditing}
+                            onChange={(value) => updateAddressField('remark', value)}
+                          />
+                          <TextareaRow
+                            label="海外仓备注"
+                            placeholder="请输入海外仓备注"
+                            limit={`${addressForm.overseasWarehouseRemark.length}/500`}
+                            value={addressForm.overseasWarehouseRemark}
+                            disabled={!isOrderFormEditing}
+                            onChange={(value) => updateAddressField('overseasWarehouseRemark', value)}
+                          />
+                        </div>
+                        <div className="mt-5 border-t border-slate-100 pt-4">
+                          <div className="flex items-start gap-3 text-xs">
+                            <span className="w-24 shrink-0 pt-2 text-right font-bold text-slate-900">附件上传：</span>
+                            <div className="min-w-0 flex-1">
+                              <label className="inline-flex h-8 cursor-pointer items-center rounded bg-[#004bb1] px-5 text-xs font-bold text-white hover:bg-[#003b91]">
+                                选择附件
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  onChange={(event) => {
+                                    handleAddressAttachmentFileChange(event.target.files?.[0]);
+                                    event.currentTarget.value = '';
+                                  }}
+                                />
+                              </label>
+                              {activeAddressAttachments.length > 0 ? (
+                                <div className="mt-3 flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+                                  <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                                  <span className="min-w-0 flex-1 truncate">{activeAddressAttachments[0].name}</span>
+                                  <span className="text-slate-400">{activeAddressAttachments[0].fileSize}</span>
+                                  <button type="button" onClick={() => downloadAttachment(activeAddressAttachments[0])} className="font-bold text-[#004bb1] hover:underline">下载</button>
+                                  <button type="button" onClick={removeAddressAttachment} className="font-bold text-red-500 hover:underline">删除</button>
+                                </div>
+                              ) : (
+                                <div className="mt-3 text-[11px] text-slate-400">暂未上传附件</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </section>
 
                 </>
@@ -4132,7 +4259,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                                   className="h-3.5 w-3.5 rounded border-slate-300"
                                 />
                               </th>
-                              {['费用代码', '费用名称', '费用类型', '计费单位', '计费单价', '币种', '描述'].map((head) => (
+                              {['费用代码', '费用名称', '费用类型', '计费单位', '计费单价', '计费数量', '币种', '描述'].map((head) => (
                                 <th key={head} className="border border-slate-200 px-3 py-2 text-center font-bold">
                                   {head}
                                 </th>
@@ -4157,8 +4284,51 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                                   <td className="border border-slate-200 px-3 text-center font-mono">{row?.code || ''}</td>
                                   <td className="border border-slate-200 px-3 text-center">{row?.name || ''}</td>
                                   <td className="border border-slate-200 px-3 text-center">{row?.type || ''}</td>
-                                  <td className="border border-slate-200 px-3 text-center">{row?.unit || ''}</td>
-                                  <td className="border border-slate-200 px-3 text-center">{row?.price || ''}</td>
+                                  <td className="border border-slate-200 px-2 text-center">
+                                    {row ? (
+                                      <select
+                                        value={instructionFeeUnits[row.code] ?? row.unit}
+                                        disabled={!canEditFeeSelectionFields}
+                                        onChange={(event) => setInstructionFeeUnits((prev) => ({ ...prev, [row.code]: event.target.value }))}
+                                        className="h-7 w-full min-w-0 rounded border border-slate-200 bg-white px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
+                                        aria-label={`${row.name}计费单位`}
+                                      >
+                                        <option value="票">票</option>
+                                        <option value="箱">箱</option>
+                                        <option value="KG">KG</option>
+                                      </select>
+                                    ) : null}
+                                  </td>
+                                  <td className="border border-slate-200 px-2 text-center">
+                                    {row ? (
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        disabled={!canEditFeeSelectionFields}
+                                        value={instructionFeePrices[row.code] ?? row.price}
+                                        onChange={(event) => setInstructionFeePrices((prev) => ({ ...prev, [row.code]: event.target.value }))}
+                                        onBlur={() => setInstructionFeePrices((prev) => ({ ...prev, [row.code]: prev[row.code]?.trim() || row.price }))}
+                                        className="h-7 w-full min-w-0 rounded border border-slate-200 px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
+                                        aria-label={`${row.name}计费单价`}
+                                      />
+                                    ) : null}
+                                  </td>
+                                  <td className="border border-slate-200 px-2 text-center">
+                                    {row ? (
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        disabled={!canEditFeeSelectionFields}
+                                        value={instructionFeeQuantities[row.code] ?? '1'}
+                                        onChange={(event) => setInstructionFeeQuantities((prev) => ({ ...prev, [row.code]: event.target.value }))}
+                                        onBlur={() => setInstructionFeeQuantities((prev) => ({ ...prev, [row.code]: prev[row.code]?.trim() || '1' }))}
+                                        className="h-7 w-full min-w-0 rounded border border-slate-200 px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
+                                        aria-label={`${row.name}计费数量`}
+                                      />
+                                    ) : null}
+                                  </td>
                                   <td className="border border-slate-200 px-3 text-center">{row?.currency || ''}</td>
                                   <td className="border border-slate-200 px-3 text-center">{row?.description || ''}</td>
                                 </tr>
