@@ -16,6 +16,16 @@ export interface AddressFormState {
 
 export const overseasOrderTypes = ['FBA', 'Walmart', 'TikTok', '私人地址'];
 
+export type ReleaseInstruction = '放货' | '不放货' | '销毁';
+
+export const releaseInstructionOptions: ReleaseInstruction[] = ['放货', '不放货', '销毁'];
+
+export const getReleaseInstructionFromShippingEnabled = (shippingEnabled?: boolean): ReleaseInstruction =>
+  shippingEnabled === false ? '不放货' : '放货';
+
+export const getShippingEnabledForReleaseInstruction = (releaseInstruction?: ReleaseInstruction) =>
+  (releaseInstruction || '放货') === '放货';
+
 export const overseasWarehouseCodes = ['ONT8', 'PSC2', 'ABE2', 'FTW1'];
 
 export const overseasDeliveryMethods = ['快递派送', '卡车派送', '客户自提'];

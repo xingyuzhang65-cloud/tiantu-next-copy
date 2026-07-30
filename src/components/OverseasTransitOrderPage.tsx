@@ -8,12 +8,15 @@ import {
 } from 'lucide-react';
 import {
   emptyAddressForm,
+  getReleaseInstructionFromShippingEnabled,
+  getShippingEnabledForReleaseInstruction,
   overseasDeliveryMethods,
   overseasOrderTypes,
   overseasWarehouseCodes,
+  releaseInstructionOptions,
   warehouseAddressBook,
 } from './overseasTransitAddress';
-import type { AddressFormState } from './overseasTransitAddress';
+import type { AddressFormState, ReleaseInstruction } from './overseasTransitAddress';
 import { cancelCreatedTransitChildOrders, confirmCreatedTransitChildOrders, getCreatedTransitChildOrders, markCreatedTransitChildOrdersAsOrdered, rejectCreatedTransitChildOrders, reopenRejectedCreatedTransitChildOrders, rollbackCreatedTransitChildOrdersToConfirmed, rollbackCreatedTransitChildOrdersToOrdered, rollbackSignedCreatedTransitChildOrdersToTransit, shipCreatedTransitChildOrders, signCreatedTransitChildOrders, subscribeOverseasTransitFlow, updateCreatedTransitChildOrderInstructions, updateCreatedTransitChildOrderRemarks, voidRejectedCreatedTransitChildOrders } from './overseasTransitFlow';
 import type { CreatedTransitAttachment, CreatedTransitChildOrder, CreatedTransitInstruction, OverseasWarehouseArrivalStatus, TransitReconciliationStatus } from './overseasTransitFlow';
 
@@ -47,6 +50,7 @@ interface OverseasTransitRow {
   warehouseCode?: string;
   zipCode?: string;
   orderType?: string;
+  releaseInstruction?: ReleaseInstruction;
   deliveryMethod?: string;
   addressForm?: AddressFormState;
   shippingEnabled?: boolean;
@@ -618,7 +622,7 @@ type ExpressCreationRecord = {
 };
 
 type IdentifierSearchKey = 'inboundNo' | 'shipmentId' | 'referenceId';
-type OrderFilterKey = IdentifierSearchKey | 'overseasWarehouseArrivalStatus' | 'reconciliationStatus' | 'deliveryMethod';
+type OrderFilterKey = IdentifierSearchKey | 'overseasWarehouseArrivalStatus' | 'reconciliationStatus' | 'deliveryMethod' | 'releaseInstruction';
 type ConfirmedOrderSubmissionCheck = 'reconciliation' | 'arrival';
 
 type OrderSearchField = {
@@ -629,7 +633,7 @@ type OrderSearchField = {
   searchKey?: LifecycleTimeKey | OrderFilterKey;
 };
 
-const orderFilterKeys: OrderFilterKey[] = ['inboundNo', 'shipmentId', 'referenceId', 'overseasWarehouseArrivalStatus', 'reconciliationStatus', 'deliveryMethod'];
+const orderFilterKeys: OrderFilterKey[] = ['inboundNo', 'shipmentId', 'referenceId', 'overseasWarehouseArrivalStatus', 'reconciliationStatus', 'deliveryMethod', 'releaseInstruction'];
 const emptyOrderFilterValues: Record<OrderFilterKey, string> = {
   inboundNo: '',
   shipmentId: '',
@@ -637,6 +641,7 @@ const emptyOrderFilterValues: Record<OrderFilterKey, string> = {
   overseasWarehouseArrivalStatus: '',
   reconciliationStatus: '',
   deliveryMethod: '',
+  releaseInstruction: '',
 };
 
 const matchesOrderFilterQuery = (value: string | undefined, query: string) => {
@@ -663,6 +668,7 @@ const baseOrderSearchFields: OrderSearchField[] = [
   { label: '核销状态', type: 'select', options: ['已核销', '未核销', '部分核销'], searchKey: 'reconciliationStatus' },
   { label: '客户简称', type: 'select', options: ['深圳天图电子有限公司', '博创跨境贸易', '广州跨境供应链'] },
   { label: '仓库代码', type: 'select', options: overseasWarehouseCodes },
+  { label: '下单类型', type: 'select', options: releaseInstructionOptions, searchKey: 'releaseInstruction' },
   { label: '派送方式', type: 'select', options: overseasDeliveryMethods, searchKey: 'deliveryMethod' },
   { label: '业务员', type: 'select', options: ['安一', '天朗'] },
   { label: '跟单员', type: 'select', options: ['安逸', '李客服'] },
@@ -680,7 +686,8 @@ const fullOrderSearchFields: OrderSearchField[] = [
   { label: '核销状态', type: 'select', options: ['已核销', '未核销', '部分核销'], searchKey: 'reconciliationStatus' },
   { label: '客户简称', type: 'select', options: ['深圳天图电子有限公司', '博创跨境贸易', '广州跨境供应链'] },
   { label: '仓库代码', type: 'select', options: overseasWarehouseCodes },
-  { label: '下单类型', type: 'select', options: overseasOrderTypes },
+  { label: '下单类型', type: 'select', options: releaseInstructionOptions, searchKey: 'releaseInstruction' },
+  { label: '运单类型', type: 'select', options: overseasOrderTypes },
   { label: '派送方式', type: 'select', options: overseasDeliveryMethods, searchKey: 'deliveryMethod' },
   { label: '业务员', type: 'select', options: ['安一', '天朗'] },
   { label: '跟单员', type: 'select', options: ['安逸', '李客服'] },
@@ -759,7 +766,7 @@ const instructionFeeRows = [
   { code: 'FY202509260007', name: '扣货-无免仓期', type: '仓储费', unit: '票', price: '2', currency: '人民币', description: '按1级单价收取' },
 ];
 
-const downstreamDetailTabs = ['费用信息', '货箱信息', '运踪信息', '其它信息'] as const;
+const downstreamDetailTabs = ['货箱信息', '运踪信息', '其它信息'] as const;
 
 const quoteFeeRows = [
   { code: 'BJ202606050001', name: '哈哈', type: '操作费', price: '1.89', currency: '美元', exchangeRate: '7.014', unit: '哈哈', quantity: '1票', amount: '13.26', addedAt: '2026-06-05 14:28:00', addedBy: '天未', description: '海外仓操作附加费用' },
@@ -935,6 +942,8 @@ const getOverseasWaybillNo = (row: OverseasTransitRow) => {
 const getOrderKey = (row: OverseasTransitRow) => getOverseasWaybillNo(row);
 const isCreatedTransitChildOrder = (row: OverseasTransitRow): row is CreatedTransitChildOrder => 'parentHeadWaybillNo' in row;
 const getOrderShippingEnabled = (row: OverseasTransitRow) => row.shippingEnabled ?? true;
+const getOrderReleaseInstruction = (row: OverseasTransitRow): ReleaseInstruction =>
+  row.releaseInstruction || getReleaseInstructionFromShippingEnabled(row.shippingEnabled);
 
 const getParentStorageAddressForm = (row: OverseasTransitRow): AddressFormState => {
   if (row.addressForm) return { ...emptyAddressForm, ...row.addressForm, deliveryMethod: getOrderDeliveryMethod(row) };
@@ -1246,7 +1255,7 @@ function ExpressOrderCreationWorkspace({
                     <th className="w-64 border border-slate-200 px-3 py-2 text-center">收件人 / 地址</th>
                     <th className="w-24 border border-slate-200 px-3 py-2 text-center">邮编</th>
                     <th className="w-24 border border-slate-200 px-3 py-2 text-center">箱数 / 实重</th>
-                    <th className="w-24 border border-slate-200 px-3 py-2 text-center">下单类型</th>
+                    <th className="w-24 border border-slate-200 px-3 py-2 text-center">运单类型</th>
                     <th className="w-40 border border-slate-200 px-3 py-2 text-center">尾程渠道</th>
                     <th className="w-32 border border-slate-200 px-3 py-2 text-center">打单平台</th>
                     <th className="w-44 border border-slate-200 px-3 py-2 text-center">发货账号 / 服务</th>
@@ -1570,6 +1579,9 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const [instructionFeeQuantities, setInstructionFeeQuantities] = useState<Record<string, string>>(
     () => Object.fromEntries(instructionFeeRows.map((row) => [row.code, '1'])),
   );
+  const [instructionFeeCurrencies, setInstructionFeeCurrencies] = useState<Record<string, string>>(
+    () => Object.fromEntries(instructionFeeRows.map((row) => [row.code, row.currency])),
+  );
   const [instructionRowsByOrder, setInstructionRowsByOrder] = useState<Record<string, InstructionFeeRow[]>>({});
   const [quoteRowsByOrder, setQuoteRowsByOrder] = useState<Record<string, QuoteFeeRow[]>>({});
   const [quoteLogsByOrder, setQuoteLogsByOrder] = useState<Record<string, OrderLogRow[]>>({});
@@ -1592,12 +1604,12 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const [addressFormsByOrder, setAddressFormsByOrder] = useState<Record<string, AddressFormState>>({});
   const [editingOrderFormKey, setEditingOrderFormKey] = useState<string | null>(null);
   const [addressFormSnapshotsByOrder, setAddressFormSnapshotsByOrder] = useState<Record<string, AddressFormState>>({});
-  const [shippingEnabledByOrder, setShippingEnabledByOrder] = useState<Record<string, boolean>>({});
-  const [shippingEnabledSnapshotsByOrder, setShippingEnabledSnapshotsByOrder] = useState<Record<string, boolean>>({});
+  const [releaseInstructionByOrder, setReleaseInstructionByOrder] = useState<Record<string, ReleaseInstruction>>({});
+  const [releaseInstructionSnapshotsByOrder, setReleaseInstructionSnapshotsByOrder] = useState<Record<string, ReleaseInstruction>>({});
   const [editingRemarkOrderKey, setEditingRemarkOrderKey] = useState<string | null>(null);
   const [editingRemarkField, setEditingRemarkField] = useState<EditableRemarkField | null>(null);
   const [remarkDraft, setRemarkDraft] = useState<EditableOrderRemarks | null>(null);
-  const [downstreamDetailTab, setDownstreamDetailTab] = useState<DownstreamDetailTab>('费用信息');
+  const [downstreamDetailTab, setDownstreamDetailTab] = useState<DownstreamDetailTab>('货箱信息');
   const [expressOrderKeys, setExpressOrderKeys] = useState<string[]>([]);
   const [expressRecordsByOrder, setExpressRecordsByOrder] = useState<Record<string, ExpressCreationRecord>>({});
   const displayedSeedRows = transitRows.map((row) => ({
@@ -1609,6 +1621,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     ...row,
     ...remarkOverridesByOrder[getOrderKey(row)],
     ...rejectionDetailsByOrder[getOrderKey(row)],
+    releaseInstruction: row.releaseInstruction || getOrderReleaseInstruction(row),
     deliveryMethod: addressFormsByOrder[getOrderKey(row)]?.deliveryMethod || getOrderDeliveryMethod(row),
   }));
   const expressWorkspaceRows = allRows.filter((row) => expressOrderKeys.includes(getOrderKey(row)) && row.status === '已确认');
@@ -1637,10 +1650,10 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const usesOrderFormTemplate = (status: string) => orderFormStatuses.has(status);
   const showOverseasWaybillNo = true;
   const showRejectionFields = activeTab === '驳回';
-  const orderTableColumnCount = (showOverseasWaybillNo ? 21 : 17) + (activeLifecycleTimeConfig ? 1 : 0) + 6 + (showOverseasWarehouseArrivalStatus ? 1 : 0) + (showRejectionFields ? 2 : 0);
+  const orderTableColumnCount = (showOverseasWaybillNo ? 22 : 18) + (activeLifecycleTimeConfig ? 1 : 0) + 6 + (showOverseasWarehouseArrivalStatus ? 1 : 0) + (showRejectionFields ? 2 : 0);
   const orderTableMinWidthClass = showOverseasWaybillNo
-    ? (activeLifecycleTimeConfig ? 'min-w-[3920px]' : showOverseasWarehouseArrivalStatus ? 'min-w-[3880px]' : 'min-w-[3760px]')
-    : (activeLifecycleTimeConfig ? 'min-w-[3440px]' : showOverseasWarehouseArrivalStatus ? 'min-w-[3400px]' : 'min-w-[3280px]');
+    ? (activeLifecycleTimeConfig ? 'min-w-[4040px]' : showOverseasWarehouseArrivalStatus ? 'min-w-[4000px]' : 'min-w-[3880px]')
+    : (activeLifecycleTimeConfig ? 'min-w-[3560px]' : showOverseasWarehouseArrivalStatus ? 'min-w-[3520px]' : 'min-w-[3400px]');
   const commonOrderSearchFields = showOverseasWaybillNo ? fullOrderSearchFields : baseOrderSearchFields;
   const orderSearchFields: OrderSearchField[] = [
     ...commonOrderSearchFields,
@@ -1653,8 +1666,11 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const showsOrderForm = !!activeOrder && (usesOrderFormTemplate(activeOrder.status) || isReorderingRejectedOrder);
   const canEditFeeSelectionFields = feeModalTarget === 'instruction' && showsOrderForm;
   const addressForm = activeOrder ? (addressFormsByOrder[activeOrderKey] || getParentStorageAddressForm(activeOrder)) : emptyAddressForm;
-  const getOrderShippingEnabledForRow = (row: OverseasTransitRow) => shippingEnabledByOrder[getOrderKey(row)] ?? getOrderShippingEnabled(row);
-  const isActiveOrderShippingEnabled = activeOrder ? getOrderShippingEnabledForRow(activeOrder) : true;
+  const getOrderReleaseInstructionForRow = (row: OverseasTransitRow) =>
+    releaseInstructionByOrder[getOrderKey(row)] ?? getOrderReleaseInstruction(row);
+  const isActiveOrderShippingEnabled = activeOrder
+    ? getShippingEnabledForReleaseInstruction(getOrderReleaseInstructionForRow(activeOrder))
+    : true;
   const isOrderFormEditing = showsOrderForm && editingOrderFormKey === activeOrderKey;
   const getInstructionRowsForOrder = (row: OverseasTransitRow): InstructionFeeRow[] =>
     instructionRowsByOrder[getOrderKey(row)] ?? row.instructions ?? [];
@@ -1698,11 +1714,11 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     setEditingRemarkOrderKey(null);
     setEditingRemarkField(null);
     setRemarkDraft(null);
-    setDownstreamDetailTab('费用信息');
+    setDownstreamDetailTab('货箱信息');
     if (usesOrderFormTemplate(row.status)) {
       const orderKey = getOrderKey(row);
       setAddressFormsByOrder((prev) => (prev[orderKey] ? prev : { ...prev, [orderKey]: getParentStorageAddressForm(row) }));
-      setShippingEnabledByOrder((prev) => (orderKey in prev ? prev : { ...prev, [orderKey]: getOrderShippingEnabled(row) }));
+      setReleaseInstructionByOrder((prev) => (orderKey in prev ? prev : { ...prev, [orderKey]: getOrderReleaseInstruction(row) }));
       if (row.instructions) setInstructionRowsByOrder((prev) => (prev[orderKey] ? prev : { ...prev, [orderKey]: row.instructions || [] }));
     }
     addToast(`已打开 ${getOrderKey(row)} 中转下单页面`, 'info');
@@ -1806,6 +1822,12 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
         existingRows.find((item) => item.code === row.code)?.quantity || prev[row.code] || '1',
       ]),
     ));
+    setInstructionFeeCurrencies((prev) => Object.fromEntries(
+      instructionFeeRows.map((row) => [
+        row.code,
+        existingRows.find((item) => item.code === row.code)?.currency || prev[row.code] || row.currency,
+      ]),
+    ));
     if (target === 'quote') {
       setSelectedFeeCodes([instructionFeeRows[0].code]);
     }
@@ -1838,6 +1860,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
       overseasWarehouseArrivalStatus: searchValues.overseasWarehouseArrivalStatus || '',
       reconciliationStatus: searchValues.reconciliationStatus || '',
       deliveryMethod: searchValues.deliveryMethod || '',
+      releaseInstruction: searchValues.releaseInstruction || '',
     });
     addToast('已查询海外中转单数据', 'success');
   };
@@ -1947,8 +1970,8 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     const reorderAddressForm = getParentStorageAddressForm(row);
     setAddressFormsByOrder((prev) => ({ ...prev, [orderKey]: reorderAddressForm }));
     setAddressFormSnapshotsByOrder((prev) => ({ ...prev, [orderKey]: reorderAddressForm }));
-    setShippingEnabledByOrder((prev) => ({ ...prev, [orderKey]: true }));
-    setShippingEnabledSnapshotsByOrder((prev) => ({ ...prev, [orderKey]: true }));
+    setReleaseInstructionByOrder((prev) => ({ ...prev, [orderKey]: '放货' }));
+    setReleaseInstructionSnapshotsByOrder((prev) => ({ ...prev, [orderKey]: getOrderReleaseInstruction(row) }));
     setEditingOrderFormKey(orderKey);
     setReorderInstructionSnapshotsByOrder((prev) => ({ ...prev, [orderKey]: originalInstructions }));
     setInstructionRowsByOrder((prev) => ({ ...prev, [orderKey]: [] }));
@@ -1959,7 +1982,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     if (!activeOrder || !isReorderingRejectedOrder) return;
     const orderKey = getOrderKey(activeOrder);
     const instructions = getInstructionRowsForOrder(activeOrder);
-    if (getOrderShippingEnabledForRow(activeOrder)) {
+    if (getShippingEnabledForReleaseInstruction(getOrderReleaseInstructionForRow(activeOrder))) {
       if (!addressForm.scheduledShippingTime) {
         addToast('请选择预约发货时间后再下单', 'warning');
         return;
@@ -2056,7 +2079,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     if (rows.length === 0) { addToast('请先勾选需要确认的待确认子单', 'warning'); return; }
     const missingScheduledShippingRows = rows.filter((row) => {
       const orderKey = getOrderKey(row);
-      if (!getOrderShippingEnabledForRow(row)) return false;
+      if (!getShippingEnabledForReleaseInstruction(getOrderReleaseInstructionForRow(row))) return false;
       const currentAddressForm = addressFormsByOrder[orderKey] || getParentStorageAddressForm(row);
       return !currentAddressForm.scheduledShippingTime;
     });
@@ -2066,7 +2089,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     }
     const missingDeliveryMethodRows = rows.filter((row) => {
       const orderKey = getOrderKey(row);
-      if (!getOrderShippingEnabledForRow(row)) return false;
+      if (!getShippingEnabledForReleaseInstruction(getOrderReleaseInstructionForRow(row))) return false;
       const currentAddressForm = addressFormsByOrder[orderKey] || getParentStorageAddressForm(row);
       return !currentAddressForm.deliveryMethod;
     });
@@ -2400,6 +2423,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
         unit: instructionFeeUnits[row.code]?.trim() || row.unit,
         price: instructionFeePrices[row.code]?.trim() || row.price,
         quantity: instructionFeeQuantities[row.code]?.trim() || '1',
+        currency: instructionFeeCurrencies[row.code]?.trim() || row.currency,
         addedAt: formatDateTime(),
         addedBy: '天朗（付豪）',
       }));
@@ -2815,7 +2839,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     const currentAddressForm = { ...(addressFormsByOrder[activeOrderKey] || getParentStorageAddressForm(activeOrder)) };
     setAddressFormsByOrder((prev) => (prev[activeOrderKey] ? prev : { ...prev, [activeOrderKey]: currentAddressForm }));
     setAddressFormSnapshotsByOrder((prev) => ({ ...prev, [activeOrderKey]: currentAddressForm }));
-    setShippingEnabledSnapshotsByOrder((prev) => ({ ...prev, [activeOrderKey]: getOrderShippingEnabledForRow(activeOrder) }));
+    setReleaseInstructionSnapshotsByOrder((prev) => ({ ...prev, [activeOrderKey]: getOrderReleaseInstructionForRow(activeOrder) }));
     setEditingOrderFormKey(activeOrderKey);
   };
 
@@ -2831,7 +2855,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
       delete next[activeOrderKey];
       return next;
     });
-    setShippingEnabledSnapshotsByOrder((prev) => {
+    setReleaseInstructionSnapshotsByOrder((prev) => {
       const next = { ...prev };
       delete next[activeOrderKey];
       return next;
@@ -2851,8 +2875,11 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
       delete next[activeOrderKey];
       return next;
     });
-    setShippingEnabledByOrder((prev) => ({ ...prev, [activeOrderKey]: shippingEnabledSnapshotsByOrder[activeOrderKey] ?? true }));
-    setShippingEnabledSnapshotsByOrder((prev) => {
+    setReleaseInstructionByOrder((prev) => ({
+      ...prev,
+      [activeOrderKey]: releaseInstructionSnapshotsByOrder[activeOrderKey] ?? getOrderReleaseInstruction(activeOrder),
+    }));
+    setReleaseInstructionSnapshotsByOrder((prev) => {
       const next = { ...prev };
       delete next[activeOrderKey];
       return next;
@@ -2888,6 +2915,79 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
       };
     });
   };
+
+  const renderAttachmentSection = (className = 'rounded-md bg-white p-4 shadow-sm') => (
+    <section className={className}>
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-bold text-slate-950">其它信息</h3>
+        <button
+          type="button"
+          onClick={() => openAttachmentModal()}
+          className="rounded border border-slate-300 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          上传附件
+        </button>
+      </div>
+      <div className="overflow-x-auto border border-slate-200">
+        <table className="w-full min-w-[920px] table-fixed border-collapse text-[11px]">
+          <thead className="bg-slate-50 text-slate-600">
+            <tr>
+              {['附件名称', '附件类型', '客户可见', '文件大小', '上传人', '上传时间', '操作'].map((head) => (
+                <th key={head} className="border border-slate-200 px-3 py-2 text-left font-semibold">
+                  {head}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {activeAttachmentRows.length > 0 ? (
+              activeAttachmentRows.map((row) => (
+                <tr key={row.id} className="h-10 text-slate-700 odd:bg-white even:bg-slate-50/70">
+                  <td className="border border-slate-200 px-3">{row.name}</td>
+                  <td className="border border-slate-200 px-3">{row.type}</td>
+                  <td className="border border-slate-200 px-3">{row.customerVisible}</td>
+                  <td className="border border-slate-200 px-3">{row.fileSize}</td>
+                  <td className="border border-slate-200 px-3">{row.uploadedBy}</td>
+                  <td className="border border-slate-200 px-3 font-mono text-slate-500">{row.uploadedAt}</td>
+                  <td className="border border-slate-200 px-3">
+                    <button
+                      type="button"
+                      onClick={() => openAttachmentModal(row)}
+                      className="mr-3 font-bold text-[#004bb1] hover:underline"
+                    >
+                      编辑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => downloadAttachment(row)}
+                      className="mr-3 font-bold text-[#004bb1] hover:underline"
+                    >
+                      下载
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingAttachment(row)}
+                      className="font-bold text-red-500 hover:underline"
+                    >
+                      删除
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={7} className="h-24 border border-slate-200 text-center text-slate-300">
+                  <FileText className="mx-auto mb-2 h-8 w-8 text-slate-200" />
+                  暂无附件
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+
   return (
     <div className="relative flex-1 overflow-auto bg-slate-100 p-4 font-sans text-slate-700 max-h-[calc(100vh-3rem)]">
       <div className="mb-3 rounded-md border border-slate-200 bg-white p-4 shadow-sm">
@@ -3163,7 +3263,8 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                 <th className="w-44 border border-slate-200 px-3 py-2 text-center">客户简称</th>
                 <th className="w-28 border border-slate-200 px-3 py-2 text-center">仓库代码</th>
                 {showOverseasWaybillNo && <th className="w-24 border border-slate-200 px-3 py-2 text-center">邮编</th>}
-                {showOverseasWaybillNo && <th className="w-28 border border-slate-200 px-3 py-2 text-center">下单类型</th>}
+                <th className="w-28 border border-slate-200 px-3 py-2 text-center">下单类型</th>
+                {showOverseasWaybillNo && <th className="w-28 border border-slate-200 px-3 py-2 text-center">运单类型</th>}
                 <th className="w-28 border border-slate-200 px-3 py-2 text-center">派送方式</th>
                 <th className="w-20 border border-slate-200 px-3 py-2 text-center">目的地</th>
                 <th className="w-28 border border-slate-200 px-3 py-2 text-center">核销状态</th>
@@ -3212,6 +3313,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                   <td className="truncate border border-slate-200 px-3 text-center">{row.customerName}</td>
                   <td className="border border-slate-200 px-3 text-center font-mono">{row.warehouseCode || '-'}</td>
                   {showOverseasWaybillNo && <td className="border border-slate-200 px-3 text-center font-mono">{row.zipCode || '-'}</td>}
+                  <td className="border border-slate-200 px-3 text-center">{getOrderReleaseInstructionForRow(row)}</td>
                   {showOverseasWaybillNo && <td className="border border-slate-200 px-3 text-center">{row.orderType || '-'}</td>}
                   <td className="border border-slate-200 px-3 text-center">{row.deliveryMethod || '-'}</td>
                   <td className="border border-slate-200 px-3 text-center">{row.destination}</td>
@@ -3401,17 +3503,17 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                   <section className="rounded-2xl border border-slate-200 bg-white px-7 py-4">
                     <div className="mb-5 flex items-center justify-between border-b border-slate-100 pb-4">
                       <div className="flex items-center gap-5 text-xs">
-                        <span className="font-bold text-slate-950">是否出货</span>
-                        {[{ label: '是', value: true }, { label: '否', value: false }].map((option) => (
-                          <label key={option.label} className="inline-flex items-center gap-1.5 font-semibold text-slate-700">
+                        <span className="font-bold text-slate-950">下单类型</span>
+                        {releaseInstructionOptions.map((option) => (
+                          <label key={option} className="inline-flex items-center gap-1.5 font-semibold text-slate-700">
                             <input
                               type="radio"
                               className="h-3.5 w-3.5 accent-[#004bb1]"
-                              checked={isActiveOrderShippingEnabled === option.value}
+                              checked={activeOrder ? getOrderReleaseInstructionForRow(activeOrder) === option : option === '放货'}
                               disabled={!isOrderFormEditing}
-                              onChange={() => setShippingEnabledByOrder((prev) => ({ ...prev, [activeOrderKey]: option.value }))}
+                              onChange={() => setReleaseInstructionByOrder((prev) => ({ ...prev, [activeOrderKey]: option }))}
                             />
-                            {option.label}
+                            {option}
                           </label>
                         ))}
                       </div>
@@ -3428,7 +3530,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                       <>
                     <h3 className="mb-5 text-sm font-bold text-slate-950">收件地址信息</h3>
                     <div className="grid grid-cols-2 gap-x-16 gap-y-4">
-                      <FormRow label="下单类型" requiredMark>
+                      <FormRow label="运单类型" requiredMark>
                         <select
                           className={fieldClass}
                           value={addressForm.orderType}
@@ -3656,7 +3758,8 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                       <DetailField label="海外仓运单号" highlight>{getOverseasWaybillNo(activeOrder)}</DetailField>
                       <DetailField label="客户简称">{activeOrder.customerName}</DetailField>
                       <DetailField label="目的地">{activeOrder.destination}</DetailField>
-                      <DetailField label="下单类型">{activeOrder.orderType || '-'}</DetailField>
+                      <DetailField label="下单类型">{getOrderReleaseInstructionForRow(activeOrder)}</DetailField>
+                      <DetailField label="运单类型">{activeOrder.orderType || '-'}</DetailField>
                       <DetailField label="仓库代码">{activeOrder.warehouseCode || '-'}</DetailField>
                       <DetailField label="入仓号">{activeOrder.inboundNo || '-'}</DetailField>
                       <DetailField label="Shipment ID">{activeOrder.shipmentId || '-'}</DetailField>
@@ -3761,82 +3864,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                   </div>
 
                   <div className="mt-2 min-h-[300px]">
-                    {downstreamDetailTab === '费用信息' && (
-                      <section className="rounded-md bg-white p-4 shadow-sm">
-                        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                          <h3 className="text-sm font-bold text-slate-950">费用信息</h3>
-                          {canEditQuoteFees && (
-                            <button
-                              type="button"
-                              onClick={() => openFeeSelector(activeOrder.status === '已确认' ? 'instruction' : 'quote')}
-                              className="rounded border border-slate-300 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                              新增
-                            </button>
-                          )}
-                        </div>
-                        <div className="overflow-x-auto border border-slate-200">
-                          <table className="w-full min-w-[980px] table-fixed border-collapse text-[11px]">
-                            <thead className="bg-slate-50 text-slate-600">
-                              <tr>
-                                {['费用名称', '单价', '币种', '汇率', '单位', '数量', '金额', '添加时间', '添加人', '操作'].map((head) => (
-                                  <th key={head} className="border border-slate-200 px-3 py-2 text-left font-semibold">
-                                    {head}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {activeQuoteRows.length > 0 ? (
-                                activeQuoteRows.map((row) => (
-                                  <tr key={row.code} className="h-10 text-slate-700 odd:bg-white even:bg-slate-50/70">
-                                    <td className="border border-slate-200 px-3">{row.name}</td>
-                                    <td className="border border-slate-200 px-3">{row.price}</td>
-                                    <td className="border border-slate-200 px-3">{row.currency}</td>
-                                    <td className="border border-slate-200 px-3">{row.exchangeRate}</td>
-                                    <td className="border border-slate-200 px-3">{row.unit}</td>
-                                    <td className="border border-slate-200 px-3">{row.quantity}</td>
-                                    <td className="border border-slate-200 px-3 font-semibold text-slate-900">{row.amount}</td>
-                                    <td className="border border-slate-200 px-3 font-mono text-slate-500">{row.addedAt}</td>
-                                    <td className="border border-slate-200 px-3">{row.addedBy}</td>
-                                    <td className="border border-slate-200 px-3">
-                                      {canEditQuoteFees ? (
-                                        <>
-                                          <button
-                                            type="button"
-                                            onClick={() => setEditingQuoteFee(row)}
-                                            className="mr-3 font-bold text-[#004bb1] hover:underline"
-                                          >
-                                            编辑
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => setDeletingQuoteFee(row)}
-                                            className="font-bold text-red-500 hover:underline"
-                                          >
-                                            删除
-                                          </button>
-                                        </>
-                                      ) : (
-                                        <span className="text-slate-300">-</span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))
-                              ) : (
-                                <tr>
-                                  <td colSpan={10} className="h-24 border border-slate-200 text-center text-slate-300">
-                                    <FileText className="mx-auto mb-2 h-8 w-8 text-slate-200" />
-                                    暂无数据
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </section>
-                    )}
-
                     {downstreamDetailTab === '货箱信息' && (
                       <section className="rounded-md bg-white p-4 shadow-sm">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -3961,86 +3988,12 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                         </div>
                       </section>
                     )}
-                    {downstreamDetailTab === '其它信息' && (
-                      <section className="rounded-md bg-white p-4 shadow-sm">
-                        <div className="mb-3 flex items-center justify-between">
-                          <h3 className="text-sm font-bold text-slate-950">其它信息</h3>
-                          {activeOrder.status !== '驳回' && (
-                            <button
-                              type="button"
-                              onClick={() => openAttachmentModal()}
-                              className="rounded border border-slate-300 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                              上传附件
-                            </button>
-                          )}
-                        </div>
-                        <div className="overflow-x-auto border border-slate-200">
-                          <table className="w-full min-w-[920px] table-fixed border-collapse text-[11px]">
-                            <thead className="bg-slate-50 text-slate-600">
-                              <tr>
-                                {['附件名称', '附件类型', '客户可见', '文件大小', '上传人', '上传时间', '操作'].map((head) => (
-                                  <th key={head} className="border border-slate-200 px-3 py-2 text-left font-semibold">
-                                    {head}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {activeAttachmentRows.length > 0 ? (
-                                activeAttachmentRows.map((row) => (
-                                  <tr key={row.id} className="h-10 text-slate-700 odd:bg-white even:bg-slate-50/70">
-                                    <td className="border border-slate-200 px-3">{row.name}</td>
-                                    <td className="border border-slate-200 px-3">{row.type}</td>
-                                    <td className="border border-slate-200 px-3">{row.customerVisible}</td>
-                                    <td className="border border-slate-200 px-3">{row.fileSize}</td>
-                                    <td className="border border-slate-200 px-3">{row.uploadedBy}</td>
-                                    <td className="border border-slate-200 px-3 font-mono text-slate-500">{row.uploadedAt}</td>
-                                    <td className="border border-slate-200 px-3">
-                                      {activeOrder.status !== '驳回' && (
-                                        <button
-                                          type="button"
-                                          onClick={() => openAttachmentModal(row)}
-                                          className="mr-3 font-bold text-[#004bb1] hover:underline"
-                                        >
-                                          编辑
-                                        </button>
-                                      )}
-                                      <button
-                                        type="button"
-                                        onClick={() => downloadAttachment(row)}
-                                        className="mr-3 font-bold text-[#004bb1] hover:underline"
-                                      >
-                                        下载
-                                      </button>
-                                      {activeOrder.status !== '驳回' && (
-                                        <button
-                                          type="button"
-                                          onClick={() => setDeletingAttachment(row)}
-                                          className="font-bold text-red-500 hover:underline"
-                                        >
-                                          删除
-                                        </button>
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))
-                              ) : (
-                                <tr>
-                                  <td colSpan={7} className="h-24 border border-slate-200 text-center text-slate-300">
-                                    <FileText className="mx-auto mb-2 h-8 w-8 text-slate-200" />
-                                    暂无附件
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </section>
-                    )}
+                    {downstreamDetailTab === '其它信息' && renderAttachmentSection()}
                   </div>
                 </>
               )}
+
+              {showsOrderForm && renderAttachmentSection('mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4')}
 
               {showsOrderForm && (
                 <section className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4">
@@ -4329,7 +4282,20 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                                       />
                                     ) : null}
                                   </td>
-                                  <td className="border border-slate-200 px-3 text-center">{row?.currency || ''}</td>
+                                  <td className="border border-slate-200 px-2 text-center">
+                                    {row ? (
+                                      <select
+                                        value={instructionFeeCurrencies[row.code] ?? row.currency}
+                                        disabled={!canEditFeeSelectionFields}
+                                        onChange={(event) => setInstructionFeeCurrencies((prev) => ({ ...prev, [row.code]: event.target.value }))}
+                                        className="h-7 w-full min-w-0 rounded border border-slate-200 bg-white px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
+                                        aria-label={`${row.name}币种`}
+                                      >
+                                        <option>人民币</option>
+                                        <option>USD</option>
+                                      </select>
+                                    ) : null}
+                                  </td>
                                   <td className="border border-slate-200 px-3 text-center">{row?.description || ''}</td>
                                 </tr>
                               );
@@ -4398,9 +4364,9 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                       </FormRow>
                       <FormRow label="费用类型" requiredMark>
                         <select
-                          className={fieldClass}
+                          className={`${fieldClass} bg-slate-100`}
                           value={editingInstruction.type}
-                          onChange={(event) => setEditingInstruction({ ...editingInstruction, type: event.target.value })}
+                          disabled
                         >
                           <option>仓储费</option>
                           <option>操作费</option>
@@ -4506,9 +4472,9 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                       </FormRow>
                       <FormRow label="费用类型" requiredMark>
                         <select
-                          className={fieldClass}
+                          className={`${fieldClass} bg-slate-100`}
                           value={editingQuoteFee.type}
-                          onChange={(event) => setEditingQuoteFee({ ...editingQuoteFee, type: event.target.value })}
+                          disabled
                         >
                           <option>仓储费</option>
                           <option>操作费</option>

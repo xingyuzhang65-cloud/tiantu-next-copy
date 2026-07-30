@@ -21,12 +21,14 @@ import {
 } from 'lucide-react';
 import {
   emptyAddressForm,
+  getShippingEnabledForReleaseInstruction,
   overseasDeliveryMethods,
   overseasOrderTypes,
   overseasWarehouseCodes,
+  releaseInstructionOptions,
   warehouseAddressBook,
 } from './overseasTransitAddress';
-import type { AddressFormState } from './overseasTransitAddress';
+import type { AddressFormState, ReleaseInstruction } from './overseasTransitAddress';
 import {
   getCreatedTransitChildOrders,
   getRemovedStorageBoxCount,
@@ -74,6 +76,7 @@ interface OverseasTransitRow {
   inboundNo?: string;
   shipmentId?: string;
   referenceId?: string;
+  releaseInstruction?: ReleaseInstruction;
   warehouseCode?: string;
   chargeWeight?: string;
   actualWeight?: string;
@@ -720,7 +723,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
   const [appliedStorageIdentifierFilters, setAppliedStorageIdentifierFilters] = useState<Record<StorageIdentifierSearchKey, string>>({ ...emptyStorageIdentifierSearchValues });
   const [selectedStorageBoxIndexesByOrder, setSelectedStorageBoxIndexesByOrder] = useState<Record<string, number[]>>({});
   const [storageAddressForm, setStorageAddressForm] = useState<AddressFormState>({ ...emptyAddressForm });
-  const [storageShippingEnabled, setStorageShippingEnabled] = useState(true);
+  const [storageReleaseInstruction, setStorageReleaseInstruction] = useState<ReleaseInstruction>('放货');
   const [storageAttachments, setStorageAttachments] = useState<CreatedTransitAttachment[]>([]);
   const [storageInstructionRowsByOrder, setStorageInstructionRowsByOrder] = useState<Record<string, StorageInstructionRow[]>>({});
   const [showStorageInstructionModal, setShowStorageInstructionModal] = useState(false);
@@ -734,6 +737,9 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
   const [storageInstructionQuantities, setStorageInstructionQuantities] = useState<Record<string, string>>(
     () => Object.fromEntries(storageInstructionFeeRows.map((row) => [row.code, '1'])),
   );
+  const [storageInstructionCurrencies, setStorageInstructionCurrencies] = useState<Record<string, string>>(
+    () => Object.fromEntries(storageInstructionFeeRows.map((row) => [row.code, row.currency])),
+  );
   const [editingStorageInstruction, setEditingStorageInstruction] = useState<StorageInstructionRow | null>(null);
   const [deletingStorageInstruction, setDeletingStorageInstruction] = useState<StorageInstructionRow | null>(null);
   useEffect(() => subscribeOverseasTransitFlow(() => setPageTransitRows(getTransitRowsWithRemovedBoxes())), []);
@@ -745,6 +751,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
   const activeStorageRemovedBoxNumbers = activeStorageOrderKey ? getRemovedStorageBoxNumbers(activeStorageOrderKey) : [];
   const isStorageSubmissionStatus = mode === 'storage' && (activeStorageOrder?.status === '运输中' || activeStorageOrder?.status === '暂存');
   const activeStorageInstructionRows = activeStorageOrderKey ? (storageInstructionRowsByOrder[activeStorageOrderKey] || []) : [];
+  const storageShippingEnabled = getShippingEnabledForReleaseInstruction(storageReleaseInstruction);
 
   const filteredRows = useMemo(() => {
     const rows = mode === 'storage'
@@ -788,7 +795,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
         return;
       }
       setStorageAddressForm(nextRow.status === '暂存已完成' ? getCompletedStorageAddressForm(nextRow) : { ...emptyAddressForm });
-      setStorageShippingEnabled(true);
+      setStorageReleaseInstruction('放货');
       setStorageAttachments([]);
       setActiveStorageOrder(nextRow);
       addToast(`已打开 ${nextRow.headWaybillNo} ${nextRow.status === '暂存已完成' ? '暂存已完成详情' : '中转下单页面'}`, 'info');
@@ -835,7 +842,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
 
   const cancelStorageSubmission = () => {
     if (activeStorageOrderKey) setSelectedStorageBoxIndexesByOrder((prev) => ({ ...prev, [activeStorageOrderKey]: [] }));
-    setStorageShippingEnabled(true);
+    setStorageReleaseInstruction('放货');
     setStorageAttachments([]);
     setActiveStorageOrder(null);
   };
@@ -872,6 +879,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
       parentHeadWaybillNo: activeStorageOrderKey,
       addressForm: { ...storageAddressForm },
       shippingEnabled: storageShippingEnabled,
+      releaseInstruction: storageReleaseInstruction,
       instructions: activeStorageInstructionRows.map((row) => ({ ...row })),
       reconciliationStatus: '未核销',
       overseasWarehouseArrivalStatus: '否',
@@ -907,7 +915,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
     setStorageInstructionRowsByOrder((prev) => ({ ...prev, [activeStorageOrderKey]: [] }));
     setStorageAttachments([]);
     setStorageAddressForm({ ...emptyAddressForm });
-    setStorageShippingEnabled(true);
+    setStorageReleaseInstruction('放货');
     setActiveStorageOrder(null);
     addToast(`已提交 ${boxNumbers.length} 箱，已生成海外中转单并流转至待确认状态`, 'success');
   };
@@ -932,6 +940,12 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
         existingRows.find((item) => item.code === row.code)?.quantity || prev[row.code] || '1',
       ]),
     ));
+    setStorageInstructionCurrencies((prev) => Object.fromEntries(
+      storageInstructionFeeRows.map((row) => [
+        row.code,
+        existingRows.find((item) => item.code === row.code)?.currency || prev[row.code] || row.currency,
+      ]),
+    ));
     setShowStorageInstructionModal(true);
   };
 
@@ -949,6 +963,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
         unit: storageInstructionUnits[row.code]?.trim() || row.unit,
         price: storageInstructionPrices[row.code]?.trim() || row.price,
         quantity: storageInstructionQuantities[row.code]?.trim() || '1',
+        currency: storageInstructionCurrencies[row.code]?.trim() || row.currency,
         addedAt: createdAt,
         addedBy: '天朗（付豪）',
       }));
@@ -1438,16 +1453,16 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
               <section className="rounded-2xl border border-slate-200 bg-white px-7 py-4">
                 {!isCompletedStorageOrder && (
                   <div className="mb-5 flex items-center gap-5 border-b border-slate-100 pb-4 text-xs">
-                    <span className="font-bold text-slate-950">是否出货</span>
-                    {[{ label: '是', value: true }, { label: '否', value: false }].map((option) => (
-                      <label key={option.label} className="inline-flex items-center gap-1.5 font-semibold text-slate-700">
+                    <span className="font-bold text-slate-950">下单类型</span>
+                    {releaseInstructionOptions.map((option) => (
+                      <label key={option} className="inline-flex items-center gap-1.5 font-semibold text-slate-700">
                         <input
                           type="radio"
                           className="h-3.5 w-3.5 accent-[#004bb1]"
-                          checked={storageShippingEnabled === option.value}
-                          onChange={() => setStorageShippingEnabled(option.value)}
+                          checked={storageReleaseInstruction === option}
+                          onChange={() => setStorageReleaseInstruction(option)}
                         />
-                        {option.label}
+                        {option}
                       </label>
                     ))}
                   </div>
@@ -1882,7 +1897,19 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                                       />
                                     ) : null}
                                   </td>
-                                  <td className="border border-slate-200 px-3 text-center">{row?.currency || ''}</td>
+                                  <td className="border border-slate-200 px-2 text-center">
+                                    {row ? (
+                                      <select
+                                        value={storageInstructionCurrencies[row.code] ?? row.currency}
+                                        onChange={(event) => setStorageInstructionCurrencies((prev) => ({ ...prev, [row.code]: event.target.value }))}
+                                        className="h-7 w-full min-w-0 rounded border border-slate-200 bg-white px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                                        aria-label={`${row.name}币种`}
+                                      >
+                                        <option>人民币</option>
+                                        <option>USD</option>
+                                      </select>
+                                    ) : null}
+                                  </td>
                                   <td className="border border-slate-200 px-3 text-center">{row?.description || ''}</td>
                                 </tr>
                               );
@@ -1949,7 +1976,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                         <input className={`${fieldClass} bg-slate-100`} value={editingStorageInstruction.name} readOnly />
                       </StorageInstructionFormRow>
                       <StorageInstructionFormRow label="费用类型" requiredMark>
-                        <select className={fieldClass} value={editingStorageInstruction.type} onChange={(event) => setEditingStorageInstruction({ ...editingStorageInstruction, type: event.target.value })}>
+                        <select className={`${fieldClass} bg-slate-100`} value={editingStorageInstruction.type} disabled>
                           <option>仓储费</option>
                           <option>操作费</option>
                         </select>

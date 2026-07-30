@@ -1,4 +1,4 @@
-import type { AddressFormState } from './overseasTransitAddress';
+import type { AddressFormState, ReleaseInstruction } from './overseasTransitAddress';
 
 export type CreatedTransitInstruction = {
   code: string;
@@ -31,6 +31,7 @@ export type CreatedTransitChildOrder = {
   parentHeadWaybillNo: string;
   addressForm: AddressFormState;
   shippingEnabled?: boolean;
+  releaseInstruction?: ReleaseInstruction;
   instructions: CreatedTransitInstruction[];
   reconciliationStatus: TransitReconciliationStatus;
   overseasWarehouseArrivalStatus: OverseasWarehouseArrivalStatus;
