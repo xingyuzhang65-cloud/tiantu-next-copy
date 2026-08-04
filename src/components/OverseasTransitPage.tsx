@@ -729,6 +729,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
   const [showStorageInstructionModal, setShowStorageInstructionModal] = useState(false);
   const [selectedStorageInstructionCodes, setSelectedStorageInstructionCodes] = useState<string[]>([]);
   const [storageDropdownCode, setStorageDropdownCode] = useState('');
+  const [storageInstructionBillingTimes, setStorageInstructionBillingTimes] = useState<Record<string, string>>({});
   const [storageInstructionUnits, setStorageInstructionUnits] = useState<Record<string, string>>(
     () => Object.fromEntries(storageInstructionFeeRows.map((row) => [row.code, row.unit])),
   );
@@ -948,6 +949,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
       ]),
     ));
     setSelectedStorageInstructionCodes(existingRows.map((row) => row.code));
+    setStorageInstructionBillingTimes(Object.fromEntries(existingRows.map((row) => [row.code, row.addedAt || ''])));
     setStorageDropdownCode('');
     setShowStorageInstructionModal(true);
   };
@@ -959,11 +961,17 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
   const addStorageDropdownCode = (code: string) => {
     if (!code) return;
     setSelectedStorageInstructionCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
+    setStorageInstructionBillingTimes((prev) => (prev[code] ? prev : { ...prev, [code]: formatLocalDateTime() }));
     setStorageDropdownCode('');
   };
 
   const removeStorageInstructionCode = (code: string) => {
     setSelectedStorageInstructionCodes((prev) => prev.filter((item) => item !== code));
+    setStorageInstructionBillingTimes((prev) => {
+      const next = { ...prev };
+      delete next[code];
+      return next;
+    });
   };
 
   const confirmStorageInstructions = () => {
@@ -977,7 +985,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
         price: storageInstructionPrices[row.code]?.trim() || row.price,
         quantity: storageInstructionQuantities[row.code]?.trim() || '1',
         currency: storageInstructionCurrencies[row.code]?.trim() || row.currency,
-        addedAt: createdAt,
+        addedAt: storageInstructionBillingTimes[row.code] || createdAt,
         addedBy: '天朗（付豪）',
       }));
 
@@ -1873,7 +1881,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                             <table className="w-full table-fixed border-collapse text-xs">
                               <thead className="bg-slate-50 text-slate-900">
                                 <tr>
-                                  {['费用名称', '费用类型', '*计费单位', '*计费单价（元）', '*计费数量', '*币种', '描述', '操作'].map((head) => (
+                                  {['计费时间', '费用名称', '费用类型', '*计费单位', '*计费单价（元）', '*计费数量', '*币种', '描述', '操作'].map((head) => (
                                     <th key={head} className="border border-slate-200 px-3 py-2 text-center font-bold">
                                       {head}
                                     </th>
@@ -1886,6 +1894,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                                   if (!row) return null;
                                   return (
                                     <tr key={code} className="h-10 bg-white">
+                                      <td className="border border-slate-200 px-3 text-center text-slate-600">{storageInstructionBillingTimes[code] || '-'}</td>
                                       <td className="border border-slate-200 px-3 text-center font-medium">{row.name}</td>
                                       <td className="border border-slate-200 px-3 text-center">{row.type}</td>
                                       <td className="border border-slate-200 px-2 text-center">
