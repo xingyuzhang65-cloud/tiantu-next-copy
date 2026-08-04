@@ -1569,8 +1569,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const [signedRollbackConfirmOrderKeys, setSignedRollbackConfirmOrderKeys] = useState<string[]>([]);
   const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [feeModalTarget, setFeeModalTarget] = useState<FeeModalTarget>('instruction');
-  const [selectedFeeCodes, setSelectedFeeCodes] = useState<string[]>([]);
-  const [activeDropdownCode, setActiveDropdownCode] = useState<string>('');
+  const [selectedFeeCodes, setSelectedFeeCodes] = useState<string[]>(instructionFeeRows.slice(0, 3).map((row) => row.code));
   const [instructionFeeUnits, setInstructionFeeUnits] = useState<Record<string, string>>(
     () => Object.fromEntries(instructionFeeRows.map((row) => [row.code, row.unit])),
   );
@@ -1831,10 +1830,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     ));
     if (target === 'quote') {
       setSelectedFeeCodes([instructionFeeRows[0].code]);
-    } else {
-      setSelectedFeeCodes(existingRows.map((row) => row.code));
     }
-    setActiveDropdownCode('');
     setShowInstructionModal(true);
   };
 
@@ -2375,16 +2371,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
 
   const toggleFeeCode = (code: string) => {
     setSelectedFeeCodes((prev) => (prev.includes(code) ? prev.filter((item) => item !== code) : [...prev, code]));
-  };
-
-  const addDropdownFeeCode = (code: string) => {
-    if (!code) return;
-    setSelectedFeeCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
-    setActiveDropdownCode('');
-  };
-
-  const removeFeeCode = (code: string) => {
-    setSelectedFeeCodes((prev) => prev.filter((item) => item !== code));
   };
 
   const setOrderInstructionRows = (row: OverseasTransitRow, rows: InstructionFeeRow[]) => {
@@ -4215,122 +4201,130 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                           </button>
                         </div>
 
-                        {/* ── Dropdown instruction selector ── */}
-                        <div className="mb-4 flex items-center gap-3">
-                          <label className="text-xs font-bold text-slate-900 whitespace-nowrap">选择指令：</label>
-                          <select
-                            value={activeDropdownCode}
-                            onChange={(e) => setActiveDropdownCode(e.target.value)}
-                            className="h-8 flex-1 rounded border border-slate-300 bg-white px-3 text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                          >
-                            <option value="">请选择要添加的指令</option>
-                            {instructionFeeRows
-                              .filter((row) => !selectedFeeCodes.includes(row.code))
-                              .map((row) => (
-                                <option key={row.code} value={row.code}>
-                                  {row.name}（{row.code}）
-                                </option>
+                        <table className="w-full table-fixed border-collapse text-xs">
+                          <thead className="bg-slate-50 text-slate-900">
+                            <tr>
+                              <th className="w-12 border border-slate-200 px-2 py-2 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedFeeCodes.length === instructionFeeRows.length}
+                                  onChange={(event) => setSelectedFeeCodes(event.target.checked ? instructionFeeRows.map((row) => row.code) : [])}
+                                  className="h-3.5 w-3.5 rounded border-slate-300"
+                                />
+                              </th>
+                              {['费用代码', '费用名称', '费用类型', '计费单位', '计费单价', '计费数量', '币种', '描述'].map((head) => (
+                                <th key={head} className="border border-slate-200 px-3 py-2 text-center font-bold">
+                                  {head}
+                                </th>
                               ))}
-                          </select>
-                          <button
-                            type="button"
-                            onClick={() => addDropdownFeeCode(activeDropdownCode)}
-                            disabled={!activeDropdownCode}
-                            className="h-8 rounded bg-blue-600 px-5 text-xs font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            添加至列表
-                          </button>
-                        </div>
-
-                        {/* ── Selected instructions table ── */}
-                        {selectedFeeCodes.length > 0 ? (
-                          <div className="overflow-x-auto rounded-lg border border-slate-200">
-                            <table className="w-full table-fixed border-collapse text-xs">
-                              <thead className="bg-slate-50 text-slate-900">
-                                <tr>
-                                  {['费用名称', '费用类型', '*计费单位', '*计费单价（元）', '*计费数量', '*币种', '描述', '操作'].map((head) => (
-                                    <th key={head} className="border border-slate-200 px-3 py-2 text-center font-bold">
-                                      {head}
-                                    </th>
-                                  ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Array.from({ length: 18 }).map((_, index) => {
+                              const row = instructionFeeRows[index];
+                              const isSelectedFee = !!row && selectedFeeCodes.includes(row.code);
+                              return (
+                                <tr key={index} className={`h-8 ${index % 2 === 1 ? 'bg-slate-50' : 'bg-white'}`}>
+                                  <td className="border border-slate-200 px-2 text-center">
+                                    <input
+                                      type="checkbox"
+                                      disabled={!row}
+                                      checked={isSelectedFee}
+                                      onChange={() => row && toggleFeeCode(row.code)}
+                                      className="h-3.5 w-3.5 rounded border-slate-300"
+                                    />
+                                  </td>
+                                  <td className="border border-slate-200 px-3 text-center font-mono">{row?.code || ''}</td>
+                                  <td className="border border-slate-200 px-3 text-center">{row?.name || ''}</td>
+                                  <td className="border border-slate-200 px-3 text-center">{row?.type || ''}</td>
+                                  <td className="border border-slate-200 px-2 text-center">
+                                    {row ? (
+                                      <select
+                                        value={instructionFeeUnits[row.code] ?? row.unit}
+                                        disabled={!canEditFeeSelectionFields}
+                                        onChange={(event) => setInstructionFeeUnits((prev) => ({ ...prev, [row.code]: event.target.value }))}
+                                        className="h-7 w-full min-w-0 rounded border border-slate-200 bg-white px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
+                                        aria-label={`${row.name}计费单位`}
+                                      >
+                                        <option value="票">票</option>
+                                        <option value="箱">箱</option>
+                                        <option value="KG">KG</option>
+                                      </select>
+                                    ) : null}
+                                  </td>
+                                  <td className="border border-slate-200 px-2 text-center">
+                                    {row ? (
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        disabled={!canEditFeeSelectionFields}
+                                        value={instructionFeePrices[row.code] ?? row.price}
+                                        onChange={(event) => setInstructionFeePrices((prev) => ({ ...prev, [row.code]: event.target.value }))}
+                                        onBlur={() => setInstructionFeePrices((prev) => ({ ...prev, [row.code]: prev[row.code]?.trim() || row.price }))}
+                                        className="h-7 w-full min-w-0 rounded border border-slate-200 px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
+                                        aria-label={`${row.name}计费单价`}
+                                      />
+                                    ) : null}
+                                  </td>
+                                  <td className="border border-slate-200 px-2 text-center">
+                                    {row ? (
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        disabled={!canEditFeeSelectionFields}
+                                        value={instructionFeeQuantities[row.code] ?? '1'}
+                                        onChange={(event) => setInstructionFeeQuantities((prev) => ({ ...prev, [row.code]: event.target.value }))}
+                                        onBlur={() => setInstructionFeeQuantities((prev) => ({ ...prev, [row.code]: prev[row.code]?.trim() || '1' }))}
+                                        className="h-7 w-full min-w-0 rounded border border-slate-200 px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
+                                        aria-label={`${row.name}计费数量`}
+                                      />
+                                    ) : null}
+                                  </td>
+                                  <td className="border border-slate-200 px-2 text-center">
+                                    {row ? (
+                                      <select
+                                        value={instructionFeeCurrencies[row.code] ?? row.currency}
+                                        disabled={!canEditFeeSelectionFields}
+                                        onChange={(event) => setInstructionFeeCurrencies((prev) => ({ ...prev, [row.code]: event.target.value }))}
+                                        className="h-7 w-full min-w-0 rounded border border-slate-200 bg-white px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
+                                        aria-label={`${row.name}币种`}
+                                      >
+                                        <option>人民币</option>
+                                        <option>USD</option>
+                                      </select>
+                                    ) : null}
+                                  </td>
+                                  <td className="border border-slate-200 px-3 text-center">{row?.description || ''}</td>
                                 </tr>
-                              </thead>
-                              <tbody>
-                                {selectedFeeCodes.map((code) => {
-                                  const row = instructionFeeRows.find((r) => r.code === code);
-                                  if (!row) return null;
-                                  return (
-                                    <tr key={code} className="h-10 bg-white">
-                                      <td className="border border-slate-200 px-3 text-center font-medium">{row.name}</td>
-                                      <td className="border border-slate-200 px-3 text-center">{row.type}</td>
-                                      <td className="border border-slate-200 px-2 text-center">
-                                        <select
-                                          value={instructionFeeUnits[code] ?? row.unit}
-                                          disabled={!canEditFeeSelectionFields}
-                                          onChange={(event) => setInstructionFeeUnits((prev) => ({ ...prev, [code]: event.target.value }))}
-                                          className="h-7 w-full min-w-0 rounded border border-slate-200 bg-white px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
-                                        >
-                                          <option value="票">票</option>
-                                          <option value="箱">箱</option>
-                                          <option value="KG">KG</option>
-                                        </select>
-                                      </td>
-                                      <td className="border border-slate-200 px-2 text-center">
-                                        <input
-                                          type="number" min="0" step="any"
-                                          disabled={!canEditFeeSelectionFields}
-                                          value={instructionFeePrices[code] ?? row.price}
-                                          onChange={(event) => setInstructionFeePrices((prev) => ({ ...prev, [code]: event.target.value }))}
-                                          onBlur={() => setInstructionFeePrices((prev) => ({ ...prev, [code]: prev[code]?.trim() || row.price }))}
-                                          className="h-7 w-full min-w-0 rounded border border-slate-200 px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
-                                        />
-                                      </td>
-                                      <td className="border border-slate-200 px-2 text-center">
-                                        <input
-                                          type="number" min="0" step="any"
-                                          disabled={!canEditFeeSelectionFields}
-                                          value={instructionFeeQuantities[code] ?? '1'}
-                                          onChange={(event) => setInstructionFeeQuantities((prev) => ({ ...prev, [code]: event.target.value }))}
-                                          onBlur={() => setInstructionFeeQuantities((prev) => ({ ...prev, [code]: prev[code]?.trim() || '1' }))}
-                                          className="h-7 w-full min-w-0 rounded border border-slate-200 px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
-                                        />
-                                      </td>
-                                      <td className="border border-slate-200 px-2 text-center">
-                                        <select
-                                          value={instructionFeeCurrencies[code] ?? row.currency}
-                                          disabled={!canEditFeeSelectionFields}
-                                          onChange={(event) => setInstructionFeeCurrencies((prev) => ({ ...prev, [code]: event.target.value }))}
-                                          className="h-7 w-full min-w-0 rounded border border-slate-200 bg-white px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
-                                        >
-                                          <option>人民币</option>
-                                          <option>USD</option>
-                                        </select>
-                                      </td>
-                                      <td className="border border-slate-200 px-3 text-center text-slate-500">{row.description}</td>
-                                      <td className="border border-slate-200 px-3 text-center">
-                                        <button
-                                          type="button"
-                                          onClick={() => removeFeeCode(code)}
-                                          className="font-semibold text-red-500 hover:underline"
-                                        >
-                                          移除
-                                        </button>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : (
-                          <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-400">
-                            暂未选择指令，请从上方下拉框中选择并添加
-                          </div>
-                        )}
+                              );
+                            })}
+                          </tbody>
+                        </table>
 
-                        <div className="mt-4 text-xs text-slate-600">
-                          <span>已选中 <strong className="text-blue-600">{selectedFeeCodes.length}</strong> 条指令</span>
-                          <span className="ml-4 text-slate-400">共 {instructionFeeRows.length} 条可选</span>
+                        <div className="mt-4 flex items-center justify-between text-xs text-slate-600">
+                          <span>已选中{selectedFeeCodes.length}条</span>
+                          <div className="flex items-center gap-2">
+                            <span>共 50 条</span>
+                            {[1, 2, 3, 4, 5].map((page) => (
+                              <button
+                                key={page}
+                                type="button"
+                                className={`h-7 w-7 rounded border text-xs ${page === 1 ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-200 bg-white text-slate-600'}`}
+                              >
+                                {page}
+                              </button>
+                            ))}
+                            <span>...</span>
+                            <button type="button" className="h-7 rounded border border-slate-200 bg-white px-2 text-xs">50</button>
+                            <select className="h-7 rounded border border-slate-200 bg-white px-2 text-xs" defaultValue="10">
+                              <option value="10">10/页</option>
+                              <option value="20">20/页</option>
+                            </select>
+                            <span>转到</span>
+                            <input className="h-7 w-12 rounded border border-slate-200 px-2 text-xs" defaultValue="8" />
+                          </div>
                         </div>
                       </div>
                     </div>
