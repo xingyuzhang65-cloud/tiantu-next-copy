@@ -968,7 +968,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
 
   const confirmStorageInstructions = () => {
     if (!activeStorageOrderKey) return;
-    const createdAt = formatLocalDateTime();
+    const billingTime = formatLocalDateTime();
     const selectedInstructions: StorageInstructionRow[] = storageInstructionFeeRows
       .filter((row) => selectedStorageInstructionCodes.includes(row.code))
       .map((row) => ({
@@ -977,7 +977,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
         price: storageInstructionPrices[row.code]?.trim() || row.price,
         quantity: storageInstructionQuantities[row.code]?.trim() || '1',
         currency: storageInstructionCurrencies[row.code]?.trim() || row.currency,
-        addedAt: createdAt,
+        addedAt: billingTime,
         addedBy: '天朗（付豪）',
       }));
 
@@ -1764,7 +1764,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                 <table className="w-full table-fixed border-collapse text-xs">
                   <thead className="bg-slate-50 text-slate-900">
                     <tr>
-                      {['费用名称', '费用类型', '*计费单位', '*计费单价（元）', '*计费数量', '*币种', '总价（元）', '添加时间', '添加人', '描述', '操作'].map((head) => (
+                      {['费用名称', '费用类型', '*计费单位', '*计费单价（元）', '*计费数量', '*币种', '总价（元）', '计费时间', '添加人', '描述', '操作'].map((head) => (
                         <th key={head} className="border border-slate-200 px-3 py-3 text-center font-bold">
                           {head}
                         </th>
