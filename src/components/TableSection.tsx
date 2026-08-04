@@ -32,6 +32,19 @@ interface PickingTransferRow {
   transferNo: string;
 }
 
+interface ReceivableFeeRow {
+  id: string;
+  feeName: string;
+  unitPrice: string;
+  unit: string;
+  exchangeRate: string;
+  currency: string;
+  billingTime: string;
+  addedBy: string;
+  addedAt: string;
+  remark: string;
+}
+
 const pdfText = (value: string | number) => String(value)
   .replace(/[^\x20-\x7E]/g, '?')
   .replace(/\\/g, '\\\\')
@@ -306,6 +319,7 @@ export default function TableSection({
   const [pickingPanelOpen, setPickingPanelOpen] = useState(false);
   const [pickingDrafts, setPickingDrafts] = useState<Record<string, PickingTransferRow[]>>({});
   const [savedPickingRows, setSavedPickingRows] = useState<Record<string, PickingTransferRow[]>>({});
+  const [receivableFeeRowsByWaybill, setReceivableFeeRowsByWaybill] = useState<Record<string, ReceivableFeeRow[]>>({});
   const [importInfoWaybill, setImportInfoWaybill] = useState<Waybill | null>(null);
   const [importInfoFileName, setImportInfoFileName] = useState('');
   const [importInfoAttachment, setImportInfoAttachment] = useState<WaybillAttachment | null>(null);
@@ -674,6 +688,52 @@ export default function TableSection({
     }, 1000);
   };
 
+  const formatLocalDateTime = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+  const getReceivableFeeRows = (waybill: Waybill) => receivableFeeRowsByWaybill[waybill.id] || [];
+
+  const calculateReceivableFeeTotal = (row: ReceivableFeeRow) => {
+    const unitPrice = Number(row.unitPrice) || 0;
+    const exchangeRate = Number(row.exchangeRate) || 1;
+    return (unitPrice * exchangeRate).toFixed(2);
+  };
+
+  const addReceivableFeeRow = (waybill: Waybill) => {
+    const timestamp = formatLocalDateTime();
+    const nextRow: ReceivableFeeRow = {
+      id: `fee-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      feeName: '附加费',
+      unitPrice: '0.00',
+      unit: '票',
+      exchangeRate: '1',
+      currency: '人民币',
+      billingTime: timestamp,
+      addedBy: '天朗（付豪）',
+      addedAt: timestamp,
+      remark: '',
+    };
+    setReceivableFeeRowsByWaybill(prev => ({
+      ...prev,
+      [waybill.id]: [...(prev[waybill.id] || []), nextRow],
+    }));
+    addToast('费用已添加', 'success');
+  };
+
+  const updateReceivableFeeRow = (waybillId: string, rowId: string, field: keyof ReceivableFeeRow, value: string) => {
+    setReceivableFeeRowsByWaybill(prev => ({
+      ...prev,
+      [waybillId]: (prev[waybillId] || []).map(row => row.id === rowId ? { ...row, [field]: value } : row),
+    }));
+  };
+
+  const deleteReceivableFeeRow = (waybillId: string, rowId: string) => {
+    setReceivableFeeRowsByWaybill(prev => ({
+      ...prev,
+      [waybillId]: (prev[waybillId] || []).filter(row => row.id !== rowId),
+    }));
+    addToast('费用已删除', 'info');
+  };
+
   const handlePrintSystemLabel = () => {
     if (selectedIds.length === 0) {
       addToast('请在下方列表中勾选要打印系统标签的运单', 'warning');
@@ -1035,7 +1095,7 @@ export default function TableSection({
     '非报关件木制品商检费',
     '急单附加费',
   ];
-  const receivableFeeHeaders = ['费用名称', '单价', '计量单位', '汇率', '币种', '费用总价', '计费时间', '添加人', '添加时间', '费用备注', '费用内部备注', '操作'];
+  const receivableFeeHeaders = ['费用名称', '单价', '计量单位', '汇率', '币种', '费用总价', '计费时间', '添加人', '添加时间', '费用备注', '操作'];
 
   const detailTabs = ['基础信息', '货物信息', '费用信息', '运踪信息', '其他信息', '中转信息'];
   const tradeModeOptions = ['9610', '9710', '9810', '0110', '1039'];
@@ -2149,7 +2209,9 @@ export default function TableSection({
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                       <h3 className="text-sm font-bold text-slate-800">应收费用</h3>
                       <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
-                        <span className="rounded bg-blue-50 px-2 py-1 font-bold text-blue-600">费用合计： 0.00</span>
+                        <span className="rounded bg-blue-50 px-2 py-1 font-bold text-blue-600">
+                          费用合计： {getReceivableFeeRows(activeDetailWaybill).reduce((sum, row) => sum + Number(calculateReceivableFeeTotal(row)), 0).toFixed(2)}
+                        </span>
                         <span className="px-1 font-bold text-blue-600">已申请: 0</span>
                         <button
                           type="button"
@@ -2160,7 +2222,7 @@ export default function TableSection({
                         </button>
                         <button
                           type="button"
-                          onClick={() => addToast('添加费用功能为展示', 'info')}
+                          onClick={() => addReceivableFeeRow(activeDetailWaybill)}
                           className="rounded border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50"
                         >
                           添加费用
@@ -2184,7 +2246,7 @@ export default function TableSection({
                     </div>
 
                     <div className="overflow-x-auto border border-slate-200">
-                      <table className="w-full min-w-[1160px] table-fixed border-collapse text-[11px]">
+                      <table className="w-full min-w-[1240px] table-fixed border-collapse text-[11px]">
                         <thead className="bg-slate-50 text-slate-600">
                           <tr>
                             {receivableFeeHeaders.map((header) => (
@@ -2194,10 +2256,88 @@ export default function TableSection({
                             ))}
                           </tr>
                         </thead>
+                        {getReceivableFeeRows(activeDetailWaybill).length > 0 && (
+                          <tbody>
+                            {getReceivableFeeRows(activeDetailWaybill).map((row) => (
+                              <tr key={row.id} className="bg-white">
+                                <td className="border border-slate-200 px-2 py-2">
+                                  <input
+                                    value={row.feeName}
+                                    onChange={(event) => updateReceivableFeeRow(activeDetailWaybill.id, row.id, 'feeName', event.target.value)}
+                                    className="h-7 w-full rounded border border-slate-200 px-2 text-[11px] outline-none focus:border-blue-500"
+                                  />
+                                </td>
+                                <td className="border border-slate-200 px-2 py-2">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    value={row.unitPrice}
+                                    onChange={(event) => updateReceivableFeeRow(activeDetailWaybill.id, row.id, 'unitPrice', event.target.value)}
+                                    className="h-7 w-full rounded border border-slate-200 px-2 text-[11px] outline-none focus:border-blue-500"
+                                  />
+                                </td>
+                                <td className="border border-slate-200 px-2 py-2">
+                                  <select
+                                    value={row.unit}
+                                    onChange={(event) => updateReceivableFeeRow(activeDetailWaybill.id, row.id, 'unit', event.target.value)}
+                                    className="h-7 w-full rounded border border-slate-200 bg-white px-2 text-[11px] outline-none focus:border-blue-500"
+                                  >
+                                    <option value="票">票</option>
+                                    <option value="箱">箱</option>
+                                    <option value="KG">KG</option>
+                                  </select>
+                                </td>
+                                <td className="border border-slate-200 px-2 py-2">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    value={row.exchangeRate}
+                                    onChange={(event) => updateReceivableFeeRow(activeDetailWaybill.id, row.id, 'exchangeRate', event.target.value)}
+                                    className="h-7 w-full rounded border border-slate-200 px-2 text-[11px] outline-none focus:border-blue-500"
+                                  />
+                                </td>
+                                <td className="border border-slate-200 px-2 py-2">
+                                  <select
+                                    value={row.currency}
+                                    onChange={(event) => updateReceivableFeeRow(activeDetailWaybill.id, row.id, 'currency', event.target.value)}
+                                    className="h-7 w-full rounded border border-slate-200 bg-white px-2 text-[11px] outline-none focus:border-blue-500"
+                                  >
+                                    <option>人民币</option>
+                                    <option>USD</option>
+                                  </select>
+                                </td>
+                                <td className="border border-slate-200 px-3 py-2 font-semibold text-slate-700">{calculateReceivableFeeTotal(row)}</td>
+                                <td className="border border-slate-200 px-3 py-2 text-slate-600">{row.billingTime}</td>
+                                <td className="border border-slate-200 px-3 py-2 text-slate-600">{row.addedBy}</td>
+                                <td className="border border-slate-200 px-3 py-2 text-slate-600">{row.addedAt}</td>
+                                <td className="border border-slate-200 px-2 py-2">
+                                  <input
+                                    value={row.remark}
+                                    onChange={(event) => updateReceivableFeeRow(activeDetailWaybill.id, row.id, 'remark', event.target.value)}
+                                    className="h-7 w-full rounded border border-slate-200 px-2 text-[11px] outline-none focus:border-blue-500"
+                                  />
+                                </td>
+                                <td className="border border-slate-200 px-3 py-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteReceivableFeeRow(activeDetailWaybill.id, row.id)}
+                                    className="font-semibold text-red-500 hover:underline"
+                                  >
+                                    删除
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        )}
                       </table>
-                      <div className="flex h-44 items-center justify-center border-t border-slate-100 text-xs font-semibold text-slate-500">
-                        暂无数据
-                      </div>
+                      {getReceivableFeeRows(activeDetailWaybill).length === 0 && (
+                        <div className="flex h-44 items-center justify-center border-t border-slate-100 text-xs font-semibold text-slate-500">
+                          暂无数据
+                        </div>
+                      )}
                     </div>
                   </section>
                 </>
