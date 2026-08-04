@@ -2430,7 +2430,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   };
 
   const confirmInstructionFees = () => {
-    const billingTime = formatDateTime();
     const selectedFees = instructionFeeRows
       .filter((row) => selectedFeeCodes.includes(row.code))
       .map((row) => ({
@@ -2439,7 +2438,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
         price: instructionFeePrices[row.code]?.trim() || row.price,
         quantity: instructionFeeQuantities[row.code]?.trim() || '1',
         currency: instructionFeeCurrencies[row.code]?.trim() || row.currency,
-        addedAt: billingTime,
+        addedAt: formatDateTime(),
         addedBy: '天朗（付豪）',
       }));
     if (feeModalTarget === 'quote') {
@@ -4113,7 +4112,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                 <table className="w-full table-fixed border-collapse text-xs">
                   <thead className="bg-slate-50 text-slate-900">
                     <tr>
-                      {['费用名称', '费用类型', '*计费单位', '*计费单价（元）', '*计费数量', '*币种', '总价（元）', '计费时间', '添加人', '描述', '操作'].map((head) => (
+                      {['费用名称', '费用类型', '*计费单位', '*计费单价（元）', '*计费数量', '*币种', '总价（元）', '添加时间', '添加人', '描述', '操作'].map((head) => (
                         <th key={head} className="border border-slate-200 px-3 py-3 text-center font-bold">
                           {head}
                         </th>
