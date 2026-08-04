@@ -32,6 +32,21 @@ interface PickingTransferRow {
   transferNo: string;
 }
 
+interface AddFeeModalRow {
+  id: string;
+  billingTime: string;
+  feeName: string;
+  unit: string;
+  unitPrice: string;
+  quantity: string;
+  currency: string;
+  originalAmount: string;
+  exchangeRate: string;
+  cnyAmount: string;
+  remark: string;
+  internalRemark: string;
+}
+
 const pdfText = (value: string | number) => String(value)
   .replace(/[^\x20-\x7E]/g, '?')
   .replace(/\\/g, '\\\\')
@@ -306,6 +321,8 @@ export default function TableSection({
   const [pickingPanelOpen, setPickingPanelOpen] = useState(false);
   const [pickingDrafts, setPickingDrafts] = useState<Record<string, PickingTransferRow[]>>({});
   const [savedPickingRows, setSavedPickingRows] = useState<Record<string, PickingTransferRow[]>>({});
+  const [addFeeModalOpen, setAddFeeModalOpen] = useState(false);
+  const [addFeeModalRows, setAddFeeModalRows] = useState<AddFeeModalRow[]>([]);
   const [importInfoWaybill, setImportInfoWaybill] = useState<Waybill | null>(null);
   const [importInfoFileName, setImportInfoFileName] = useState('');
   const [importInfoAttachment, setImportInfoAttachment] = useState<WaybillAttachment | null>(null);
@@ -672,6 +689,39 @@ export default function TableSection({
     setTimeout(() => {
       addToast(`系统推单完成，共推送 ${pushCount} 门运单`, 'success');
     }, 1000);
+  };
+
+  const formatLocalDateTime = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+  const openAddFeeModal = () => {
+    setAddFeeModalOpen(true);
+    setAddFeeModalRows([]);
+  };
+
+  const addFeeModalRow = () => {
+    const billingTime = formatLocalDateTime();
+    const template = financeAdditionalFeeOptions[addFeeModalRows.length % financeAdditionalFeeOptions.length] || '附加费';
+    setAddFeeModalRows((prev) => [
+      ...prev,
+      {
+        id: `fee-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        billingTime,
+        feeName: template,
+        unit: '票',
+        unitPrice: '0',
+        quantity: '',
+        currency: '人民币',
+        originalAmount: '0',
+        exchangeRate: '1.00',
+        cnyAmount: '0',
+        remark: '',
+        internalRemark: '',
+      },
+    ]);
+  };
+
+  const updateAddFeeModalRow = (rowId: string, field: keyof AddFeeModalRow, value: string) => {
+    setAddFeeModalRows((prev) => prev.map((row) => (row.id === rowId ? { ...row, [field]: value } : row)));
   };
 
   const handlePrintSystemLabel = () => {
@@ -2160,7 +2210,7 @@ export default function TableSection({
                         </button>
                         <button
                           type="button"
-                          onClick={() => addToast('添加费用功能为展示', 'info')}
+                          onClick={openAddFeeModal}
                           className="rounded border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-50"
                         >
                           添加费用
@@ -2475,6 +2525,195 @@ export default function TableSection({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {addFeeModalOpen && (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/45 px-6 py-8">
+          <div className="flex h-[78vh] w-[1280px] max-w-[calc(100vw-80px)] flex-col overflow-hidden rounded bg-white shadow-2xl">
+            <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200 px-6">
+              <h3 className="text-sm font-bold text-slate-900">添加费用</h3>
+              <button
+                type="button"
+                onClick={() => setAddFeeModalOpen(false)}
+                className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="关闭添加费用"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-hidden bg-slate-50 p-4">
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="mb-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={addFeeModalRow}
+                    className="rounded bg-blue-600 px-5 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
+                  >
+                    + 添加
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto border border-slate-200">
+                  <table className="w-full min-w-[1420px] table-fixed border-collapse text-[11px]">
+                    <thead className="bg-slate-50 text-slate-700">
+                      <tr>
+                        {[
+                          '计费时间',
+                          '费用名称',
+                          '单位',
+                          '单价',
+                          '数量',
+                          '币种',
+                          '原币应收金额',
+                          '汇率',
+                          '人民币应收金额',
+                          '费用备注',
+                          '费用内部备注',
+                        ].map((header) => (
+                          <th key={header} className="border border-slate-200 px-3 py-2 text-center font-semibold">
+                            {header}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {addFeeModalRows.length > 0 ? (
+                        addFeeModalRows.map((row) => (
+                          <tr key={row.id} className="h-12 bg-white">
+                            <td className="border border-slate-200 px-2 text-center text-slate-600">
+                              {row.billingTime}
+                            </td>
+                            <td className="border border-slate-200 px-2">
+                              <select
+                                value={row.feeName}
+                                onChange={(event) => updateAddFeeModalRow(row.id, 'feeName', event.target.value)}
+                                className="h-8 w-full rounded border border-slate-200 bg-white px-2 text-[11px] outline-none focus:border-blue-500"
+                              >
+                                {financeAdditionalFeeOptions.map((option) => (
+                                  <option key={option} value={option}>{option}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="border border-slate-200 px-2">
+                              <select
+                                value={row.unit}
+                                onChange={(event) => updateAddFeeModalRow(row.id, 'unit', event.target.value)}
+                                className="h-8 w-full rounded border border-slate-200 bg-white px-2 text-[11px] outline-none focus:border-blue-500"
+                              >
+                                <option value="票">票</option>
+                                <option value="KG">KG</option>
+                                <option value="箱">箱</option>
+                              </select>
+                            </td>
+                            <td className="border border-slate-200 px-2">
+                              <div className="flex h-8 overflow-hidden rounded border border-slate-200">
+                                <button type="button" className="w-8 bg-slate-50 text-slate-500">-</button>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={row.unitPrice}
+                                  onChange={(event) => updateAddFeeModalRow(row.id, 'unitPrice', event.target.value)}
+                                  className="w-full border-x border-slate-200 px-2 text-center outline-none"
+                                />
+                                <button type="button" className="w-8 bg-slate-50 text-slate-500">+</button>
+                              </div>
+                            </td>
+                            <td className="border border-slate-200 px-2">
+                              <div className="flex h-8 overflow-hidden rounded border border-slate-200">
+                                <button type="button" className="w-8 bg-slate-50 text-slate-500">-</button>
+                                <input
+                                  value={row.quantity}
+                                  placeholder="数量"
+                                  onChange={(event) => updateAddFeeModalRow(row.id, 'quantity', event.target.value)}
+                                  className="w-full border-x border-slate-200 px-2 text-center outline-none"
+                                />
+                                <button type="button" className="w-8 bg-slate-50 text-slate-500">+</button>
+                              </div>
+                            </td>
+                            <td className="border border-slate-200 px-2">
+                              <select
+                                value={row.currency}
+                                onChange={(event) => updateAddFeeModalRow(row.id, 'currency', event.target.value)}
+                                className="h-8 w-full rounded border border-slate-200 bg-white px-2 text-[11px] outline-none focus:border-blue-500"
+                              >
+                                <option>人民币</option>
+                                <option>USD</option>
+                              </select>
+                            </td>
+                            <td className="border border-slate-200 px-3 text-center text-slate-600">{row.originalAmount}</td>
+                            <td className="border border-slate-200 px-2">
+                              <div className="flex h-8 overflow-hidden rounded border border-slate-200">
+                                <button type="button" className="w-8 bg-slate-50 text-slate-500">-</button>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={row.exchangeRate}
+                                  onChange={(event) => updateAddFeeModalRow(row.id, 'exchangeRate', event.target.value)}
+                                  className="w-full border-x border-slate-200 px-2 text-center outline-none"
+                                />
+                                <button type="button" className="w-8 bg-slate-50 text-slate-500">+</button>
+                              </div>
+                            </td>
+                            <td className="border border-slate-200 px-3 text-center text-slate-600">{row.cnyAmount}</td>
+                            <td className="border border-slate-200 px-2">
+                              <textarea
+                                value={row.remark}
+                                onChange={(event) => updateAddFeeModalRow(row.id, 'remark', event.target.value)}
+                                placeholder="请输入内容"
+                                className="h-10 w-full resize-none rounded border border-slate-200 px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                              />
+                            </td>
+                            <td className="border border-slate-200 px-2">
+                              <textarea
+                                value={row.internalRemark}
+                                onChange={(event) => updateAddFeeModalRow(row.id, 'internalRemark', event.target.value)}
+                                placeholder="请输入内容"
+                                className="h-10 w-full resize-none rounded border border-slate-200 px-2 py-1 text-[11px] outline-none focus:border-blue-500"
+                              />
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={11} className="h-24 border border-slate-200 text-center text-xs text-slate-400">
+                            点击右上角“添加”新增费用行
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-3 text-xs text-slate-500">
+                  已选择 {addFeeModalRows.length} 条费用
+                </div>
+              </div>
+            </div>
+
+            <div className="flex h-14 shrink-0 items-center justify-end gap-3 border-t border-slate-200 bg-white px-6">
+              <button
+                type="button"
+                onClick={() => setAddFeeModalOpen(false)}
+                className="rounded border border-slate-300 bg-white px-8 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAddFeeModalOpen(false);
+                  addToast(`已添加 ${addFeeModalRows.length} 条费用`, 'success');
+                }}
+                className="rounded bg-blue-600 px-8 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
+              >
+                确认
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

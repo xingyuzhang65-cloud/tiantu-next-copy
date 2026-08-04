@@ -1571,7 +1571,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const [feeModalTarget, setFeeModalTarget] = useState<FeeModalTarget>('instruction');
   const [selectedFeeCodes, setSelectedFeeCodes] = useState<string[]>([]);
   const [activeDropdownCode, setActiveDropdownCode] = useState<string>('');
-  const [instructionBillingTimes, setInstructionBillingTimes] = useState<Record<string, string>>({});
   const [instructionFeeUnits, setInstructionFeeUnits] = useState<Record<string, string>>(
     () => Object.fromEntries(instructionFeeRows.map((row) => [row.code, row.unit])),
   );
@@ -1835,7 +1834,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     } else {
       setSelectedFeeCodes(existingRows.map((row) => row.code));
     }
-    setInstructionBillingTimes(Object.fromEntries(existingRows.map((row) => [row.code, row.addedAt || ''])));
     setActiveDropdownCode('');
     setShowInstructionModal(true);
   };
@@ -2382,17 +2380,11 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const addDropdownFeeCode = (code: string) => {
     if (!code) return;
     setSelectedFeeCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
-    setInstructionBillingTimes((prev) => (prev[code] ? prev : { ...prev, [code]: formatDateTime() }));
     setActiveDropdownCode('');
   };
 
   const removeFeeCode = (code: string) => {
     setSelectedFeeCodes((prev) => prev.filter((item) => item !== code));
-    setInstructionBillingTimes((prev) => {
-      const next = { ...prev };
-      delete next[code];
-      return next;
-    });
   };
 
   const setOrderInstructionRows = (row: OverseasTransitRow, rows: InstructionFeeRow[]) => {
@@ -2446,7 +2438,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
         price: instructionFeePrices[row.code]?.trim() || row.price,
         quantity: instructionFeeQuantities[row.code]?.trim() || '1',
         currency: instructionFeeCurrencies[row.code]?.trim() || row.currency,
-        addedAt: instructionBillingTimes[row.code] || formatDateTime(),
+        addedAt: formatDateTime(),
         addedBy: '天朗（付豪）',
       }));
     if (feeModalTarget === 'quote') {
@@ -4256,7 +4248,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                             <table className="w-full table-fixed border-collapse text-xs">
                               <thead className="bg-slate-50 text-slate-900">
                                 <tr>
-                                  {['计费时间', '费用名称', '费用类型', '*计费单位', '*计费单价（元）', '*计费数量', '*币种', '描述', '操作'].map((head) => (
+                                  {['费用名称', '费用类型', '*计费单位', '*计费单价（元）', '*计费数量', '*币种', '描述', '操作'].map((head) => (
                                     <th key={head} className="border border-slate-200 px-3 py-2 text-center font-bold">
                                       {head}
                                     </th>
@@ -4269,7 +4261,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                                   if (!row) return null;
                                   return (
                                     <tr key={code} className="h-10 bg-white">
-                                      <td className="border border-slate-200 px-3 text-center text-slate-600">{instructionBillingTimes[code] || '-'}</td>
                                       <td className="border border-slate-200 px-3 text-center font-medium">{row.name}</td>
                                       <td className="border border-slate-200 px-3 text-center">{row.type}</td>
                                       <td className="border border-slate-200 px-2 text-center">
