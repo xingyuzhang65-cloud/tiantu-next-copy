@@ -9,6 +9,7 @@ import WarehouseTransitOutPage from './components/WarehouseTransitOutPage';
 import OverseasTransitPage from './components/OverseasTransitPage';
 import WarehouseShipmentPage from './components/WarehouseShipmentPage';
 import OverseasTransitOrderPage from './components/OverseasTransitOrderPage';
+import OverseasWarehouseInterceptPage from './components/OverseasWarehouseInterceptPage';
 import ExpressOrderPage from './components/ExpressOrderPage';
 import UserManagementPage from './components/UserManagementPage';
 import MarketingDashboardPage from './components/MarketingDashboardPage';
@@ -547,6 +548,8 @@ export default function App() {
           <OverseasTransitOrderPage addToast={addToast} />
         ) : currentTab === '海外暂存' ? (
           <OverseasTransitPage addToast={addToast} initialView="list" mode="storage" />
+        ) : currentTab === '海外仓拦截' ? (
+          <OverseasWarehouseInterceptPage addToast={addToast} />
         ) : currentTab === '快递单' ? (
           <ExpressOrderPage addToast={addToast} />
         ) : currentTab === '仓库出货' ? (
