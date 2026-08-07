@@ -147,6 +147,18 @@
   background: #168ff5;
 }
 
+.mc-btn.danger {
+  border-color: #e5484d;
+  color: #e5484d;
+  background: #fff;
+}
+
+.mc-btn.danger:hover:not(:disabled) {
+  border-color: #c92f36;
+  color: #c92f36;
+  background: #fff5f5;
+}
+
 .mc-btn:disabled {
   cursor: not-allowed;
   color: #a7b0b9;
@@ -461,6 +473,25 @@
   background: #f0f3f6;
 }
 
+.mc-intercept-detail-edit-button {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  color: #168ff5;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mc-intercept-detail-edit-button:hover {
+  background: #eef6ff;
+}
+
 /* 批量备注弹窗 */
 .mc-intercept-batch-remark-modal {
   width: 440px;
@@ -744,6 +775,26 @@
   font-weight: 700;
 }
 
+.mc-intercept-detail-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.mc-intercept-detail-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: #6b7580;
+  font-size: 11px;
+}
+
+.mc-intercept-detail-summary strong {
+  color: #17212b;
+}
+
 /* Tab 栏样式（参考海外中转单） */
 .mc-intercept-detail-tabs {
   display: flex;
@@ -825,7 +876,7 @@
 /* 费用表格 */
 .mc-intercept-fee-table {
   width: 100%;
-  min-width: 860px;
+  min-width: 1120px;
   table-layout: fixed;
   border-collapse: collapse;
   color: #55616c;
@@ -858,62 +909,6 @@
 }
 
 /* 其他信息 */
-.mc-intercept-other-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 15px 24px;
-}
-
-.mc-intercept-other-field {
-  display: block;
-  min-width: 0;
-  font-size: 12px;
-}
-
-.mc-intercept-other-full {
-  grid-column: 1 / -1;
-}
-
-.mc-intercept-other-field label {
-  display: block;
-  margin-bottom: 6px;
-  color: #8a949d;
-  font-weight: 600;
-}
-
-.mc-intercept-other-value {
-  min-width: 0;
-  color: #3c4853;
-  line-height: 20px;
-  overflow-wrap: anywhere;
-}
-
-.mc-intercept-service-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.mc-intercept-service-tag {
-  display: inline-flex;
-  padding: 3px 10px;
-  border-radius: 4px;
-  background: #f0f4ff;
-  color: #2563eb;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.mc-intercept-attachment-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.mc-intercept-attachment-list li {
-  margin-bottom: 4px;
-}
-
 .mc-intercept-detail-section {
   margin: 12px 14px 0;
   padding: 20px 22px;
@@ -974,7 +969,7 @@
 
 .mc-intercept-cargo-box-table {
   width: 100%;
-  min-width: 700px;
+  min-width: 1100px;
   table-layout: fixed;
   border-collapse: collapse;
   color: #55616c;
@@ -1000,6 +995,10 @@
 .mc-intercept-cargo-box-table tbody tr:nth-child(even) td {
   background: #fbfcfd;
 }
+
+.mc-intercept-cargo-box-table th:nth-child(1) { width: 260px; }
+.mc-intercept-cargo-box-table th:nth-child(2) { width: 220px; }
+.mc-intercept-cargo-box-table th:nth-child(3) { width: 220px; }
 
 .mc-cargo-box-code {
   font-family: Consolas, monospace;
@@ -1080,6 +1079,41 @@
   justify-content: center;
 }
 
+.mc-intercept-attachment-overlay {
+  z-index: 130;
+}
+
+.mc-intercept-attachment-modal {
+  width: 520px;
+  max-width: 92vw;
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .24);
+}
+
+.mc-intercept-attachment-modal > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid #e8edf1;
+}
+
+.mc-intercept-attachment-modal > header h2 {
+  margin: 0;
+  color: #17212b;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.mc-intercept-attachment-modal > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 14px 40px 18px;
+  border-top: 1px solid #e8edf1;
+}
+
 .mc-intercept-feedback-modal {
   width: 480px;
   border-radius: 3px;
@@ -1131,6 +1165,164 @@
   color: #58636e;
   font: inherit;
   outline: none;
+}
+
+.mc-intercept-fee-modal-body {
+  display: grid;
+  gap: 14px;
+  max-height: calc(100vh - 210px);
+  padding: 18px 22px 16px;
+  overflow: auto;
+  background: #f3f7fd;
+}
+
+.mc-storage-fee-modal {
+  display: flex;
+  width: min(96vw, 1520px);
+  max-height: calc(100vh - 32px);
+  flex-direction: column;
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .24);
+}
+
+.mc-storage-fee-modal-header {
+  display: flex;
+  flex: 0 0 54px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  border-bottom: 1px solid #e8edf1;
+}
+
+.mc-storage-fee-modal-header h2 {
+  margin: 0;
+  color: #17212b;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.mc-storage-fee-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mc-storage-fee-modal-actions .mc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mc-storage-fee-modal-actions .mc-intercept-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mc-storage-fee-modal-body {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  align-content: start;
+  gap: 12px;
+  padding: 16px 18px;
+  overflow: auto;
+  background: #f3f7fd;
+}
+
+.mc-storage-fee-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #e1e6eb;
+  border-radius: 3px;
+  color: #6b7580;
+  background: #fff;
+  font-size: 11px;
+}
+
+.mc-storage-fee-summary > span {
+  color: #26323d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mc-storage-fee-summary > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 16px;
+}
+
+.mc-storage-fee-summary strong {
+  color: #17212b;
+  font-weight: 700;
+}
+
+.mc-storage-fee-table-wrap {
+  overflow: auto;
+  border: 1px solid #e1e6eb;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.mc-storage-fee-table {
+  min-width: 1460px;
+}
+
+.mc-storage-fee-table th:nth-child(1) { width: 156px; }
+.mc-storage-fee-table th:nth-child(2) { width: 178px; }
+.mc-storage-fee-table th:nth-child(3) { width: 112px; }
+.mc-storage-fee-table th:nth-child(4),
+.mc-storage-fee-table th:nth-child(5),
+.mc-storage-fee-table th:nth-child(6),
+.mc-storage-fee-table th:nth-child(7),
+.mc-storage-fee-table th:nth-child(8) { width: 90px; }
+.mc-storage-fee-table th:nth-child(9),
+.mc-storage-fee-table th:nth-child(10) { width: 112px; }
+.mc-storage-fee-table th:nth-child(11) { width: 166px; }
+.mc-storage-fee-table th:nth-child(12) { width: 64px; }
+
+.mc-storage-fee-amount {
+  color: #26323d;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-storage-fee-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: 0;
+  border-radius: 2px;
+  color: #e5484d;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mc-storage-fee-delete:hover {
+  color: #c92f36;
+  background: #fff1f2;
+}
+
+.mc-storage-fee-modal-footer {
+  display: flex;
+  flex: 0 0 56px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 18px;
+  border-top: 1px solid #e8edf1;
+  background: #fff;
+}
+
+.mc-storage-fee-modal-footer .mc-btn {
+  min-width: 88px;
 }
 
 .mc-required::before {

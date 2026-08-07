@@ -19,6 +19,8 @@ import {
 import type { AddressFormState, ReleaseInstruction } from './overseasTransitAddress';
 import { cancelCreatedTransitChildOrders, confirmCreatedTransitChildOrders, getCreatedTransitChildOrders, markCreatedTransitChildOrdersAsOrdered, rejectCreatedTransitChildOrders, reopenRejectedCreatedTransitChildOrders, rollbackCreatedTransitChildOrdersToConfirmed, rollbackCreatedTransitChildOrdersToOrdered, rollbackSignedCreatedTransitChildOrdersToTransit, shipCreatedTransitChildOrders, signCreatedTransitChildOrders, subscribeOverseasTransitFlow, updateCreatedTransitChildOrderInstructions, updateCreatedTransitChildOrderRemarks, voidRejectedCreatedTransitChildOrders } from './overseasTransitFlow';
 import type { CreatedTransitAttachment, CreatedTransitChildOrder, CreatedTransitInstruction, OverseasWarehouseArrivalStatus, TransitReconciliationStatus } from './overseasTransitFlow';
+import OverseasFeeModal from './OverseasFeeModal';
+import type { OverseasFeeDraftRow, OverseasFeeEditableField } from './OverseasFeeModal';
 
 interface OverseasTransitOrderPageProps {
   addToast: (msg: string, type: 'success' | 'info' | 'warning') => void;
@@ -778,10 +780,20 @@ const attachmentRows = [
 
 type InstructionFeeRow = (typeof instructionFeeRows)[number] & {
   quantity?: string;
+  billingTime?: string;
+  exchangeRate?: string;
+  remark?: string;
   addedAt?: string;
   addedBy?: string;
 };
-type QuoteFeeRow = (typeof quoteFeeRows)[number];
+type QuoteFeeRow = (typeof quoteFeeRows)[number] & {
+  billingTime?: string;
+  remark?: string;
+};
+type TransitFeeDraft = OverseasFeeDraftRow<string> & {
+  code: string;
+  description: string;
+};
 type AttachmentRow = (typeof attachmentRows)[number] & { file?: File };
 
 const getReconciliationStatus = (row: Pick<OverseasTransitRow, 'reconciliationStatus'>): TransitReconciliationStatus =>
@@ -1404,7 +1416,7 @@ const describeQuoteFee = (row: QuoteFeeRow) => `${row.name} / ${row.price} ${row
 
 const createQuoteFeeRow = (fee: InstructionFeeRow, sequence: number): QuoteFeeRow => {
   const currency = normalizeCurrency(fee.currency);
-  const exchangeRate = getExchangeRate(currency);
+  const exchangeRate = fee.exchangeRate || getExchangeRate(currency);
   const quantity = fee.quantity || '1票';
   const baseRow = {
     code: `${fee.code}-Q${sequence}`,
@@ -1416,11 +1428,46 @@ const createQuoteFeeRow = (fee: InstructionFeeRow, sequence: number): QuoteFeeRo
     unit: fee.unit,
     quantity,
     amount: '0',
-    addedAt: formatDateTime(),
-    addedBy: '天朗（付豪）',
-    description: fee.description,
+    addedAt: fee.addedAt || formatDateTime(),
+    addedBy: fee.addedBy || '天朗（付豪）',
+    billingTime: fee.billingTime || fee.addedAt || formatDateTime(),
+    description: fee.remark || fee.description,
+    remark: fee.remark || fee.description,
   };
   return { ...baseRow, amount: getQuoteAmount(baseRow) };
+};
+
+const createTransitFeeDraft = (row: InstructionFeeRow): TransitFeeDraft => ({
+  id: row.code,
+  code: row.code,
+  billingTime: row.billingTime || row.addedAt || formatDateTime(),
+  name: row.name,
+  type: row.type,
+  unit: row.unit,
+  exchangeRate: row.exchangeRate || getExchangeRate(row.currency),
+  unitPrice: row.price,
+  quantity: row.quantity || '1',
+  currency: row.currency === '美元' ? 'USD' : row.currency,
+  remark: row.remark || row.description || '',
+  description: row.description || '',
+});
+
+const createEmptyTransitFeeDraft = (): TransitFeeDraft => {
+  const now = formatDateTime();
+  return {
+    id: `transit-fee-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    code: '',
+    billingTime: now,
+    name: '',
+    type: '操作费',
+    unit: '票',
+    exchangeRate: '1',
+    unitPrice: '0',
+    quantity: '1',
+    currency: '人民币',
+    remark: '',
+    description: '',
+  };
 };
 
 const getOrderLogRows = (row: OverseasTransitRow): OrderLogRow[] => [
@@ -1569,21 +1616,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const [signedRollbackConfirmOrderKeys, setSignedRollbackConfirmOrderKeys] = useState<string[]>([]);
   const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [feeModalTarget, setFeeModalTarget] = useState<FeeModalTarget>('instruction');
-  const [selectedFeeCodes, setSelectedFeeCodes] = useState<string[]>([]);
-  const [activeDropdownCode, setActiveDropdownCode] = useState<string>('');
-  const [instructionBillingTimes, setInstructionBillingTimes] = useState<Record<string, string>>({});
-  const [instructionFeeUnits, setInstructionFeeUnits] = useState<Record<string, string>>(
-    () => Object.fromEntries(instructionFeeRows.map((row) => [row.code, row.unit])),
-  );
-  const [instructionFeePrices, setInstructionFeePrices] = useState<Record<string, string>>(
-    () => Object.fromEntries(instructionFeeRows.map((row) => [row.code, row.price])),
-  );
-  const [instructionFeeQuantities, setInstructionFeeQuantities] = useState<Record<string, string>>(
-    () => Object.fromEntries(instructionFeeRows.map((row) => [row.code, '1'])),
-  );
-  const [instructionFeeCurrencies, setInstructionFeeCurrencies] = useState<Record<string, string>>(
-    () => Object.fromEntries(instructionFeeRows.map((row) => [row.code, row.currency])),
-  );
+  const [feeDraftRows, setFeeDraftRows] = useState<TransitFeeDraft[]>([]);
   const [instructionRowsByOrder, setInstructionRowsByOrder] = useState<Record<string, InstructionFeeRow[]>>({});
   const [quoteRowsByOrder, setQuoteRowsByOrder] = useState<Record<string, QuoteFeeRow[]>>({});
   const [quoteLogsByOrder, setQuoteLogsByOrder] = useState<Record<string, OrderLogRow[]>>({});
@@ -1666,7 +1699,6 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   const activeOrderKey = activeOrder ? getOrderKey(activeOrder) : '';
   const isReorderingRejectedOrder = !!activeOrder && reorderingRejectedOrderKeys.includes(activeOrderKey);
   const showsOrderForm = !!activeOrder && (usesOrderFormTemplate(activeOrder.status) || isReorderingRejectedOrder);
-  const canEditFeeSelectionFields = feeModalTarget === 'instruction' && showsOrderForm;
   const addressForm = activeOrder ? (addressFormsByOrder[activeOrderKey] || getParentStorageAddressForm(activeOrder)) : emptyAddressForm;
   const getOrderReleaseInstructionForRow = (row: OverseasTransitRow) =>
     releaseInstructionByOrder[getOrderKey(row)] ?? getOrderReleaseInstruction(row);
@@ -1805,38 +1837,8 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
 
   const openFeeSelector = (target: FeeModalTarget) => {
     setFeeModalTarget(target);
-    const existingRows = activeOrder ? getInstructionRowsForOrder(activeOrder) : [];
-    setInstructionFeeUnits((prev) => Object.fromEntries(
-      instructionFeeRows.map((row) => [
-        row.code,
-        existingRows.find((item) => item.code === row.code)?.unit || prev[row.code] || row.unit,
-      ]),
-    ));
-    setInstructionFeePrices((prev) => Object.fromEntries(
-      instructionFeeRows.map((row) => [
-        row.code,
-        existingRows.find((item) => item.code === row.code)?.price || prev[row.code] || row.price,
-      ]),
-    ));
-    setInstructionFeeQuantities((prev) => Object.fromEntries(
-      instructionFeeRows.map((row) => [
-        row.code,
-        existingRows.find((item) => item.code === row.code)?.quantity || prev[row.code] || '1',
-      ]),
-    ));
-    setInstructionFeeCurrencies((prev) => Object.fromEntries(
-      instructionFeeRows.map((row) => [
-        row.code,
-        existingRows.find((item) => item.code === row.code)?.currency || prev[row.code] || row.currency,
-      ]),
-    ));
-    if (target === 'quote') {
-      setSelectedFeeCodes([instructionFeeRows[0].code]);
-    } else {
-      setSelectedFeeCodes(existingRows.map((row) => row.code));
-    }
-    setInstructionBillingTimes(Object.fromEntries(existingRows.map((row) => [row.code, row.addedAt || ''])));
-    setActiveDropdownCode('');
+    const existingRows = target === 'instruction' && activeOrder ? getInstructionRowsForOrder(activeOrder) : [];
+    setFeeDraftRows(existingRows.map(createTransitFeeDraft));
     setShowInstructionModal(true);
   };
 
@@ -2375,24 +2377,42 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
     addToast(`已回退 ${rows.length} 条签收子单，返回状态：转运中`, 'success');
   };
 
-  const toggleFeeCode = (code: string) => {
-    setSelectedFeeCodes((prev) => (prev.includes(code) ? prev.filter((item) => item !== code) : [...prev, code]));
+  const updateFeeDraftRow = (draftId: string, field: OverseasFeeEditableField, value: string) => {
+    setFeeDraftRows((rows) => rows.map((row) => {
+      if (row.id !== draftId) return row;
+      if (field === 'name') {
+        const catalogRow = instructionFeeRows.find((item) => item.name === value || item.code === value);
+        return catalogRow
+          ? {
+              ...row,
+              code: catalogRow.code,
+              name: catalogRow.name,
+              type: catalogRow.type,
+              unit: catalogRow.unit,
+              unitPrice: catalogRow.price,
+              currency: catalogRow.currency,
+              exchangeRate: catalogRow.currency === '人民币' ? '1' : row.exchangeRate,
+              description: catalogRow.description,
+            }
+          : { ...row, code: '', name: value };
+      }
+      if (field === 'currency') {
+        return {
+          ...row,
+          currency: value,
+          exchangeRate: value === '人民币' ? '1' : (row.exchangeRate === '1' ? '7.014' : row.exchangeRate),
+        };
+      }
+      return { ...row, [field]: value };
+    }));
   };
 
-  const addDropdownFeeCode = (code: string) => {
-    if (!code) return;
-    setSelectedFeeCodes((prev) => (prev.includes(code) ? prev : [...prev, code]));
-    setInstructionBillingTimes((prev) => (prev[code] ? prev : { ...prev, [code]: formatDateTime() }));
-    setActiveDropdownCode('');
+  const addFeeDraftRow = () => {
+    setFeeDraftRows((rows) => [...rows, createEmptyTransitFeeDraft()]);
   };
 
-  const removeFeeCode = (code: string) => {
-    setSelectedFeeCodes((prev) => prev.filter((item) => item !== code));
-    setInstructionBillingTimes((prev) => {
-      const next = { ...prev };
-      delete next[code];
-      return next;
-    });
+  const removeFeeDraftRow = (draftId: string) => {
+    setFeeDraftRows((rows) => rows.filter((row) => row.id !== draftId));
   };
 
   const setOrderInstructionRows = (row: OverseasTransitRow, rows: InstructionFeeRow[]) => {
@@ -2438,17 +2458,44 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
   };
 
   const confirmInstructionFees = () => {
-    const selectedFees = instructionFeeRows
-      .filter((row) => selectedFeeCodes.includes(row.code))
-      .map((row) => ({
-        ...row,
-        unit: instructionFeeUnits[row.code]?.trim() || row.unit,
-        price: instructionFeePrices[row.code]?.trim() || row.price,
-        quantity: instructionFeeQuantities[row.code]?.trim() || '1',
-        currency: instructionFeeCurrencies[row.code]?.trim() || row.currency,
-        addedAt: instructionBillingTimes[row.code] || formatDateTime(),
-        addedBy: '天朗（付豪）',
-      }));
+    const confirmedAt = formatDateTime();
+    const existingInstructions = feeModalTarget === 'instruction' && activeOrder
+      ? getInstructionRowsForOrder(activeOrder)
+      : [];
+    const usedCodes = new Set<string>();
+    const selectedFees: InstructionFeeRow[] = feeDraftRows.map((draft, index) => {
+      const existingInstruction = existingInstructions.find((row) => row.code === draft.id);
+      const catalogRow = instructionFeeRows.find((item) => item.code === draft.code || item.name === draft.name.trim());
+      const requestedCode = draft.code || catalogRow?.code || `TRANSIT-FEE-${draft.id}`;
+      const code = usedCodes.has(requestedCode) ? `${requestedCode}-${index + 1}` : requestedCode;
+      const name = draft.name.trim() || catalogRow?.name || `费用${index + 1}`;
+      const remark = draft.remark.trim() || draft.description.trim();
+      usedCodes.add(code);
+      return {
+        ...(catalogRow || {
+          code,
+          name,
+          type: draft.type.trim() || '操作费',
+          unit: draft.unit.trim() || '票',
+          price: draft.unitPrice.trim() || '0',
+          currency: draft.currency,
+          description: remark,
+        }),
+        code,
+        name,
+        type: draft.type.trim() || catalogRow?.type || '操作费',
+        unit: draft.unit.trim() || catalogRow?.unit || '票',
+        price: draft.unitPrice.trim() || catalogRow?.price || '0',
+        quantity: draft.quantity.trim() || '1',
+        currency: draft.currency || catalogRow?.currency || '人民币',
+        billingTime: draft.billingTime.trim() || confirmedAt,
+        exchangeRate: draft.exchangeRate.trim() || '1',
+        remark,
+        addedAt: existingInstruction?.addedAt || confirmedAt,
+        addedBy: existingInstruction?.addedBy || '天朗（付豪）',
+        description: remark,
+      };
+    });
     if (feeModalTarget === 'quote') {
       if (!activeOrder) return;
       const orderKey = getOrderKey(activeOrder);
@@ -2468,6 +2515,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
         note: `新增 ${nextRows.length} 条报价费用明细`,
       });
       setShowInstructionModal(false);
+      setFeeDraftRows([]);
       addToast(`已添加 ${nextRows.length} 条报价费用明细`, 'success');
       return;
     }
@@ -2494,6 +2542,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
       }
     }
     setShowInstructionModal(false);
+    setFeeDraftRows([]);
     addToast(`已添加 ${selectedFees.length} 条操作指令`, 'success');
   };
 
@@ -4190,178 +4239,15 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                 </div>
               )}
               {showInstructionModal && (
-                <div className="absolute inset-0 z-[90] bg-black/50">
-                  <div className="absolute right-0 top-0 flex h-full w-[72vw] min-w-[980px] flex-col bg-white shadow-2xl">
-                    <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-8">
-                      <h3 className="text-sm font-bold text-slate-950">{feeModalTarget === 'quote' ? '添加报价费用明细' : '添加指令'}</h3>
-                      <button
-                        type="button"
-                        onClick={() => setShowInstructionModal(false)}
-                        className="rounded p-1 text-slate-600 hover:bg-slate-100"
-                        aria-label="关闭添加指令"
-                      >
-                        <X className="h-5 w-5" />
-                      </button>
-                    </div>
-
-                    <div className="min-h-0 flex-1 overflow-auto bg-[#f3f7fd] p-4">
-                      <div className="rounded-2xl bg-white p-4 shadow-sm">
-                        <div className="mb-4 grid grid-cols-[auto_220px_auto_220px_auto_auto] items-center gap-4 text-xs">
-                          <span className="font-bold text-slate-900">费用名称：</span>
-                          <input className={fieldClass} placeholder="请输入代码/名称" />
-                          <span className="font-bold text-slate-900">费用类型：</span>
-                          <select className={fieldClass} defaultValue="">
-                            <option value="">请选择费用类型</option>
-                            <option>仓储费</option>
-                            <option>操作费</option>
-                          </select>
-                          <button className="h-8 rounded bg-blue-600 px-8 text-xs font-bold text-white hover:bg-blue-700" type="button">
-                            搜索
-                          </button>
-                          <button className="h-8 rounded border border-slate-300 bg-white px-8 text-xs font-semibold text-slate-700 hover:bg-slate-50" type="button">
-                            重置
-                          </button>
-                        </div>
-
-                        {/* ── Dropdown instruction selector ── */}
-                        <div className="mb-4 flex items-center gap-3">
-                          <label className="text-xs font-bold text-slate-900 whitespace-nowrap">选择指令：</label>
-                          <select
-                            value={activeDropdownCode}
-                            onChange={(e) => setActiveDropdownCode(e.target.value)}
-                            className="h-8 flex-1 rounded border border-slate-300 bg-white px-3 text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                          >
-                            <option value="">请选择要添加的指令</option>
-                            {instructionFeeRows
-                              .filter((row) => !selectedFeeCodes.includes(row.code))
-                              .map((row) => (
-                                <option key={row.code} value={row.code}>
-                                  {row.name}（{row.code}）
-                                </option>
-                              ))}
-                          </select>
-                          <button
-                            type="button"
-                            onClick={() => addDropdownFeeCode(activeDropdownCode)}
-                            disabled={!activeDropdownCode}
-                            className="h-8 rounded bg-blue-600 px-5 text-xs font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            添加至列表
-                          </button>
-                        </div>
-
-                        {/* ── Selected instructions table ── */}
-                        {selectedFeeCodes.length > 0 ? (
-                          <div className="overflow-x-auto rounded-lg border border-slate-200">
-                            <table className="w-full table-fixed border-collapse text-xs">
-                              <thead className="bg-slate-50 text-slate-900">
-                                <tr>
-                                  {['计费时间', '费用名称', '费用类型', '*计费单位', '*计费单价（元）', '*计费数量', '*币种', '描述', '操作'].map((head) => (
-                                    <th key={head} className="border border-slate-200 px-3 py-2 text-center font-bold">
-                                      {head}
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {selectedFeeCodes.map((code) => {
-                                  const row = instructionFeeRows.find((r) => r.code === code);
-                                  if (!row) return null;
-                                  return (
-                                    <tr key={code} className="h-10 bg-white">
-                                      <td className="border border-slate-200 px-3 text-center text-slate-600">{instructionBillingTimes[code] || '-'}</td>
-                                      <td className="border border-slate-200 px-3 text-center font-medium">{row.name}</td>
-                                      <td className="border border-slate-200 px-3 text-center">{row.type}</td>
-                                      <td className="border border-slate-200 px-2 text-center">
-                                        <select
-                                          value={instructionFeeUnits[code] ?? row.unit}
-                                          disabled={!canEditFeeSelectionFields}
-                                          onChange={(event) => setInstructionFeeUnits((prev) => ({ ...prev, [code]: event.target.value }))}
-                                          className="h-7 w-full min-w-0 rounded border border-slate-200 bg-white px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
-                                        >
-                                          <option value="票">票</option>
-                                          <option value="箱">箱</option>
-                                          <option value="KG">KG</option>
-                                        </select>
-                                      </td>
-                                      <td className="border border-slate-200 px-2 text-center">
-                                        <input
-                                          type="number" min="0" step="any"
-                                          disabled={!canEditFeeSelectionFields}
-                                          value={instructionFeePrices[code] ?? row.price}
-                                          onChange={(event) => setInstructionFeePrices((prev) => ({ ...prev, [code]: event.target.value }))}
-                                          onBlur={() => setInstructionFeePrices((prev) => ({ ...prev, [code]: prev[code]?.trim() || row.price }))}
-                                          className="h-7 w-full min-w-0 rounded border border-slate-200 px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
-                                        />
-                                      </td>
-                                      <td className="border border-slate-200 px-2 text-center">
-                                        <input
-                                          type="number" min="0" step="any"
-                                          disabled={!canEditFeeSelectionFields}
-                                          value={instructionFeeQuantities[code] ?? '1'}
-                                          onChange={(event) => setInstructionFeeQuantities((prev) => ({ ...prev, [code]: event.target.value }))}
-                                          onBlur={() => setInstructionFeeQuantities((prev) => ({ ...prev, [code]: prev[code]?.trim() || '1' }))}
-                                          className="h-7 w-full min-w-0 rounded border border-slate-200 px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
-                                        />
-                                      </td>
-                                      <td className="border border-slate-200 px-2 text-center">
-                                        <select
-                                          value={instructionFeeCurrencies[code] ?? row.currency}
-                                          disabled={!canEditFeeSelectionFields}
-                                          onChange={(event) => setInstructionFeeCurrencies((prev) => ({ ...prev, [code]: event.target.value }))}
-                                          className="h-7 w-full min-w-0 rounded border border-slate-200 bg-white px-2 text-center text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed disabled:border-transparent disabled:bg-transparent disabled:text-slate-700 disabled:opacity-100"
-                                        >
-                                          <option>人民币</option>
-                                          <option>USD</option>
-                                        </select>
-                                      </td>
-                                      <td className="border border-slate-200 px-3 text-center text-slate-500">{row.description}</td>
-                                      <td className="border border-slate-200 px-3 text-center">
-                                        <button
-                                          type="button"
-                                          onClick={() => removeFeeCode(code)}
-                                          className="font-semibold text-red-500 hover:underline"
-                                        >
-                                          移除
-                                        </button>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : (
-                          <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-400">
-                            暂未选择指令，请从上方下拉框中选择并添加
-                          </div>
-                        )}
-
-                        <div className="mt-4 text-xs text-slate-600">
-                          <span>已选中 <strong className="text-blue-600">{selectedFeeCodes.length}</strong> 条指令</span>
-                          <span className="ml-4 text-slate-400">共 {instructionFeeRows.length} 条可选</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex h-14 shrink-0 items-center justify-center gap-5 border-t border-slate-200 bg-white">
-                      <button
-                        type="button"
-                        onClick={confirmInstructionFees}
-                        className="rounded bg-blue-600 px-8 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
-                      >
-                        确认
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowInstructionModal(false)}
-                        className="rounded border border-slate-300 bg-white px-8 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        取消
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <OverseasFeeModal
+                  rows={feeDraftRows}
+                  catalogRows={instructionFeeRows}
+                  onAdd={addFeeDraftRow}
+                  onUpdate={updateFeeDraftRow}
+                  onRemove={removeFeeDraftRow}
+                  onCancel={() => { setShowInstructionModal(false); setFeeDraftRows([]); }}
+                  onConfirm={confirmInstructionFees}
+                />
               )}
 
               {editingInstruction && (

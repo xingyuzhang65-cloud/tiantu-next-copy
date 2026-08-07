@@ -1,4 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { FileText } from 'lucide-react';
+import OverseasFeeModal from './OverseasFeeModal';
+import type { OverseasFeeEditableField } from './OverseasFeeModal';
 
 type InterceptStatus = '待处理' | '拦截中' | '拦截成功' | '拦截失败' | '已取消';
 type CargoStatus = '未拆柜' | '已拆柜' | '已出库' | '暂存中';
@@ -13,9 +16,11 @@ interface InterceptLog {
 
 interface InterceptFee {
   id: number;
+  billingTime?: string;
   name: string;
   type: string;
   unit: string;
+  exchangeRate?: number;
   unitPrice: number;
   quantity: number;
   currency: string;
@@ -23,6 +28,7 @@ interface InterceptFee {
   addedAt: string;
   addedBy: string;
   description: string;
+  remark?: string;
 }
 
 interface InterceptTask {
@@ -83,6 +89,7 @@ interface FilterState {
 
 interface OverseasWarehouseInterceptPageProps {
   addToast?: (text: string, type?: 'success' | 'info' | 'warning') => void;
+  onOpenStorage?: (storageNo?: string) => void;
 }
 
 const emptyFilters: FilterState = {
@@ -199,6 +206,7 @@ const initialTasks: InterceptTask[] = [
     customerOrderNo: 'CO-20260803-03',
     billOfLading: 'BL-003',
     latestTracking: '2026-08-03 12:00 货物在库，拦截中',
+    cargoStatus: '已拆柜',
     inventoryStatus: '已入库',
     outboundStatus: '未出库',
     boxes: 5,
@@ -241,6 +249,7 @@ const initialTasks: InterceptTask[] = [
     customerOrderNo: 'CO-20260802-04',
     billOfLading: 'BL-004',
     latestTracking: '2026-08-02 14:00 已转入暂存库位 A02-03',
+    cargoStatus: '暂存中',
     inventoryStatus: '暂存',
     outboundStatus: '未出库',
     boxes: 2,
@@ -285,6 +294,7 @@ const initialTasks: InterceptTask[] = [
     customerOrderNo: 'CO-20260801-05',
     billOfLading: 'BL-005',
     latestTracking: '2026-08-01 16:00 货物已完成出库，已送达',
+    cargoStatus: '已出库',
     inventoryStatus: '无库存',
     outboundStatus: '已出库',
     boxes: 3,
@@ -325,6 +335,7 @@ const initialTasks: InterceptTask[] = [
     customerOrderNo: 'CO-20260731-06',
     billOfLading: 'BL-006',
     latestTracking: '2026-07-31 09:00 已取消，货物正常出库',
+    cargoStatus: '已拆柜',
     inventoryStatus: '已入库',
     outboundStatus: '未出库',
     boxes: 4,
@@ -357,6 +368,8 @@ const initialTasks: InterceptTask[] = [
 
 const nowText = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
+let persistedInterceptTasks: InterceptTask[] | null = null;
+
 function statusClass(status: InterceptStatus) {
   return {
     待处理: 'is-pending',
@@ -378,23 +391,154 @@ function makeDownloadHref(task: InterceptTask) {
   return `data:text/plain;charset=utf-8,${encodeURIComponent(`拦截单号: ${task.no}\n拦截原因: ${task.reason}\n附件名称: ${task.attachment}\n`)}`;
 }
 
-function cargoBoxRows(task: InterceptTask) {
+const interceptDetailTabs = ['货箱信息', '费用信息', '其它信息'] as const;
+type InterceptDetailTab = (typeof interceptDetailTabs)[number];
+
+type InterceptFeeDraft = {
+  id: number;
+  billingTime: string;
+  name: string;
+  type: string;
+  unit: string;
+  exchangeRate: string;
+  unitPrice: string;
+  quantity: string;
+  currency: string;
+  remark: string;
+};
+
+type InterceptAttachmentRow = {
+  id: string;
+  name: string;
+  type: string;
+  customerVisible: '可见' | '不可见';
+  fileSize: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  file?: File;
+};
+
+type InterceptAttachmentFormState = {
+  fileName: string;
+  fileSize: string;
+  type: string;
+  customerVisible: '可见' | '不可见';
+};
+
+const interceptAttachmentTypeOptions = ['POD', 'ISA', '报关资料', '底单', '其他', '其它', '税金单', '递延资料', '提单'];
+const emptyInterceptAttachmentForm: InterceptAttachmentFormState = {
+  fileName: '',
+  fileSize: '',
+  type: '其他',
+  customerVisible: '可见',
+};
+
+interface InterceptCargoRow {
+  boxNo: string;
+  customerLines: string[];
+  pickingLines: string[];
+  warehouse: string;
+  returnNo: string;
+  status: string;
+  note: string;
+}
+
+function getInterceptCargoRows(task: InterceptTask): InterceptCargoRow[] {
   const count = Math.max(1, Number(task.actualBoxes || task.boxes || 1));
-  return Array.from({ length: Math.min(count, 8) }, (_, index) => {
+  const totalRows = Math.min(count, 12);
+  const boxPrefix = task.container || task.no;
+  const currentStatus = task.status === '拦截成功'
+    ? '已转暂存'
+    : task.status === '拦截中'
+      ? '拦截处理中'
+      : task.status === '拦截失败'
+        ? '拦截失败'
+        : task.status === '已取消'
+          ? '已取消'
+          : '待确认';
+
+  return Array.from({ length: totalRows }, (_, index) => {
     const boxIndex = index + 1;
-    const systemCode = task.container || task.no;
-    const boxStatus = task.status === '拦截失败' || task.cargoStatus === '已出库' ? '已出库' : task.status === '拦截成功' ? '暂存中' : '待出库';
+    const boxWeight = (0.28 + index * 0.07).toFixed(3);
+    const boxRealWeight = (7.5 + index * 1.35).toFixed(1);
+
     return {
-      systemBoxNo: `${systemCode}-${String(boxIndex).padStart(2, '0')}`,
-      customerData: `${task.customer} / ${task.no}`,
-      pickingData: `材重 ${(0.28 + index * 0.07).toFixed(3)} / 实重 ${(7.5 + index * 1.4).toFixed(1)}`,
-      boxStatus,
+      boxNo: `${boxPrefix}-${String(boxIndex).padStart(2, '0')}`,
+      customerLines: [
+        `客户：${task.customer}`,
+        `拦截单：${task.no}`,
+        `申请仓库：${task.warehouse}`,
+      ],
+      pickingLines: [
+        `系统拣货 ${boxIndex}/${count}`,
+        `材重 ${boxWeight} / 实重 ${boxRealWeight}`,
+      ],
+      warehouse: task.warehouse,
+      returnNo: task.storageNo || task.referenceId || '-',
+      status: currentStatus,
+      note: task.resultRemark || task.remark || task.reason,
     };
   });
 }
 
-export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWarehouseInterceptPageProps) {
-  const [tasks, setTasks] = useState<InterceptTask[]>(initialTasks);
+function getInterceptAttachmentRows(task: InterceptTask): InterceptAttachmentRow[] {
+  const names = task.attachments.length > 0
+    ? task.attachments
+    : (task.attachment && task.attachment !== '-' ? [task.attachment] : []);
+  return names.map((name, index) => ({
+    id: `INTERCEPT-ATT-${task.id}-${index}-${name}`,
+    name,
+    type: '其他',
+    customerVisible: '可见',
+    fileSize: '-',
+    uploadedBy: task.handler || task.applicant || '系统',
+    uploadedAt: task.appliedAt,
+  }));
+}
+
+const parseInterceptFeeNumber = (value: string | number | undefined) => Number(String(value ?? '0').replace(/[^\d.-]/g, '')) || 0;
+
+const formatInterceptFeeAmount = (value: number) => value.toFixed(2);
+
+const getInterceptFeeOriginalAmount = (fee: Pick<InterceptFee, 'unitPrice' | 'quantity'>) =>
+  parseInterceptFeeNumber(fee.unitPrice) * parseInterceptFeeNumber(fee.quantity);
+
+const getInterceptFeeRmbAmount = (fee: Pick<InterceptFee, 'unitPrice' | 'quantity' | 'exchangeRate'>) =>
+  getInterceptFeeOriginalAmount(fee) * parseInterceptFeeNumber(fee.exchangeRate ?? 1);
+
+const createInterceptFeeDraft = (fee: InterceptFee): InterceptFeeDraft => ({
+  id: fee.id,
+  billingTime: fee.billingTime || fee.addedAt,
+  name: fee.name,
+  type: fee.type,
+  unit: fee.unit,
+  exchangeRate: String(fee.exchangeRate ?? 1),
+  unitPrice: String(fee.unitPrice),
+  quantity: String(fee.quantity),
+  currency: fee.currency,
+  remark: fee.remark || fee.description || '',
+});
+
+const createEmptyInterceptFeeDraft = (): InterceptFeeDraft => ({
+  id: Date.now() + Math.floor(Math.random() * 1000),
+  billingTime: nowText(),
+  name: '',
+  type: '操作费',
+  unit: '票',
+  exchangeRate: '1',
+  unitPrice: '0',
+  quantity: '1',
+  currency: '人民币',
+  remark: '',
+});
+
+type CancelReasonContext = {
+  mode: 'single' | 'batch';
+  taskIds: number[];
+};
+
+export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage }: OverseasWarehouseInterceptPageProps) {
+  const [tasks, setTasks] = useState<InterceptTask[]>(() => persistedInterceptTasks || initialTasks);
   const [draftFilters, setDraftFilters] = useState<FilterState>(emptyFilters);
   const [filters, setFilters] = useState<FilterState>(emptyFilters);
   const [activeTab, setActiveTab] = useState<InterceptStatus | '全部'>('全部');
@@ -402,20 +546,109 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
   const [detailTaskId, setDetailTaskId] = useState<number | null>(null);
   const [logTaskId, setLogTaskId] = useState<number | null>(null);
   const [detailMode, setDetailMode] = useState<'view' | 'process'>('view');
-  const [detailContentTab, setDetailContentTab] = useState<'货物信息' | '费用信息' | '其他信息'>('货物信息');
+  const [detailContentTab, setDetailContentTab] = useState<InterceptDetailTab>('货箱信息');
   const [feedbackMode, setFeedbackMode] = useState<'success' | 'failure' | ''>('');
   const [actualBoxes, setActualBoxes] = useState('1');
   const [feedbackNote, setFeedbackNote] = useState('');
+  const [feedbackFailureReason, setFeedbackFailureReason] = useState('');
   const [editingRemarkId, setEditingRemarkId] = useState<number | null>(null);
   const [editRemarkValue, setEditRemarkValue] = useState('');
+  const [cancelReasonOpen, setCancelReasonOpen] = useState(false);
+  const [cancelReasonContext, setCancelReasonContext] = useState<CancelReasonContext>({ mode: 'single', taskIds: [] });
+  const [cancelReason, setCancelReason] = useState('');
   const [batchRemarkOpen, setBatchRemarkOpen] = useState(false);
-  const [batchRemarkMode, setBatchRemarkMode] = useState<'append' | 'replace'>('append');
   const [batchRemarkText, setBatchRemarkText] = useState('');
+  const [batchSuccessOpen, setBatchSuccessOpen] = useState(false);
+  const [batchSuccessNote, setBatchSuccessNote] = useState('');
+  const [batchFailureOpen, setBatchFailureOpen] = useState(false);
+  const [batchFailureReason, setBatchFailureReason] = useState('');
+  const [batchFailureNote, setBatchFailureNote] = useState('');
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  const [showFeeModal, setShowFeeModal] = useState(false);
+  const [feeDraftRows, setFeeDraftRows] = useState<InterceptFeeDraft[]>([]);
+  const [feeFocusId, setFeeFocusId] = useState<number | null>(null);
+  const [attachmentRowsByTask, setAttachmentRowsByTask] = useState<Record<number, InterceptAttachmentRow[]>>({});
+  const [showAttachmentModal, setShowAttachmentModal] = useState(false);
+  const [editingAttachment, setEditingAttachment] = useState<InterceptAttachmentRow | null>(null);
+  const [deletingAttachment, setDeletingAttachment] = useState<InterceptAttachmentRow | null>(null);
+  const [attachmentForm, setAttachmentForm] = useState<InterceptAttachmentFormState>({ ...emptyInterceptAttachmentForm });
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
 
   const customers = useMemo(() => Array.from(new Set(tasks.map((task) => task.customer))), [tasks]);
   const warehouses = useMemo(() => Array.from(new Set(tasks.map((task) => task.warehouse))), [tasks]);
   const detailTask = detailTaskId ? tasks.find((task) => task.id === detailTaskId) || null : null;
   const logTask = logTaskId ? tasks.find((task) => task.id === logTaskId) || null : null;
+  const editingRemarkTask = editingRemarkId ? tasks.find((task) => task.id === editingRemarkId) || null : null;
+  const detailAttachmentRows = detailTask
+    ? (attachmentRowsByTask[detailTask.id] || getInterceptAttachmentRows(detailTask))
+    : [];
+  const detailFeeOriginalTotal = detailTask?.fees.reduce((sum, fee) => sum + getInterceptFeeOriginalAmount(fee), 0) || 0;
+  const detailFeeRmbTotal = detailTask?.fees.reduce((sum, fee) => sum + getInterceptFeeRmbAmount(fee), 0) || 0;
+
+  const openFeeModal = (focusId: number | null = null) => {
+    if (!detailTask) return;
+    setFeeDraftRows(detailTask.fees.map((fee) => createInterceptFeeDraft(fee)));
+    setFeeFocusId(focusId);
+    setShowFeeModal(true);
+  };
+
+  const closeFeeModal = () => {
+    setShowFeeModal(false);
+    setFeeDraftRows([]);
+    setFeeFocusId(null);
+  };
+
+  const updateFeeDraftRow = (draftId: number, field: OverseasFeeEditableField, value: string) => {
+    setFeeDraftRows((rows) => rows.map((row) => {
+      if (row.id !== draftId) return row;
+      if (field === 'currency') {
+        return {
+          ...row,
+          currency: value,
+          exchangeRate: value === '人民币' ? '1' : (row.exchangeRate === '1' ? '7.1' : row.exchangeRate),
+        };
+      }
+      return { ...row, [field]: value };
+    }));
+  };
+
+  const addFeeDraftRow = () => {
+    setFeeDraftRows((rows) => [...rows, createEmptyInterceptFeeDraft()]);
+  };
+
+  const removeFeeDraftRow = (draftId: number) => {
+    setFeeDraftRows((rows) => rows.filter((row) => row.id !== draftId));
+  };
+
+  const saveFeeDraftRows = () => {
+    if (!detailTask) return;
+    const confirmedAt = nowText();
+    const nextFees: InterceptFee[] = feeDraftRows.map((row, index) => {
+      const existingFee = detailTask.fees.find((fee) => fee.id === row.id);
+      const originalAmount = parseInterceptFeeNumber(row.unitPrice) * parseInterceptFeeNumber(row.quantity);
+      const exchangeRate = parseInterceptFeeNumber(row.exchangeRate || 1) || 1;
+      const rmbAmount = originalAmount * exchangeRate;
+      return {
+        id: row.id,
+        billingTime: row.billingTime.trim() || existingFee?.billingTime || existingFee?.addedAt || confirmedAt,
+        name: row.name.trim() || `费用${index + 1}`,
+        type: row.type.trim() || '其他',
+        unit: row.unit.trim() || '票',
+        exchangeRate,
+        unitPrice: parseInterceptFeeNumber(row.unitPrice),
+        quantity: parseInterceptFeeNumber(row.quantity) || 1,
+        currency: row.currency,
+        total: rmbAmount,
+        addedAt: existingFee?.addedAt || confirmedAt,
+        addedBy: existingFee?.addedBy || '仓库-李明',
+        description: row.remark.trim(),
+        remark: row.remark.trim(),
+      };
+    });
+    updateTask(detailTask.id, (task) => ({ ...task, fees: nextFees }));
+    addToast?.('费用信息已保存', 'success');
+    closeFeeModal();
+  };
 
   const filteredTasks = useMemo(() => tasks.filter((task) => {
     const matchText = (value: string, query: string) => !query || value.toLowerCase().includes(query.toLowerCase());
@@ -437,72 +670,285 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
   }), [activeTab, filters, tasks]);
 
   const visiblePending = filteredTasks.filter((task) => task.status === '待处理');
+  const visibleProcessing = filteredTasks.filter((task) => task.status === '拦截中');
+  const selectedVisible = filteredTasks.filter((task) => selectedIds.includes(task.id));
   const selectedPendingCount = visiblePending.filter((task) => selectedIds.includes(task.id)).length;
+  const selectedProcessingCount = visibleProcessing.filter((task) => selectedIds.includes(task.id)).length;
   const isPendingView = activeTab === '待处理';
+  const isProcessingView = activeTab === '拦截中';
 
   const updateDraftFilter = (key: keyof FilterState, value: string) => {
     setDraftFilters((prev) => ({ ...prev, [key]: value }));
   };
 
-  const pushLog = (task: InterceptTask, nextStatus: InterceptStatus, action: string, note: string, user = '仓库-李明'): InterceptTask => {
+  const appendLog = (task: InterceptTask, action: string, note: string, user = '仓库-李明', nextStatus: InterceptStatus = task.status): InterceptTask => {
     const stamp = nowText();
     return {
       ...task,
       status: nextStatus,
       handler: user,
       handleAt: stamp,
-      logs: [...task.logs, { time: stamp, user, action, change: `${task.status} -> ${nextStatus}`, note }],
+      logs: [...task.logs, { time: stamp, user, action, change: `${task.status} → ${nextStatus}`, note }],
     };
   };
+
+  const pushLog = (task: InterceptTask, nextStatus: InterceptStatus, action: string, note: string, user = '仓库-李明'): InterceptTask =>
+    appendLog(task, action, note, user, nextStatus);
 
   const updateTask = (taskId: number, updater: (task: InterceptTask) => InterceptTask) => {
     setTasks((list) => list.map((task) => (task.id === taskId ? updater(task) : task)));
   };
 
+  const closeAttachmentModal = () => {
+    setShowAttachmentModal(false);
+    setEditingAttachment(null);
+    setAttachmentForm({ ...emptyInterceptAttachmentForm });
+    setAttachmentFile(null);
+  };
+
+  const openAttachmentModal = (row?: InterceptAttachmentRow) => {
+    setEditingAttachment(row || null);
+    setAttachmentForm(row
+      ? {
+          fileName: row.name,
+          fileSize: row.fileSize,
+          type: row.type,
+          customerVisible: row.customerVisible,
+        }
+      : { ...emptyInterceptAttachmentForm });
+    setAttachmentFile(null);
+    setShowAttachmentModal(true);
+  };
+
+  const handleAttachmentFileChange = (file?: File) => {
+    if (!file) return;
+    const sizeInMb = file.size / 1024 / 1024;
+    setAttachmentFile(file);
+    setAttachmentForm((prev) => ({
+      ...prev,
+      fileName: file.name,
+      fileSize: sizeInMb >= 1 ? `${sizeInMb.toFixed(1)}MB` : `${Math.max(1, Math.round(file.size / 1024))}KB`,
+    }));
+  };
+
+  const downloadAttachment = (row: InterceptAttachmentRow) => {
+    if (row.file) {
+      const url = URL.createObjectURL(row.file);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = row.name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } else if (detailTask) {
+      const link = document.createElement('a');
+      link.href = makeDownloadHref({ ...detailTask, attachment: row.name });
+      link.download = row.name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+    addToast?.(`已下载 ${row.name}`, 'success');
+  };
+
+  const saveAttachment = () => {
+    if (!detailTask) return;
+    const fileName = attachmentForm.fileName.trim();
+    if (!fileName) {
+      addToast?.('请先选择附件文件', 'warning');
+      return;
+    }
+
+    const existingRows = detailAttachmentRows;
+    const nextRows = editingAttachment
+      ? existingRows.map((row) => (
+          row.id === editingAttachment.id
+            ? {
+                ...row,
+                name: fileName,
+                type: attachmentForm.type,
+                customerVisible: attachmentForm.customerVisible,
+                fileSize: attachmentForm.fileSize || row.fileSize,
+                file: attachmentFile || row.file,
+              }
+            : row
+        ))
+      : [
+          ...existingRows,
+          {
+            id: `INTERCEPT-ATT-${detailTask.id}-${Date.now()}`,
+            name: fileName,
+            type: attachmentForm.type,
+            customerVisible: attachmentForm.customerVisible,
+            fileSize: attachmentForm.fileSize || '-',
+            uploadedBy: '仓库-李明',
+            uploadedAt: nowText(),
+            file: attachmentFile || undefined,
+          },
+        ];
+
+    setAttachmentRowsByTask((prev) => ({ ...prev, [detailTask.id]: nextRows }));
+    updateTask(detailTask.id, (task) => ({
+      ...task,
+      attachments: nextRows.map((row) => row.name),
+      attachment: nextRows[0]?.name || '-',
+    }));
+    closeAttachmentModal();
+    addToast?.(editingAttachment ? '附件信息已更新' : '附件已上传', 'success');
+  };
+
+  const confirmDeleteAttachment = () => {
+    if (!detailTask || !deletingAttachment) return;
+    const nextRows = detailAttachmentRows.filter((row) => row.id !== deletingAttachment.id);
+    setAttachmentRowsByTask((prev) => ({ ...prev, [detailTask.id]: nextRows }));
+    updateTask(detailTask.id, (task) => ({
+      ...task,
+      attachments: nextRows.map((row) => row.name),
+      attachment: nextRows[0]?.name || '-',
+    }));
+    setDeletingAttachment(null);
+    addToast?.(`已删除附件 ${deletingAttachment.name}`, 'info');
+  };
+
+  const applyConfirm = (task: InterceptTask): InterceptTask => {
+    if (task.status !== '待处理') return task;
+    if (task.cargoStatus === '已出库') {
+      return {
+        ...pushLog(task, '拦截失败', '状态校验', '货物已完成出库，无法执行拦截', '系统'),
+        failReason: '货物已完成出库',
+        resultRemark: '系统校验货物已完成出库，无法执行拦截',
+      };
+    }
+    return pushLog(task, '拦截中', '确认拦截', task.cargoStatus === '未拆柜' ? '货物未拆柜，已创建预报拦截任务' : '货物已入库，已创建仓库拦截任务');
+  };
+
+  const applyCancel = (task: InterceptTask, reason: string): InterceptTask => {
+    if (task.status !== '待处理') return task;
+    const nextRemark = task.remark ? `${task.remark}；取消原因：${reason}` : `取消原因：${reason}`;
+    return {
+      ...pushLog(task, '已取消', '取消申请', reason || '取消拦截申请', '客服-张敏'),
+      remark: nextRemark,
+      internalRemark: task.internalRemark || nextRemark,
+      resultRemark: reason || '取消拦截申请',
+    };
+  };
+
+  const makeSuccessfulIntercept = (task: InterceptTask, note: string): InterceptTask => {
+    const actual = Number(task.actualBoxes || task.boxes);
+    const storageNo = `STG${nowText().slice(0, 10).replaceAll('-', '')}${String(task.id).padStart(4, '0')}`;
+    return {
+      ...pushLog(task, '拦截成功', '拦截成功', `实际拦截 ${actual} 箱，已生成暂存单 ${storageNo}${note ? `；${note}` : ''}`),
+      cargoStatus: '暂存中',
+      inventoryStatus: '暂存',
+      outboundStatus: '未出库',
+      actualBoxes: String(actual),
+      storageNo,
+      resultRemark: note || '已完成货物拦截并转入暂存',
+    };
+  };
+
   const confirmTask = (taskId: number) => {
-    updateTask(taskId, (task) => {
-      if (task.status !== '待处理') return task;
-      if (task.cargoStatus === '已出库') {
-        return {
-          ...pushLog(task, '拦截失败', '状态校验', '货物已完成出库，无法执行拦截', '系统'),
-          failReason: '货物已完成出库',
-          resultRemark: '系统校验货物已完成出库，无法执行拦截',
-        };
-      }
-      return pushLog(task, '拦截中', '确认拦截', task.cargoStatus === '未拆柜' ? '货物未拆柜，已创建预报拦截任务' : '货物已入库，已创建仓库拦截任务');
-    });
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task || task.status !== '待处理') return;
+    if (task.cargoStatus === '已出库') {
+      updateTask(taskId, applyConfirm);
+      window.alert('货物已出库，无法执行拦截');
+      addToast?.('货物已出库，拦截失败', 'warning');
+      return;
+    }
+    const prompt = task.cargoStatus === '未拆柜' ? '当前货物未拆柜，确认执行拦截？' : '当前货物已入库，确认执行拦截？';
+    if (!window.confirm(prompt)) return;
+    updateTask(taskId, applyConfirm);
     addToast?.('拦截任务已确认', 'success');
   };
 
+  const openCancelReason = (context: CancelReasonContext) => {
+    setCancelReasonContext(context);
+    setCancelReason('');
+    setCancelReasonOpen(true);
+  };
+
   const cancelTask = (taskId: number) => {
-    updateTask(taskId, (task) => {
-      if (task.status !== '待处理') return task;
-      return { ...pushLog(task, '已取消', '取消申请', '客户取消拦截申请', '客服-张敏'), resultRemark: '客户取消拦截申请' };
-    });
-    setSelectedIds((ids) => ids.filter((id) => id !== taskId));
-    addToast?.('拦截申请已取消', 'info');
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task || task.status !== '待处理') return;
+    openCancelReason({ mode: 'single', taskIds: [taskId] });
+  };
+
+  const notifySelectionMissing = () => {
+    addToast?.('请勾选运单', 'warning');
   };
 
   const handleBatchConfirm = () => {
-    selectedIds.forEach(confirmTask);
+    const taskIds = selectedPendingCount > 0
+      ? visiblePending.filter((task) => selectedIds.includes(task.id)).map((task) => task.id)
+      : [];
+    if (!taskIds.length) {
+      notifySelectionMissing();
+      return;
+    }
+    const outboundCount = taskIds.filter((id) => tasks.find((task) => task.id === id)?.cargoStatus === '已出库').length;
+    const message = outboundCount
+      ? `确认批量确认选中的 ${taskIds.length} 条拦截申请吗？其中 ${outboundCount} 条货物已出库，将自动标记为拦截失败。`
+      : `确认批量确认选中的 ${taskIds.length} 条拦截申请吗？`;
+    if (!window.confirm(message)) return;
+    setTasks((prev) => prev.map((task) => taskIds.includes(task.id) ? applyConfirm(task) : task));
     setSelectedIds([]);
+    addToast?.('已批量确认拦截申请', 'success');
   };
 
   const handleBatchCancel = () => {
-    selectedIds.forEach(cancelTask);
-    setSelectedIds([]);
+    const taskIds = visiblePending.filter((task) => selectedIds.includes(task.id)).map((task) => task.id);
+    if (!taskIds.length) {
+      notifySelectionMissing();
+      return;
+    }
+    openCancelReason({ mode: 'batch', taskIds });
+  };
+
+  const openBatchSuccess = () => {
+    if (!selectedProcessingCount) {
+      notifySelectionMissing();
+      return;
+    }
+    setBatchSuccessNote('');
+    setBatchSuccessOpen(true);
+  };
+
+  const openBatchFailure = () => {
+    if (!selectedProcessingCount) {
+      notifySelectionMissing();
+      return;
+    }
+    setBatchFailureReason('');
+    setBatchFailureNote('');
+    setBatchFailureOpen(true);
+  };
+
+  const openBatchRemark = () => {
+    if (!selectedVisible.length) {
+      notifySelectionMissing();
+      return;
+    }
+    setBatchRemarkText('');
+    setBatchRemarkOpen(true);
   };
 
   const startEditRemark = (task: InterceptTask) => {
     setEditingRemarkId(task.id);
-    setEditRemarkValue(task.internalRemark || '');
+    setEditRemarkValue(task.remark || task.internalRemark || '');
   };
 
   const saveEditRemark = (taskId: number) => {
-    updateTask(taskId, (task) => ({ ...task, internalRemark: editRemarkValue }));
+    const remark = editRemarkValue.trim();
+    updateTask(taskId, (task) => ({
+      ...appendLog(task, '修改备注', `"${task.remark || task.internalRemark || '-'}" → "${remark || '-'}"`),
+      remark,
+      internalRemark: remark,
+    }));
     setEditingRemarkId(null);
     setEditRemarkValue('');
-    addToast?.('内部备注已更新', 'success');
+    addToast?.('备注已更新', 'success');
   };
 
   const cancelEditRemark = () => {
@@ -512,46 +958,189 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
 
   const handleBatchRemark = () => {
     const remarkText = batchRemarkText.trim();
-    if (!remarkText) { setBatchRemarkOpen(false); return; }
+    if (!remarkText) {
+      window.alert('请输入备注内容');
+      return;
+    }
+    const selectedCount = selectedVisible.length;
     setTasks((prev) => prev.map((task) => {
       if (!selectedIds.includes(task.id)) return task;
-      const newRemark = batchRemarkMode === 'replace' ? remarkText : (task.internalRemark ? `${task.internalRemark}；${remarkText}` : remarkText);
-      return { ...task, internalRemark: newRemark };
+      const previousRemark = task.remark || task.internalRemark || '';
+      const nextRemark = previousRemark ? `${previousRemark}；${remarkText}` : remarkText;
+      return {
+        ...appendLog(task, '批量备注', remarkText),
+        remark: nextRemark,
+        internalRemark: nextRemark,
+      };
     }));
     setBatchRemarkOpen(false);
     setBatchRemarkText('');
     setSelectedIds([]);
-    addToast?.(`已为 ${selectedIds.length} 条记录批量更新内部备注`, 'success');
+    addToast?.(`已为 ${selectedCount} 条记录批量备注`, 'success');
+  };
+
+  const openFeedback = (mode: 'success' | 'failure', task: InterceptTask = detailTask as InterceptTask) => {
+    if (!task || task.status !== '拦截中') return;
+    setActualBoxes(task.actualBoxes || String(task.boxes));
+    setFeedbackNote('');
+    setFeedbackFailureReason('');
+    setFeedbackMode(mode);
   };
 
   const submitFeedback = (event: React.FormEvent) => {
     event.preventDefault();
     if (!detailTask || !feedbackMode) return;
-    updateTask(detailTask.id, (task) => {
-      if (task.status !== '拦截中') return task;
-      if (feedbackMode === 'success') {
-        const nextStorageNo = `STG${nowText().slice(0, 10).replaceAll('-', '')}${String(task.id).padStart(4, '0')}`;
-        return {
-          ...pushLog(task, '拦截成功', '拦截成功', `实际拦截 ${actualBoxes} 箱，已生成暂存单 ${nextStorageNo}${feedbackNote ? `；${feedbackNote}` : ''}`),
-          cargoStatus: '暂存中',
-          inventoryStatus: '暂存',
-          outboundStatus: '未出库',
-          actualBoxes,
-          storageNo: nextStorageNo,
-          resultRemark: feedbackNote || '已完成货物拦截并转入暂存',
-        };
+    if (feedbackMode === 'success') {
+      const actual = Number(actualBoxes);
+      if (!actual || actual < 1 || actual > detailTask.boxes) {
+        window.alert(`实际拦截箱数需在 1 到 ${detailTask.boxes} 之间`);
+        return;
       }
-      return {
-        ...pushLog(task, '拦截失败', '拦截失败', feedbackNote || '仓库反馈无法完成拦截'),
-        failReason: feedbackNote || '仓库反馈无法完成拦截',
-        resultRemark: feedbackNote,
-      };
-    });
+      updateTask(detailTask.id, (task) => makeSuccessfulIntercept({ ...task, actualBoxes: String(actual) }, feedbackNote.trim()));
+    } else {
+      const reason = feedbackFailureReason.trim();
+      if (!reason) {
+        window.alert('请填写失败原因');
+        return;
+      }
+      const note = feedbackNote.trim();
+      updateTask(detailTask.id, (task) => ({
+        ...pushLog(task, '拦截失败', '拦截失败', `${reason}${note ? `；${note}` : ''}`),
+        failReason: reason,
+        resultRemark: note || reason,
+      }));
+    }
+    const completedMode = feedbackMode;
     setFeedbackMode('');
-    addToast?.(feedbackMode === 'success' ? '已提交拦截成功结果' : '已提交拦截失败结果', feedbackMode === 'success' ? 'success' : 'warning');
+    setFeedbackNote('');
+    setFeedbackFailureReason('');
+    addToast?.(completedMode === 'success' ? '已提交拦截成功结果' : '已提交拦截失败结果', completedMode === 'success' ? 'success' : 'warning');
   };
 
-  const allVisiblePendingSelected = visiblePending.length > 0 && selectedPendingCount === visiblePending.length;
+  const submitCancelReason = () => {
+    const reason = cancelReason.trim();
+    if (!reason) {
+      window.alert('请输入取消原因');
+      return;
+    }
+    const taskIds = cancelReasonContext.taskIds;
+    setTasks((prev) => prev.map((task) => taskIds.includes(task.id) ? applyCancel(task, reason) : task));
+    setCancelReasonOpen(false);
+    setCancelReason('');
+    setCancelReasonContext({ mode: 'single', taskIds: [] });
+    setSelectedIds((ids) => cancelReasonContext.mode === 'batch' ? ids.filter((id) => !taskIds.includes(id)) : ids.filter((id) => !taskIds.includes(id)));
+    addToast?.(cancelReasonContext.mode === 'batch' ? '已批量取消拦截申请' : '拦截申请已取消', 'info');
+  };
+
+  const submitBatchSuccess = () => {
+    const taskIds = visibleProcessing.filter((task) => selectedIds.includes(task.id)).map((task) => task.id);
+    if (!taskIds.length) return;
+    const note = batchSuccessNote.trim();
+    setTasks((prev) => prev.map((task) => taskIds.includes(task.id) ? makeSuccessfulIntercept(task, note) : task));
+    setBatchSuccessOpen(false);
+    setBatchSuccessNote('');
+    setSelectedIds([]);
+    addToast?.('已批量提交拦截成功结果', 'success');
+  };
+
+  const submitBatchFailure = () => {
+    const taskIds = visibleProcessing.filter((task) => selectedIds.includes(task.id)).map((task) => task.id);
+    if (!taskIds.length) return;
+    const reason = batchFailureReason.trim();
+    if (!reason) {
+      window.alert('请填写失败原因');
+      return;
+    }
+    const note = batchFailureNote.trim();
+    setTasks((prev) => prev.map((task) => taskIds.includes(task.id)
+      ? {
+          ...pushLog(task, '拦截失败', '拦截失败', `${reason}${note ? `；${note}` : ''}`),
+          failReason: reason,
+          resultRemark: note || reason,
+        }
+      : task));
+    setBatchFailureOpen(false);
+    setBatchFailureReason('');
+    setBatchFailureNote('');
+    setSelectedIds([]);
+    addToast?.('已批量提交拦截失败结果', 'warning');
+  };
+
+  const exportTasks = () => {
+    if (!selectedVisible.length) {
+      notifySelectionMissing();
+      return;
+    }
+    const headers = ['客户名称', '拦截单号', '运单号', '客户单号', '最新运踪', '仓库', '货物状态', '拦截状态', '拦截原因', '拦截箱数', '申请人', '申请时间', '处理人', '处理时间', '备注'];
+    const rows = selectedVisible.map((task) => [
+      task.customer, task.no, task.waybillNo, task.customerOrderNo, task.latestTracking, task.warehouse,
+      task.cargoStatus, task.status, task.reason, task.actualBoxes || task.boxes, task.applicant,
+      task.appliedAt, task.handler || '', task.handleAt || '', task.remark || task.internalRemark || '',
+    ]);
+    const csv = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `拦截管理_${activeTab}_${nowText().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    addToast?.(`已导出 ${selectedVisible.length} 条拦截记录`, 'success');
+  };
+
+  const openStorageDetails = (task: InterceptTask) => {
+    if (onOpenStorage) {
+      onOpenStorage(task.storageNo);
+      return;
+    }
+    addToast?.(task.storageNo ? `正在打开暂存单 ${task.storageNo}` : '暂存详情已生成', 'info');
+  };
+
+  const allVisibleSelected = filteredTasks.length > 0 && filteredTasks.every((task) => selectedIds.includes(task.id));
+
+  useEffect(() => {
+    persistedInterceptTasks = tasks;
+  }, [tasks]);
+
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+    selectAllRef.current.indeterminate = selectedVisible.length > 0 && selectedVisible.length < filteredTasks.length;
+  }, [filteredTasks.length, selectedVisible.length, selectedIds]);
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (editingRemarkId !== null) {
+        setEditingRemarkId(null);
+        setEditRemarkValue('');
+      } else if (deletingAttachment) {
+        setDeletingAttachment(null);
+      } else if (showAttachmentModal) {
+        closeAttachmentModal();
+      } else if (showFeeModal) {
+        closeFeeModal();
+      } else if (cancelReasonOpen) {
+        setCancelReasonOpen(false);
+      } else if (feedbackMode) {
+        setFeedbackMode('');
+      } else if (batchSuccessOpen) {
+        setBatchSuccessOpen(false);
+      } else if (batchFailureOpen) {
+        setBatchFailureOpen(false);
+      } else if (batchRemarkOpen) {
+        setBatchRemarkOpen(false);
+      } else if (logTaskId !== null) {
+        setLogTaskId(null);
+      } else if (detailTaskId !== null) {
+        setDetailTaskId(null);
+        setDetailMode('view');
+        setDetailContentTab('货箱信息');
+      }
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [batchFailureOpen, batchRemarkOpen, batchSuccessOpen, cancelReasonOpen, deletingAttachment, detailTaskId, editingRemarkId, feedbackMode, logTaskId, showAttachmentModal, showFeeModal]);
 
   return (
     <div className="mc-intercept-page">
@@ -590,9 +1179,12 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
             })}
           </div>
           <div className="mc-status-actions">
-            <button className="mc-btn" type="button" disabled={!selectedPendingCount} onClick={() => setBatchRemarkOpen(true)}>批量备注</button>
-            {isPendingView && <button className="mc-btn" type="button" disabled={!selectedPendingCount} onClick={handleBatchCancel}>批量取消</button>}
-            {isPendingView && <button className="mc-btn primary" type="button" disabled={!selectedPendingCount} onClick={handleBatchConfirm}>批量确认</button>}
+            {isPendingView && <button className="mc-btn" type="button" onClick={handleBatchCancel}>批量取消拦截</button>}
+            {isPendingView && <button className="mc-btn primary" type="button" onClick={handleBatchConfirm}>批量确认拦截</button>}
+            {isProcessingView && <button className="mc-btn primary" type="button" onClick={openBatchSuccess}>批量拦截成功</button>}
+            {isProcessingView && <button className="mc-btn danger" type="button" onClick={openBatchFailure}>批量拦截失败</button>}
+            <button className="mc-btn" type="button" onClick={openBatchRemark}>批量备注</button>
+            <button className="mc-btn" type="button" onClick={exportTasks}>导出</button>
           </div>
         </div>
         <div className="mc-intercept-list-summary"><span>共 {filteredTasks.length} 条拦截任务</span><span>拦截成功后将自动生成暂存单</span></div>
@@ -600,7 +1192,7 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
           <table className="mc-intercept-table">
             <thead>
               <tr>
-                <th className="mc-intercept-check"><input type="checkbox" aria-label="全选待处理拦截单" disabled={!isPendingView || !visiblePending.length} checked={allVisiblePendingSelected} onChange={(e) => setSelectedIds(e.target.checked ? visiblePending.map((task) => task.id) : [])} /></th>
+                <th className="mc-intercept-check"><input ref={selectAllRef} type="checkbox" aria-label="全选拦截单" disabled={!filteredTasks.length} checked={allVisibleSelected} onChange={(e) => setSelectedIds(e.target.checked ? filteredTasks.map((task) => task.id) : [])} /></th>
                 {tableHeaders.map((head) => <th key={head}>{head}</th>)}
               </tr>
             </thead>
@@ -610,7 +1202,7 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
               ) : filteredTasks.map((task) => (
                 <tr key={task.id}>
                   <td className="mc-intercept-check">
-                    <input type="checkbox" disabled={task.status !== '待处理'} checked={selectedIds.includes(task.id)} onChange={(e) => setSelectedIds((ids) => e.target.checked ? [...ids, task.id] : ids.filter((id) => id !== task.id))} />
+                    <input type="checkbox" checked={selectedIds.includes(task.id)} onChange={(e) => setSelectedIds((ids) => e.target.checked ? (ids.includes(task.id) ? ids : [...ids, task.id]) : ids.filter((id) => id !== task.id))} />
                   </td>
                   <td>{task.customer}</td>
                   <td title={task.no}>{task.no}</td>
@@ -623,18 +1215,10 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
                   <td title={task.reason}>{task.reason}</td>
                   <td>{task.attachment === '-' ? '-' : <a className="mc-intercept-attachment-link" href={makeDownloadHref(task)} download={task.attachment} title={task.attachment}>{task.attachment}</a>}</td>
                   <td>{task.actualBoxes || task.boxes}</td>
-                  <td className="mc-intercept-remark-cell" title={task.internalRemark || '-'}>
-                    {editingRemarkId === task.id ? (
-                      <div className="mc-intercept-remark-edit">
-                        <input className="mc-intercept-remark-input" value={editRemarkValue} maxLength={200} onChange={(e) => setEditRemarkValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditRemark(task.id); if (e.key === 'Escape') cancelEditRemark(); }} autoFocus />
-                        <button className="mc-intercept-remark-save" type="button" onClick={() => saveEditRemark(task.id)}>✓</button>
-                        <button className="mc-intercept-remark-cancel" type="button" onClick={cancelEditRemark}>✕</button>
-                      </div>
-                    ) : (
-                      <span className="mc-intercept-remark-text" onClick={() => startEditRemark(task)} style={{ cursor: 'pointer', minHeight: '18px', display: 'inline-block' }}>
-                        {task.internalRemark || '-'}
-                      </span>
-                    )}
+                  <td className="mc-intercept-remark-cell" title={task.internalRemark || task.remark || '-'}>
+                    <span className="mc-intercept-remark-text" onClick={() => startEditRemark(task)} style={{ cursor: 'pointer', minHeight: '18px', display: 'inline-block' }}>
+                      {task.internalRemark || task.remark || '-'}
+                    </span>
                   </td>
                   <td>{task.applicant}</td>
                   <td>{task.appliedAt}</td>
@@ -645,10 +1229,9 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
                   <td title={task.referenceId || '-'}>{task.referenceId || '-'}</td>
                   <td title={task.billOfLading || '-'}>{task.billOfLading || '-'}</td>
                   <td>
-                    <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('view'); setDetailContentTab('货物信息'); setDetailTaskId(task.id); }}>详情</button>
-                    {task.status === '待处理' && <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('process'); setDetailContentTab('货物信息'); setDetailTaskId(task.id); }}>处理</button>}
-                    {task.status === '拦截中' && <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('view'); setDetailContentTab('货物信息'); setDetailTaskId(task.id); }}>反馈</button>}
-                    {task.status === '拦截成功' && <button className="mc-intercept-action" type="button">暂存单</button>}
+                    <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('view'); setDetailContentTab('货箱信息'); setDetailTaskId(task.id); }}>详情</button>
+                    {(task.status === '待处理' || task.status === '拦截中') && <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('process'); setDetailContentTab('货箱信息'); setDetailTaskId(task.id); }}>处理</button>}
+                    {task.status !== '已取消' && <button className="mc-intercept-action" type="button" onClick={() => startEditRemark(task)}>备注</button>}
                     <button className="mc-intercept-action" type="button" onClick={() => setLogTaskId(task.id)}>日志</button>
                   </td>
                 </tr>
@@ -660,11 +1243,11 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
       </section>
 
       {detailTask && (
-        <div className="mc-intercept-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) { setDetailTaskId(null); setDetailMode('view'); setDetailContentTab('货物信息'); } }}>
+        <div className="mc-intercept-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) { setDetailTaskId(null); setDetailMode('view'); setDetailContentTab('货箱信息'); } }}>
           <aside className="mc-intercept-drawer" role="dialog" aria-modal="true" aria-labelledby="interceptDetailTitle">
             <header className="mc-intercept-drawer-header">
-              <div><h2 id="interceptDetailTitle">拦截详情 · {detailTask.no}</h2><p><span className={`mc-intercept-status ${statusClass(detailTask.status)}`}>{detailTask.status}</span> <span>{detailTask.customer}</span></p></div>
-              <button className="mc-intercept-close" type="button" aria-label="关闭拦截详情" onClick={() => { setDetailTaskId(null); setDetailMode('view'); setDetailContentTab('货物信息'); }}>×</button>
+              <div><h2 id="interceptDetailTitle">拦截详情 · {detailTask.no}</h2><p><span className={`mc-intercept-status ${statusClass(detailTask.status)}`}>{detailTask.status}</span> <span>{detailTask.waybillNo}</span></p></div>
+              <button className="mc-intercept-close" type="button" aria-label="关闭拦截详情" onClick={() => { setDetailTaskId(null); setDetailMode('view'); setDetailContentTab('货箱信息'); }}>×</button>
             </header>
             <div className="mc-intercept-detail-content">
               <section className="mc-intercept-flow-section">
@@ -681,38 +1264,32 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
               <section className="mc-intercept-detail-card">
                 <h3 className="mc-intercept-detail-card-title">基础信息</h3>
                 <div className="mc-intercept-basic-grid">
-                  <DetailField label="客户名称" value={detailTask.customer} />
                   <DetailField label="拦截单号" value={detailTask.no} highlight />
-                  <DetailField label="入仓号" value={detailTask.container || '-'} />
+                  <DetailField label="入仓号" value={detailTask.waybillNo || '-'} />
                   <DetailField label="柜号" value={detailTask.container || '-'} />
-                  <DetailField label="运单号" value={detailTask.waybillNo || '-'} />
-                  <DetailField label="Shipment ID" value={detailTask.shipmentId || '-'} />
-                  <DetailField label="Reference ID" value={detailTask.referenceId || '-'} />
-                  <DetailField label="客户单号" value={detailTask.customerOrderNo || '-'} />
-                  <DetailField label="提单号" value={detailTask.billOfLading || '-'} />
-                  <DetailField label="最新运踪" value={detailTask.latestTracking || '-'} />
+                  <DetailField label="系统柜号" value={detailTask.container || '-'} />
+                  <DetailField label="客户名称" value={detailTask.customer} />
+                  <DetailField label="拦截原因" value={detailTask.reason} fullWidth />
+                  <DetailField
+                    label="附件"
+                    value={detailTask.attachment === '-' ? '-' : (
+                      <a className="mc-intercept-attachment-link" href={makeDownloadHref(detailTask)} download={detailTask.attachment}>
+                        {detailTask.attachment}
+                      </a>
+                    )}
+                  />
                   <DetailField label="拦截箱数" value={`${detailTask.actualBoxes || detailTask.boxes} 箱`} />
                   <DetailField label="货物状态" value={<span className={`mc-intercept-cargo-status ${detailTask.cargoStatus === '已出库' ? 'is-outbound' : detailTask.cargoStatus === '暂存中' ? 'is-storage' : ''}`}>{detailTask.cargoStatus}</span>} />
                   <DetailField label="所在仓库" value={detailTask.warehouse} />
                   <DetailField label="出库状态" value={detailTask.outboundStatus} />
                   <DetailField label="申请人" value={detailTask.applicant} />
                   <DetailField label="申请时间" value={detailTask.appliedAt} />
-                  <DetailField label="处理人" value={detailTask.handler || '-'} />
-                  <DetailField label="处理时间" value={detailTask.handleAt || '-'} />
-                  <DetailField label="拦截原因" value={detailTask.reason} fullWidth />
                   <div className="mc-intercept-detail-field mc-intercept-detail-field-full">
-                    <dt>内部备注</dt>
+                    <dt>备注</dt>
                     <dd>
-                      {editingRemarkId === detailTask.id ? (
-                        <div className="mc-intercept-remark-edit">
-                          <input className="mc-intercept-remark-input" value={editRemarkValue} maxLength={200} onChange={(e) => setEditRemarkValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditRemark(detailTask.id); if (e.key === 'Escape') cancelEditRemark(); }} autoFocus />
-                          <button className="mc-intercept-remark-save" type="button" onClick={() => saveEditRemark(detailTask.id)}>✓</button>
-                          <button className="mc-intercept-remark-cancel" type="button" onClick={cancelEditRemark}>✕</button>
-                        </div>
-                      ) : (
-                        <span className="mc-intercept-remark-text mc-intercept-detail-remark-text" onClick={() => startEditRemark(detailTask)}>
-                          {detailTask.internalRemark || '点击添加内部备注'}
-                        </span>
+                      <span>{detailTask.remark || '-'}</span>
+                      {detailTask.status !== '已取消' && (
+                        <button className="mc-intercept-detail-edit-button" type="button" onClick={() => startEditRemark(detailTask)} aria-label="编辑备注" title="编辑备注">✎</button>
                       )}
                     </dd>
                   </div>
@@ -721,7 +1298,7 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
 
               {/* Tab 栏切换 */}
               <div className="mc-intercept-detail-tabs">
-                {(['货物信息', '费用信息', '其他信息'] as const).map((tab) => (
+                {interceptDetailTabs.map((tab) => (
                   <button
                     key={tab}
                     type="button"
@@ -734,14 +1311,32 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
                 ))}
               </div>
 
-              {/* 货物信息 Tab */}
-              {detailContentTab === '货物信息' && (
+              {/* 货箱信息 Tab */}
+              {detailContentTab === '货箱信息' && (
                 <section className="mc-intercept-detail-card">
-                  <h3 className="mc-intercept-detail-card-title">货物信息</h3>
+                  <h3 className="mc-intercept-detail-card-title">货箱信息</h3>
                   <div className="mc-intercept-cargo-box-wrap">
                     <table className="mc-intercept-cargo-box-table">
-                      <thead><tr><th>货箱号</th><th>客户数据</th><th>系统拣货（材重/实重）</th></tr></thead>
-                      <tbody>{cargoBoxRows(detailTask).map((box) => <tr key={box.systemBoxNo}><td className="mc-cargo-box-code">{box.systemBoxNo}</td><td>{box.customerData}</td><td>{box.pickingData}</td></tr>)}</tbody>
+                      <thead>
+                        <tr>
+                          <th>货箱号</th>
+                          <th>客户数据</th>
+                          <th>系统拣货（材重/实重）</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {getInterceptCargoRows(detailTask).map((box, index) => (
+                          <tr key={box.boxNo}>
+                            <td className="font-mono">{box.boxNo}</td>
+                            <td>
+                              {box.customerLines.map((line) => <div key={line}>{line}</div>)}
+                            </td>
+                            <td>
+                              {box.pickingLines.map((line) => <div key={line}>{line}</div>)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
                     </table>
                   </div>
                 </section>
@@ -750,16 +1345,65 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
               {/* 费用信息 Tab */}
               {detailContentTab === '费用信息' && (
                 <section className="mc-intercept-detail-card">
-                  <h3 className="mc-intercept-detail-card-title">费用信息</h3>
+                  <div className="mc-intercept-detail-toolbar">
+                    <div>
+                      <h3 className="mc-intercept-detail-card-title">费用信息</h3>
+                      <div className="mc-intercept-detail-summary">
+                        <span>共 <strong>{detailTask.fees.length}</strong> 条</span>
+                        <span>原币合计 <strong>{formatInterceptFeeAmount(detailFeeOriginalTotal)}</strong></span>
+                        <span>人民币合计 <strong>{formatInterceptFeeAmount(detailFeeRmbTotal)}</strong></span>
+                      </div>
+                    </div>
+                    <button type="button" className="mc-btn primary" onClick={() => openFeeModal()}>
+                      新增费用
+                    </button>
+                  </div>
                   <div className="mc-intercept-cargo-box-wrap">
                     <table className="mc-intercept-fee-table">
-                      <thead><tr><th>费用名称</th><th>费用类型</th><th>*计费单位</th><th>*计费单价（元）</th><th>*计费数量</th><th>*币种</th><th>总价（元）</th><th>添加时间</th><th>添加人</th><th>描述</th><th>操作</th></tr></thead>
+                      <thead>
+                        <tr>
+                          <th>计费时间</th>
+                          <th>费用名称</th>
+                          <th>费用类型</th>
+                          <th>*计费单位</th>
+                          <th>*汇率</th>
+                          <th>*单价</th>
+                          <th>*数量</th>
+                          <th>*币种</th>
+                          <th>原币应收金额</th>
+                          <th>人民币应收金额</th>
+                          <th>费用备注</th>
+                          <th>添加时间</th>
+                          <th>添加人</th>
+                          <th>操作</th>
+                        </tr>
+                      </thead>
                       <tbody>
                         {detailTask.fees.length ? detailTask.fees.map((fee) => (
                           <tr key={fee.id}>
-                            <td>{fee.name}</td><td>{fee.type}</td><td>{fee.unit}</td><td>{fee.unitPrice.toFixed(2)}</td><td>{fee.quantity}</td><td>{fee.currency}</td><td>{fee.total.toFixed(2)}</td><td>{fee.addedAt}</td><td>{fee.addedBy}</td><td>{fee.description || '-'}</td><td><button className="mc-intercept-action" type="button">编辑</button><button className="mc-intercept-action" type="button">删除</button></td>
+                            <td>{fee.billingTime || fee.addedAt}</td>
+                            <td>{fee.name}</td>
+                            <td>{fee.type}</td>
+                            <td>{fee.unit}</td>
+                            <td>{parseInterceptFeeNumber(fee.exchangeRate ?? 1).toFixed(3)}</td>
+                            <td>{formatInterceptFeeAmount(fee.unitPrice)}</td>
+                            <td>{fee.quantity.toFixed(2).replace(/\.00$/, '')}</td>
+                            <td>{fee.currency}</td>
+                            <td>{formatInterceptFeeAmount(getInterceptFeeOriginalAmount(fee))}</td>
+                            <td>{formatInterceptFeeAmount(getInterceptFeeRmbAmount(fee))}</td>
+                            <td>{fee.remark || fee.description || '-'}</td>
+                            <td>{fee.addedAt}</td>
+                            <td>{fee.addedBy}</td>
+                            <td>
+                              <button className="mc-intercept-action" type="button" onClick={() => openFeeModal(fee.id)}>编辑</button>
+                              <button className="mc-intercept-action" type="button" onClick={() => {
+                                if (!window.confirm(`确定删除费用“${fee.name}”吗？`)) return;
+                                updateTask(detailTask.id, (task) => ({ ...task, fees: task.fees.filter((item) => item.id !== fee.id) }));
+                                addToast?.(`已删除费用 ${fee.name}`, 'warning');
+                              }}>删除</button>
+                            </td>
                           </tr>
-                        )) : <tr><td colSpan={11} className="mc-intercept-fee-empty">暂无费用记录</td></tr>}
+                        )) : <tr><td colSpan={14} className="mc-intercept-fee-empty">暂无费用记录</td></tr>}
                       </tbody>
                     </table>
                   </div>
@@ -767,68 +1411,191 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
               )}
 
               {/* 其他信息 Tab */}
-              {detailContentTab === '其他信息' && (
-                <section className="mc-intercept-detail-card">
-                  <h3 className="mc-intercept-detail-card-title">其他信息</h3>
-                  <div className="mc-intercept-other-grid">
-                    <div className="mc-intercept-other-field">
-                      <label>备注</label>
-                      <div className="mc-intercept-other-value">{detailTask.remark || '-'}</div>
-                    </div>
-                    <div className="mc-intercept-other-field">
-                      <label>客户备注</label>
-                      <div className="mc-intercept-other-value">{detailTask.customerNote || '-'}</div>
-                    </div>
-                    <div className="mc-intercept-other-field">
-                      <label>仓库备注</label>
-                      <div className="mc-intercept-other-value">{detailTask.warehouseRemark || '-'}</div>
-                    </div>
-                    <div className="mc-intercept-other-field">
-                      <label>海外仓备注</label>
-                      <div className="mc-intercept-other-value">{detailTask.overseasWarehouseNote || '-'}</div>
-                    </div>
-                    <div className="mc-intercept-other-field mc-intercept-other-full">
-                      <label>增值服务</label>
-                      <div className="mc-intercept-other-value">
-                        {detailTask.valueAddedServices.length ? (
-                          <div className="mc-intercept-service-tags">
-                            {detailTask.valueAddedServices.map((s) => <span key={s} className="mc-intercept-service-tag">{s}</span>)}
-                          </div>
-                        ) : '-'}
-                      </div>
-                    </div>
-                    {detailTask.valueAddedRemark && (
-                      <div className="mc-intercept-other-field mc-intercept-other-full">
-                        <label>增值服务备注</label>
-                        <div className="mc-intercept-other-value">{detailTask.valueAddedRemark}</div>
-                      </div>
-                    )}
-                    <div className="mc-intercept-other-field mc-intercept-other-full">
-                      <label>附件</label>
-                      <div className="mc-intercept-other-value">
-                        {detailTask.attachments.length ? (
-                          <ul className="mc-intercept-attachment-list">
-                            {detailTask.attachments.map((f, i) => (
-                              <li key={i}><a className="mc-intercept-attachment-link" href={makeDownloadHref({ ...detailTask, attachment: f })} download={f}>{f}</a></li>
-                            ))}
-                          </ul>
-                        ) : '-'}
-                      </div>
-                    </div>
+              {detailContentTab === '其它信息' && (
+                <section className="m-[14px] rounded-md bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-950">其它信息</h3>
+                    <button
+                      type="button"
+                      onClick={() => openAttachmentModal()}
+                      className="rounded border border-slate-300 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      上传附件
+                    </button>
+                  </div>
+                  <div className="overflow-x-auto border border-slate-200">
+                    <table className="w-full min-w-[920px] table-fixed border-collapse text-[11px]">
+                      <thead className="bg-slate-50 text-slate-600">
+                        <tr>
+                          {['附件名称', '附件类型', '客户可见', '文件大小', '上传人', '上传时间', '操作'].map((head) => (
+                            <th key={head} className="border border-slate-200 px-3 py-2 text-left font-semibold">
+                              {head}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detailAttachmentRows.length > 0 ? (
+                          detailAttachmentRows.map((row) => (
+                            <tr key={row.id} className="h-10 text-slate-700 odd:bg-white even:bg-slate-50/70">
+                              <td className="border border-slate-200 px-3">{row.name}</td>
+                              <td className="border border-slate-200 px-3">{row.type}</td>
+                              <td className="border border-slate-200 px-3">{row.customerVisible}</td>
+                              <td className="border border-slate-200 px-3">{row.fileSize}</td>
+                              <td className="border border-slate-200 px-3">{row.uploadedBy}</td>
+                              <td className="border border-slate-200 px-3 font-mono text-slate-500">{row.uploadedAt}</td>
+                              <td className="border border-slate-200 px-3">
+                                <button type="button" onClick={() => openAttachmentModal(row)} className="mr-3 font-bold text-[#004bb1] hover:underline">编辑</button>
+                                <button type="button" onClick={() => downloadAttachment(row)} className="mr-3 font-bold text-[#004bb1] hover:underline">下载</button>
+                                <button type="button" onClick={() => setDeletingAttachment(row)} className="font-bold text-red-500 hover:underline">删除</button>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={7} className="h-24 border border-slate-200 text-center text-slate-300">
+                              <FileText className="mx-auto mb-2 h-8 w-8 text-slate-200" />
+                              暂无附件
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </section>
               )}
             </div>
             <footer className="mc-intercept-drawer-footer">
-              <button className="mc-btn" type="button" onClick={() => { setDetailTaskId(null); setDetailMode('view'); setDetailContentTab('货物信息'); }}>关闭</button>
+              <button className="mc-btn" type="button" onClick={() => { setDetailTaskId(null); setDetailMode('view'); setDetailContentTab('货箱信息'); }}>关闭</button>
               {detailMode === 'process' && detailTask.status === '待处理' && (
                 <>
-                  <button className="mc-btn" type="button" onClick={() => { cancelTask(detailTask.id); setDetailTaskId(null); setDetailMode('view'); setDetailContentTab('货物信息'); }}>取消申请</button>
+                  <button className="mc-btn" type="button" onClick={() => cancelTask(detailTask.id)}>取消申请</button>
                   <button className="mc-btn primary" type="button" onClick={() => { confirmTask(detailTask.id); }}>确认拦截</button>
                 </>
               )}
+              {detailMode === 'process' && detailTask.status === '拦截中' && (
+                <>
+                  <button className="mc-btn" type="button" onClick={() => openFeedback('failure', detailTask)}>拦截失败</button>
+                  <button className="mc-btn primary" type="button" onClick={() => openFeedback('success', detailTask)}>拦截成功</button>
+                </>
+              )}
+              {detailMode === 'process' && detailTask.status === '拦截成功' && (
+                <button className="mc-btn primary" type="button" onClick={() => openStorageDetails(detailTask)}>查看暂存详情</button>
+              )}
             </footer>
           </aside>
+        </div>
+      )}
+
+      {showFeeModal && detailTask && (
+        <OverseasFeeModal
+          rows={feeDraftRows}
+          focusedRowId={feeFocusId}
+          onAdd={addFeeDraftRow}
+          onUpdate={updateFeeDraftRow}
+          onRemove={removeFeeDraftRow}
+          onCancel={closeFeeModal}
+          onConfirm={saveFeeDraftRows}
+        />
+      )}
+
+      {showAttachmentModal && detailTask && (
+        <div
+          className="mc-intercept-overlay mc-intercept-feedback-overlay mc-intercept-attachment-overlay"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) closeAttachmentModal(); }}
+        >
+          <section className="mc-intercept-attachment-modal" role="dialog" aria-modal="true" aria-labelledby="interceptAttachmentTitle">
+            <header>
+              <h2 id="interceptAttachmentTitle">{editingAttachment ? '编辑附件' : '上传附件'}</h2>
+              <button type="button" onClick={closeAttachmentModal} className="mc-intercept-close" aria-label="关闭附件弹窗">×</button>
+            </header>
+            <div className="space-y-5 px-10 py-6 text-xs text-slate-700">
+              <div className="flex items-start gap-3">
+                <span className="w-24 shrink-0 pt-2 text-right font-bold text-slate-900">
+                  <span className="text-red-500">* </span>文件附件：
+                </span>
+                <div className="min-w-0 flex-1">
+                  <label className="inline-flex h-8 cursor-pointer items-center rounded bg-[#004bb1] px-5 text-xs font-bold text-white hover:bg-[#003b91]">
+                    点击上传
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={(event) => {
+                        handleAttachmentFileChange(event.target.files?.[0]);
+                        event.currentTarget.value = '';
+                      }}
+                    />
+                  </label>
+                  <div className="mt-3 text-[11px] text-slate-500">文件大小不超过250M</div>
+                  <div className="mt-2 text-[11px] font-semibold text-red-500">若为报关件资料，文件类型请选择“报关资料”</div>
+                  {attachmentForm.fileName && (
+                    <div className="mt-3 flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+                      <span className="min-w-0 flex-1 truncate">{attachmentForm.fileName}</span>
+                      <span className="text-slate-400">{attachmentForm.fileSize || '-'}</span>
+                      <button
+                        type="button"
+                        onClick={() => { setAttachmentForm((prev) => ({ ...prev, fileName: '', fileSize: '' })); setAttachmentFile(null); }}
+                        className="font-bold text-red-500 hover:underline"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <label className="flex items-center gap-3">
+                <span className="w-24 shrink-0 text-right font-bold text-slate-900">
+                  <span className="text-red-500">* </span>文件类型：
+                </span>
+                <select
+                  className="h-8 min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-[#004bb1] focus:ring-1 focus:ring-[#004bb1]"
+                  value={attachmentForm.type}
+                  onChange={(event) => setAttachmentForm((prev) => ({ ...prev, type: event.target.value }))}
+                >
+                  {interceptAttachmentTypeOptions.map((type) => <option key={type}>{type}</option>)}
+                </select>
+              </label>
+
+              <div className="flex items-center gap-3">
+                <span className="w-24 shrink-0 text-right font-bold text-slate-900">
+                  <span className="text-red-500">* </span>客户是否可见：
+                </span>
+                {(['不可见', '可见'] as const).map((option) => (
+                  <label key={option} className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="interceptAttachmentCustomerVisible"
+                      checked={attachmentForm.customerVisible === option}
+                      onChange={() => setAttachmentForm((prev) => ({ ...prev, customerVisible: option }))}
+                      className="h-3.5 w-3.5 text-blue-600"
+                    />
+                    <span>{option}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <footer>
+              <button type="button" onClick={closeAttachmentModal} className="rounded border border-slate-300 bg-white px-7 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">取消</button>
+              <button type="button" onClick={saveAttachment} className="rounded bg-blue-600 px-7 py-1.5 text-xs font-bold text-white hover:bg-blue-700">确定</button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {deletingAttachment && detailTask && (
+        <div className="mc-intercept-overlay mc-intercept-feedback-overlay mc-intercept-attachment-overlay">
+          <section className="mc-intercept-attachment-modal mc-intercept-attachment-delete-modal" role="dialog" aria-modal="true" aria-labelledby="interceptDeleteAttachmentTitle">
+            <header>
+              <h2 id="interceptDeleteAttachmentTitle">删除附件</h2>
+              <button type="button" onClick={() => setDeletingAttachment(null)} className="mc-intercept-close" aria-label="关闭删除附件弹窗">×</button>
+            </header>
+            <div className="px-10 py-8 text-center text-sm text-slate-800">确定删除附件“{deletingAttachment.name}”吗？</div>
+            <footer>
+              <button type="button" onClick={() => setDeletingAttachment(null)} className="rounded border border-slate-300 bg-white px-6 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">取消</button>
+              <button type="button" onClick={confirmDeleteAttachment} className="rounded bg-blue-600 px-6 py-1.5 text-xs font-bold text-white hover:bg-blue-700">确定</button>
+            </footer>
+          </section>
         </div>
       )}
 
@@ -851,22 +1618,52 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
         </div>
       )}
 
+      {editingRemarkTask && (
+        <div className="mc-intercept-overlay mc-intercept-feedback-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) cancelEditRemark(); }}>
+          <section className="mc-intercept-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="interceptRemarkTitle">
+            <header><h2 id="interceptRemarkTitle">编辑备注</h2><button className="mc-intercept-close" type="button" aria-label="关闭备注编辑" onClick={cancelEditRemark}>×</button></header>
+            <form onSubmit={(event) => { event.preventDefault(); saveEditRemark(editingRemarkTask.id); }}>
+              <div className="mc-intercept-feedback-content">
+                <p>拦截单号：{editingRemarkTask.no}</p>
+                <label><span>备注内容</span><textarea value={editRemarkValue} onChange={(event) => setEditRemarkValue(event.target.value)} maxLength={200} placeholder="请输入备注内容" autoFocus /></label>
+              </div>
+              <footer><button className="mc-btn" type="button" onClick={cancelEditRemark}>取消</button><button className="mc-btn primary" type="submit">保存</button></footer>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {cancelReasonOpen && (
+        <div className="mc-intercept-overlay mc-intercept-feedback-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) { setCancelReasonOpen(false); setCancelReasonContext({ mode: 'single', taskIds: [] }); } }}>
+          <section className="mc-intercept-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="interceptCancelReasonTitle">
+            <header><h2 id="interceptCancelReasonTitle">{cancelReasonContext.mode === 'batch' ? `批量取消拦截（${cancelReasonContext.taskIds.length} 条）` : '取消拦截'}</h2><button className="mc-intercept-close" type="button" aria-label="关闭取消拦截" onClick={() => { setCancelReasonOpen(false); setCancelReasonContext({ mode: 'single', taskIds: [] }); }}>×</button></header>
+            <form onSubmit={(event) => { event.preventDefault(); submitCancelReason(); }}>
+              <div className="mc-intercept-feedback-content">
+                <label><span className="mc-required">取消原因</span><textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} maxLength={200} placeholder="请输入取消拦截的原因" required autoFocus /></label>
+              </div>
+              <footer><button className="mc-btn" type="button" onClick={() => { setCancelReasonOpen(false); setCancelReasonContext({ mode: 'single', taskIds: [] }); }}>取消</button><button className="mc-btn primary" type="submit">确认取消拦截</button></footer>
+            </form>
+          </section>
+        </div>
+      )}
+
       {detailTask && feedbackMode && (
-        <div className="mc-intercept-overlay mc-intercept-feedback-overlay">
-          <section className="mc-intercept-feedback-modal" role="dialog" aria-modal="true">
-            <header><h2>{feedbackMode === 'success' ? '确认拦截成功' : '确认拦截失败'}</h2><button className="mc-intercept-close" type="button" aria-label="关闭拦截处理" onClick={() => setFeedbackMode('')}>×</button></header>
+        <div className="mc-intercept-overlay mc-intercept-feedback-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setFeedbackMode(''); }}>
+          <section className="mc-intercept-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="interceptFeedbackTitle">
+            <header><h2 id="interceptFeedbackTitle">{feedbackMode === 'success' ? '确认拦截成功' : '确认拦截失败'}</h2><button className="mc-intercept-close" type="button" aria-label="关闭拦截处理" onClick={() => setFeedbackMode('')}>×</button></header>
             <form onSubmit={submitFeedback}>
               <div className="mc-intercept-feedback-content">
                 {feedbackMode === 'success' ? (
                   <>
                     <p>请确认实际拦截的货物数量。提交后系统将自动生成暂存单。</p>
-                    <label><span className="mc-required">实际拦截箱数</span><input type="number" min="1" max={detailTask.boxes} value={actualBoxes} onChange={(e) => setActualBoxes(e.target.value)} required /></label>
-                    <label><span>备注</span><textarea value={feedbackNote} onChange={(e) => setFeedbackNote(e.target.value)} maxLength={200} placeholder="请输入处理备注" /></label>
+                    <label><span className="mc-required">实际拦截箱数</span><input type="number" min="1" max={detailTask.boxes} value={actualBoxes} onChange={(event) => setActualBoxes(event.target.value)} required /></label>
+                    <label><span>备注</span><textarea value={feedbackNote} onChange={(event) => setFeedbackNote(event.target.value)} maxLength={200} placeholder="请输入处理备注" /></label>
                   </>
                 ) : (
                   <>
                     <p>请填写无法完成拦截的原因，系统将保留处理记录。</p>
-                    <label><span className="mc-required">失败原因</span><textarea value={feedbackNote} onChange={(e) => setFeedbackNote(e.target.value)} maxLength={200} required placeholder="例如：已出库、找不到货物、客户取消" /></label>
+                    <label><span className="mc-required">失败原因</span><textarea value={feedbackFailureReason} onChange={(event) => setFeedbackFailureReason(event.target.value)} maxLength={200} required placeholder="例如：已出库、找不到货物、客户取消" /></label>
+                    <label><span>备注</span><textarea value={feedbackNote} onChange={(event) => setFeedbackNote(event.target.value)} maxLength={200} placeholder="请输入补充说明" /></label>
                   </>
                 )}
               </div>
@@ -875,19 +1672,47 @@ export default function OverseasWarehouseInterceptPage({ addToast }: OverseasWar
           </section>
         </div>
       )}
+
+      {batchSuccessOpen && (
+        <div className="mc-intercept-overlay mc-intercept-feedback-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setBatchSuccessOpen(false); }}>
+          <section className="mc-intercept-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="interceptBatchSuccessTitle">
+            <header><h2 id="interceptBatchSuccessTitle">批量拦截成功</h2><button className="mc-intercept-close" type="button" aria-label="关闭批量拦截成功" onClick={() => setBatchSuccessOpen(false)}>×</button></header>
+            <form onSubmit={(event) => { event.preventDefault(); submitBatchSuccess(); }}>
+              <div className="mc-intercept-feedback-content">
+                <p>已选择 {selectedProcessingCount} 条拦截中的记录，确认后将自动生成暂存单。</p>
+                <label><span>备注</span><textarea value={batchSuccessNote} onChange={(event) => setBatchSuccessNote(event.target.value)} maxLength={200} placeholder="请输入处理备注" autoFocus /></label>
+              </div>
+              <footer><button className="mc-btn" type="button" onClick={() => setBatchSuccessOpen(false)}>取消</button><button className="mc-btn primary" type="submit">确认提交</button></footer>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {batchFailureOpen && (
+        <div className="mc-intercept-overlay mc-intercept-feedback-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setBatchFailureOpen(false); }}>
+          <section className="mc-intercept-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="interceptBatchFailureTitle">
+            <header><h2 id="interceptBatchFailureTitle">批量拦截失败</h2><button className="mc-intercept-close" type="button" aria-label="关闭批量拦截失败" onClick={() => setBatchFailureOpen(false)}>×</button></header>
+            <form onSubmit={(event) => { event.preventDefault(); submitBatchFailure(); }}>
+              <div className="mc-intercept-feedback-content">
+                <p>已选择 {selectedProcessingCount} 条拦截中的记录，请填写失败原因。</p>
+                <label><span className="mc-required">失败原因</span><textarea value={batchFailureReason} onChange={(event) => setBatchFailureReason(event.target.value)} maxLength={200} required placeholder="请填写失败原因" autoFocus /></label>
+                <label><span>备注</span><textarea value={batchFailureNote} onChange={(event) => setBatchFailureNote(event.target.value)} maxLength={200} placeholder="请输入补充说明" /></label>
+              </div>
+              <footer><button className="mc-btn" type="button" onClick={() => setBatchFailureOpen(false)}>取消</button><button className="mc-btn primary" type="submit">确认提交</button></footer>
+            </form>
+          </section>
+        </div>
+      )}
+
       {batchRemarkOpen && (
         <div className="mc-intercept-overlay mc-intercept-batch-remark-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setBatchRemarkOpen(false); }}>
           <section className="mc-intercept-batch-remark-modal" role="dialog" aria-modal="true" aria-labelledby="batchRemarkTitle">
             <header><h2 id="batchRemarkTitle">批量备注</h2><button className="mc-intercept-close" type="button" aria-label="关闭批量备注" onClick={() => setBatchRemarkOpen(false)}>×</button></header>
             <div className="mc-intercept-batch-remark-content">
-              <p>将为已选择的 <b>{selectedPendingCount}</b> 条待处理拦截单统一设置内部备注。</p>
-              <div className="mc-intercept-batch-remark-mode" role="radiogroup" aria-label="批量备注方式">
-                <label><input type="radio" name="batchRemarkMode" value="append" checked={batchRemarkMode === 'append'} onChange={() => setBatchRemarkMode('append')} />追加</label>
-                <label><input type="radio" name="batchRemarkMode" value="replace" checked={batchRemarkMode === 'replace'} onChange={() => setBatchRemarkMode('replace')} />覆盖</label>
-              </div>
-              <textarea className="mc-intercept-batch-remark-textarea" value={batchRemarkText} onChange={(e) => setBatchRemarkText(e.target.value)} maxLength={200} placeholder="请输入内部备注（最多200字）" />
+              <p>将为已选择的 <b>{selectedVisible.length}</b> 条记录统一设置备注。</p>
+              <textarea className="mc-intercept-batch-remark-textarea" value={batchRemarkText} onChange={(event) => setBatchRemarkText(event.target.value)} maxLength={200} placeholder="请输入批量备注内容" autoFocus />
             </div>
-            <footer><button className="mc-btn" type="button" onClick={() => setBatchRemarkOpen(false)}>取消</button><button className="mc-btn primary" type="button" onClick={handleBatchRemark}>确定</button></footer>
+            <footer><button className="mc-btn" type="button" onClick={() => setBatchRemarkOpen(false)}>取消</button><button className="mc-btn primary" type="button" onClick={handleBatchRemark}>确认提交</button></footer>
           </section>
         </div>
       )}

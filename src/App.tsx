@@ -549,7 +549,15 @@ export default function App() {
         ) : currentTab === '海外暂存' ? (
           <OverseasTransitPage addToast={addToast} initialView="list" mode="storage" />
         ) : currentTab === '海外仓拦截' ? (
-          <OverseasWarehouseInterceptPage addToast={addToast} />
+          <OverseasWarehouseInterceptPage
+            addToast={addToast}
+            onOpenStorage={(storageNo) => {
+              setCurrentTab('海外暂存');
+              setCurrentSubView('海外暂存');
+              if (!openTabs.includes('海外暂存')) setOpenTabs(prev => [...prev, '海外暂存']);
+              addToast(storageNo ? `已打开暂存单 ${storageNo}` : '已打开海外暂存', 'info');
+            }}
+          />
         ) : currentTab === '快递单' ? (
           <ExpressOrderPage addToast={addToast} />
         ) : currentTab === '仓库出货' ? (
