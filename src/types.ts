@@ -61,6 +61,20 @@ export interface Waybill {
   clearanceType?: string;
 }
 
+export interface OverseasInterceptRequest {
+  id: number;
+  interceptNo: string;
+  waybillNo: string;
+  customerOrderNo: string;
+  customer: string;
+  container: string;
+  warehouse: string;
+  boxes: number;
+  reason: string;
+  attachmentName: string;
+  createdAt: string;
+}
+
 export interface SearchParams {
   keywords: string;
   groupCode: string;

@@ -13,7 +13,7 @@ import OverseasWarehouseInterceptPage from './components/OverseasWarehouseInterc
 import ExpressOrderPage from './components/ExpressOrderPage';
 import UserManagementPage from './components/UserManagementPage';
 import MarketingDashboardPage from './components/MarketingDashboardPage';
-import { Waybill, OrderType, WaybillChangeLog } from './types';
+import { Waybill, OrderType, WaybillChangeLog, OverseasInterceptRequest } from './types';
 import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from 'lucide-react';
 
 export default function App() {
@@ -29,6 +29,7 @@ export default function App() {
 
   // Active Toast list
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [pendingOverseasIntercepts, setPendingOverseasIntercepts] = useState<OverseasInterceptRequest[]>([]);
 
   // Function to drop a new notification toast
   const addToast = (text: string, type: 'success' | 'info' | 'warning' = 'info') => {
@@ -423,6 +424,20 @@ export default function App() {
     addToast(`导航至 [${tabName}] 工作窗口`, 'info');
   };
 
+  const handleCreateOverseasIntercept = (requests: OverseasInterceptRequest[]) => {
+    if (requests.length === 0) return;
+    setPendingOverseasIntercepts((currentRequests) => {
+      const existingIds = new Set(currentRequests.map((request) => request.id));
+      return [...currentRequests, ...requests.filter((request) => !existingIds.has(request.id))];
+    });
+
+    const targetTab = '海外仓拦截';
+    setCurrentSubView(targetTab);
+    setOpenTabs((tabs) => tabs.includes(targetTab) ? tabs : [...tabs, targetTab]);
+    setCurrentTab(targetTab);
+    addToast(`已创建 ${requests.length} 门海外仓拦截任务，自动进入“拦截中”页面`, 'success');
+  };
+
   const handleCloseTab = (tabName: string) => {
     const updatedTabs = openTabs.filter(t => t !== tabName);
     setOpenTabs(updatedTabs);
@@ -540,6 +555,7 @@ export default function App() {
             onDeleteWaybills={handleDeleteWaybills}
             onUpdateWaybillStatus={handleUpdateWaybillStatus}
             onUpdateWaybill={handleUpdateWaybill}
+            onCreateOverseasIntercept={handleCreateOverseasIntercept}
             addToast={addToast}
           />
         ) : currentTab === '贸易方式配置' || currentTab === '贸易方式校验规则查询' ? (
@@ -551,6 +567,7 @@ export default function App() {
         ) : currentTab === '海外仓拦截' ? (
           <OverseasWarehouseInterceptPage
             addToast={addToast}
+            incomingRequests={pendingOverseasIntercepts}
             onOpenStorage={(storageNo) => {
               setCurrentTab('海外暂存');
               setCurrentSubView('海外暂存');

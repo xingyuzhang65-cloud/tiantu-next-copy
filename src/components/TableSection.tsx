@@ -3,9 +3,9 @@ import {
   Search, RotateCcw, ChevronDown, ChevronUp, Plus, Trash2, 
   RefreshCw, Settings2, ShieldCheck, HelpCircle, ArrowUpDown,
   FileDown, Check, AlertOctagon, MapPin, X,
-  Copy, Printer
+  Copy, Printer, ShieldAlert, Paperclip
 } from 'lucide-react';
-import { Waybill, SearchParams, OrderType, WaybillAttachment, WaybillChangeLog } from '../types';
+import { Waybill, SearchParams, OrderType, WaybillAttachment, WaybillChangeLog, OverseasInterceptRequest } from '../types';
 
 interface TableSectionProps {
   waybills: Waybill[];
@@ -14,6 +14,7 @@ interface TableSectionProps {
   onDeleteWaybills: (ids: string[]) => void;
   onUpdateWaybillStatus: (id: string, nextStatus: Waybill['status']) => void;
   onUpdateWaybill: (id: string, patch: Partial<Waybill>) => void;
+  onCreateOverseasIntercept: (requests: OverseasInterceptRequest[]) => void;
   addToast: (msg: string, type: 'success' | 'info' | 'warning') => void;
 }
 
@@ -204,6 +205,7 @@ export default function TableSection({
   onDeleteWaybills,
   onUpdateWaybillStatus,
   onUpdateWaybill,
+  onCreateOverseasIntercept,
   addToast
 }: TableSectionProps) {
   // Filters state
@@ -279,7 +281,7 @@ export default function TableSection({
   // Collapsible search block
   const [extraFiltersOpen, setExtraFiltersOpen] = useState(true);
 
-  // Selected checkbox (single select only)
+  // Selected checkboxes (batch actions can target multiple waybills)
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   // Waybill change log modal
   const [logModalOpen, setLogModalOpen] = useState(false);
@@ -300,6 +302,10 @@ export default function TableSection({
   const [systemPushProduct, setSystemPushProduct] = useState('');
   const [systemPushService, setSystemPushService] = useState('');
   const [transferNumberDrawerOpen, setTransferNumberDrawerOpen] = useState(false);
+  const [overseasInterceptModalOpen, setOverseasInterceptModalOpen] = useState(false);
+  const [overseasInterceptConfirmOpen, setOverseasInterceptConfirmOpen] = useState(false);
+  const [overseasInterceptReason, setOverseasInterceptReason] = useState('');
+  const [overseasInterceptAttachment, setOverseasInterceptAttachment] = useState<File | null>(null);
 
   const [activeDetailWaybill, setActiveDetailWaybill] = useState<Waybill | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState('基础信息');
@@ -672,6 +678,85 @@ export default function TableSection({
     setTimeout(() => {
       addToast(`系统推单完成，共推送 ${pushCount} 门运单`, 'success');
     }, 1000);
+  };
+
+  const handleOpenOverseasIntercept = () => {
+    if (selectedIds.length === 0) {
+      addToast('请先在下方列表中勾选需要拦截的运单，支持批量选择', 'warning');
+      return;
+    }
+
+    setOverseasInterceptReason('');
+    setOverseasInterceptAttachment(null);
+    setOverseasInterceptModalOpen(true);
+  };
+
+  const handleSubmitOverseasIntercept = () => {
+    const reason = overseasInterceptReason.trim();
+    if (!reason) {
+      addToast('请填写拦截原因', 'warning');
+      return;
+    }
+
+    setOverseasInterceptConfirmOpen(true);
+  };
+
+  const handleConfirmOverseasIntercept = () => {
+    const reason = overseasInterceptReason.trim();
+    if (!reason) {
+      setOverseasInterceptConfirmOpen(false);
+      addToast('请填写拦截原因', 'warning');
+      return;
+    }
+
+    const attachment = overseasInterceptAttachment
+      ? {
+          id: `intercept-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          name: overseasInterceptAttachment.name,
+          type: overseasInterceptAttachment.type || 'application/octet-stream',
+          size: overseasInterceptAttachment.size,
+          uploadedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        }
+      : null;
+
+    const createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const requestSeed = Date.now();
+    const requests = selectedIds
+      .map((id, index) => {
+        const waybill = waybills.find((item) => item.id === id);
+        if (!waybill) return null;
+        return {
+          id: requestSeed + index,
+          interceptNo: `INT${String(requestSeed)}${String(index + 1).padStart(2, '0')}`,
+          waybillNo: waybill.id,
+          customerOrderNo: waybill.customerOrderNo || '-',
+          customer: waybill.customerName || '天图客户',
+          container: waybill.associatedNo || waybill.groupCode || '-',
+          warehouse: waybill.warehouseCode || waybill.station || '-',
+          boxes: waybill.packagesCount || 1,
+          reason,
+          attachmentName: attachment?.name || '-',
+          createdAt,
+        } satisfies OverseasInterceptRequest;
+      })
+      .filter((request): request is OverseasInterceptRequest => request !== null);
+
+    selectedIds.forEach((id) => {
+      const waybill = waybills.find((item) => item.id === id);
+      const nextRemarks = [waybill?.remarks, `海外仓拦截：${reason}`].filter(Boolean).join('；');
+      onUpdateWaybill(id, {
+        remarks: nextRemarks,
+        ...(attachment ? { attachments: [...(waybill?.attachments || []), attachment] } : {}),
+      });
+    });
+
+    onCreateOverseasIntercept(requests);
+    const count = requests.length;
+    setOverseasInterceptConfirmOpen(false);
+    setOverseasInterceptModalOpen(false);
+    setOverseasInterceptReason('');
+    setOverseasInterceptAttachment(null);
+    addToast(`已提交 ${count} 门运单的海外仓拦截申请`, 'success');
   };
 
   const handlePrintSystemLabel = () => {
@@ -1395,6 +1480,19 @@ export default function TableSection({
           >
             系统推单
           </button>
+
+          {(['转运中', '已签收', '全部'] as const).includes(activeStatusTab as '转运中' | '已签收' | '全部') && (
+            <button
+              id="btn-overseas-intercept"
+              type="button"
+              onClick={handleOpenOverseasIntercept}
+              className="flex items-center gap-1 rounded bg-amber-500 px-4 py-1.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-amber-600"
+              title="对勾选的运单发起海外仓拦截，支持批量"
+            >
+              <ShieldAlert className="h-3.5 w-3.5" />
+              海外仓拦截
+            </button>
+          )}
         </div>
       </div>
 
@@ -3039,6 +3137,131 @@ export default function TableSection({
           </div>
         );
       })()}
+
+      {overseasInterceptModalOpen && (
+        <div className="fixed inset-0 z-[90] flex items-start justify-center bg-slate-950/50 pt-10">
+          <div className="w-[620px] max-w-[calc(100vw-32px)] rounded-sm bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <h3 className="text-xl font-bold text-slate-900">海外仓拦截</h3>
+              <button
+                type="button"
+                onClick={() => setOverseasInterceptModalOpen(false)}
+                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                aria-label="关闭海外仓拦截"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-6 px-8 py-7 text-xs">
+              <div className="flex items-start gap-3">
+                <span className="w-20 shrink-0 pt-2 text-right text-slate-600">运单号：</span>
+                <div className="flex min-h-9 flex-1 flex-wrap items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-3 py-1.5">
+                  {selectedIds.map((id) => (
+                    <span key={id} className="inline-flex max-w-full items-center rounded bg-blue-50 px-2 py-1 font-mono text-[11px] font-semibold text-blue-600">
+                      {id}
+                    </span>
+                  ))}
+                  <span className="ml-1 text-[11px] text-slate-400">共 {selectedIds.length} 门</span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <span className="w-20 shrink-0 pt-2 text-right text-slate-600">
+                  <span className="mr-0.5 text-red-500">*</span>拦截原因：
+                </span>
+                <textarea
+                  value={overseasInterceptReason}
+                  onChange={(event) => setOverseasInterceptReason(event.target.value)}
+                  rows={4}
+                  maxLength={500}
+                  placeholder="请输入拦截原因"
+                  className="flex-1 resize-none rounded border border-slate-300 px-3 py-2 text-xs outline-none transition-colors placeholder:text-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="w-20 shrink-0 text-right text-slate-600">文件附件：</span>
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded bg-[#004bb1] px-5 py-2 text-xs font-bold text-white hover:bg-[#003b91]">
+                  <Paperclip className="h-3.5 w-3.5" />
+                  点击上传
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] || null;
+                      if (file && file.size > 100 * 1024 * 1024) {
+                        event.currentTarget.value = '';
+                        setOverseasInterceptAttachment(null);
+                        addToast('附件大小不能超过 100M', 'warning');
+                        return;
+                      }
+                      setOverseasInterceptAttachment(file);
+                    }}
+                  />
+                </label>
+                {overseasInterceptAttachment && (
+                  <span className="max-w-[280px] truncate text-slate-500" title={overseasInterceptAttachment.name}>
+                    {overseasInterceptAttachment.name}
+                  </span>
+                )}
+              </div>
+              <p className="pl-[92px] text-[11px] text-slate-400">支持单个文件上传，文件大小不超过 100M</p>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
+              <button
+                type="button"
+                onClick={handleSubmitOverseasIntercept}
+                className="rounded bg-[#004bb1] px-5 py-1.5 text-xs font-bold text-white hover:bg-[#003b91]"
+              >
+                保存
+              </button>
+              <button
+                type="button"
+                onClick={() => setOverseasInterceptModalOpen(false)}
+                className="rounded border border-slate-300 bg-white px-5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {overseasInterceptConfirmOpen && (
+        <div className="fixed inset-0 z-[100] flex items-start justify-center bg-slate-950/55 pt-28">
+          <div className="w-[440px] max-w-[calc(100vw-32px)] rounded-lg bg-white shadow-2xl">
+            <div className="flex items-start gap-3 border-b border-slate-100 px-6 py-5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-500">
+                <AlertOctagon className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">确认提交海外仓拦截？</h3>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  海外仓拦截可能产生拦截费、操作费等相关费用，具体费用以实际账单为准。确认继续提交吗？
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setOverseasInterceptConfirmOpen(false)}
+                className="rounded border border-slate-300 bg-white px-5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                返回修改
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmOverseasIntercept}
+                className="rounded bg-[#004bb1] px-5 py-1.5 text-xs font-bold text-white hover:bg-[#003b91]"
+              >
+                继续提交
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {attachmentExportModalOpen && (
         <div className="fixed inset-0 z-[70] flex items-start justify-center bg-slate-950/50 pt-24">
