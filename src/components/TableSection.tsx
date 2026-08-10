@@ -3241,7 +3241,7 @@ export default function TableSection({
               <div>
                 <h3 className="text-base font-bold text-slate-900">确认提交海外仓拦截？</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
-                  海外仓拦截可能产生拦截费、操作费等相关费用，具体费用以实际账单为准。确认继续提交吗？
+                  海外仓将尝试进行拦截，但无法保证100%拦截成功。拦截过程中可能产生拦截费、操作费等相关费用，具体费用以实际账单为准。确认继续提交吗？
                 </p>
               </div>
             </div>
