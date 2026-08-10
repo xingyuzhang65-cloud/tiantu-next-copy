@@ -5,6 +5,7 @@ import type { OverseasFeeEditableField } from './OverseasFeeModal';
 import type { OverseasInterceptInstructionFee, OverseasInterceptRequest } from '../types';
 
 type InterceptStatus = '待处理' | '拦截中' | '拦截成功' | '拦截失败' | '已取消';
+type InterceptReconciliationStatus = '有待核销' | '部分核销' | '已核销';
 type CargoStatus = '未拆柜' | '已拆柜' | '已出库' | '暂存中';
 
 interface InterceptLog {
@@ -47,6 +48,7 @@ interface InterceptTask {
   outboundStatus: string;
   boxes: number;
   status: InterceptStatus;
+  reconciliationStatus?: InterceptReconciliationStatus;
   reason: string;
   attachment: string;
   remark: string;
@@ -77,6 +79,7 @@ interface FilterState {
   waybillNo: string;
   customerOrderNo: string;
   latestTracking: string;
+  reconciliationStatus: string;
   dateFrom: string;
   dateTo: string;
 }
@@ -94,12 +97,13 @@ const emptyFilters: FilterState = {
   waybillNo: '',
   customerOrderNo: '',
   latestTracking: '',
+  reconciliationStatus: '',
   dateFrom: '',
   dateTo: '',
 };
 
 const statusTabs: Array<InterceptStatus | '全部'> = ['待处理', '拦截中', '拦截成功', '拦截失败', '已取消', '全部'];
-const tableHeaders = ['客户名称', '拦截单号', '运单号', '客户单号', '柜号', '最新运踪', '拦截原因', '拦截箱数', '指令费用', '客户备注', '内部备注', '申请人', '申请时间', '处理人', '处理时间', '操作'];
+const tableHeaders = ['客户名称', '拦截单号', '运单号', '客户单号', '柜号', '最新运踪', '拦截原因', '拦截箱数', '指令费用', '核销状态', '客户备注', '内部备注', '申请人', '申请时间', '处理人', '处理时间', '操作'];
 
 const initialTasks: InterceptTask[] = [
   {
@@ -115,6 +119,7 @@ const initialTasks: InterceptTask[] = [
     outboundStatus: '未出库',
     boxes: 11,
     status: '待处理',
+    reconciliationStatus: '有待核销',
     reason: '客户调整运输计划，申请暂缓出库',
     attachment: '拦截申请-20260804-01.pdf',
     remark: '等待客户确认新运输计划',
@@ -153,6 +158,7 @@ const initialTasks: InterceptTask[] = [
     outboundStatus: '未出库',
     boxes: 4,
     status: '待处理',
+    reconciliationStatus: '已核销',
     reason: '订单信息异常，客户要求暂缓处理',
     attachment: '-',
     remark: '请仓库优先确认货物位置',
@@ -189,6 +195,7 @@ const initialTasks: InterceptTask[] = [
     outboundStatus: '未出库',
     boxes: 5,
     status: '拦截中',
+    reconciliationStatus: '部分核销',
     reason: '客户申请暂停出库',
     attachment: '客户邮件截图.png',
     remark: '仓库正在核对货物位置',
@@ -229,6 +236,7 @@ const initialTasks: InterceptTask[] = [
     outboundStatus: '未出库',
     boxes: 2,
     status: '拦截成功',
+    reconciliationStatus: '已核销',
     reason: '客户要求货物转入暂存',
     attachment: '拦截申请单.pdf',
     remark: '后续等待客户重新下单',
@@ -270,6 +278,7 @@ const initialTasks: InterceptTask[] = [
     outboundStatus: '已出库',
     boxes: 3,
     status: '拦截失败',
+    reconciliationStatus: '已核销',
     reason: '客户临时要求取消发货',
     attachment: '-',
     remark: '',
@@ -307,6 +316,7 @@ const initialTasks: InterceptTask[] = [
     outboundStatus: '未出库',
     boxes: 4,
     status: '已取消',
+    reconciliationStatus: '已核销',
     reason: '客户申请暂停发货',
     attachment: '-',
     remark: '客户已自行调整订单',
@@ -335,6 +345,13 @@ const initialTasks: InterceptTask[] = [
 
 const nowText = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
+const getReconciliationStatus = (task: Pick<InterceptTask, 'reconciliationStatus' | 'fees' | 'instructionFees'>): InterceptReconciliationStatus => {
+  if (task.reconciliationStatus) return task.reconciliationStatus;
+  const feeCount = task.fees.length + (task.instructionFees || []).length;
+  if (feeCount === 0) return '已核销';
+  return feeCount > 1 ? '部分核销' : '有待核销';
+};
+
 let persistedInterceptTasks: InterceptTask[] | null = null;
 
 const createInterceptTaskFromRequest = (request: OverseasInterceptRequest): InterceptTask => ({
@@ -350,6 +367,7 @@ const createInterceptTaskFromRequest = (request: OverseasInterceptRequest): Inte
   outboundStatus: '未出库',
   boxes: request.boxes || 1,
   status: '拦截中',
+  reconciliationStatus: request.instructionFees?.length ? '有待核销' : '已核销',
   reason: request.reason,
   attachment: request.attachmentName || '-',
   remark: '由运单页面提交，等待海外仓处理',
@@ -914,6 +932,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       && matchText(task.waybillNo, filters.waybillNo)
       && matchText(task.customerOrderNo, filters.customerOrderNo)
       && matchText(task.latestTracking, filters.latestTracking)
+      && (!filters.reconciliationStatus || getReconciliationStatus(task) === filters.reconciliationStatus)
       && (!filters.customer || task.customer === filters.customer)
       && (!filters.dateFrom || task.appliedAt.slice(0, 10) >= filters.dateFrom)
       && (!filters.dateTo || task.appliedAt.slice(0, 10) <= filters.dateTo);
@@ -1296,10 +1315,10 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       notifySelectionMissing();
       return;
     }
-    const headers = ['客户名称', '拦截单号', '运单号', '客户单号', '最新运踪', '拦截原因', '拦截箱数', '指令费用', '客户备注', '内部备注', '申请人', '申请时间', '处理人', '处理时间'];
+    const headers = ['客户名称', '拦截单号', '运单号', '客户单号', '最新运踪', '拦截原因', '拦截箱数', '指令费用', '核销状态', '客户备注', '内部备注', '申请人', '申请时间', '处理人', '处理时间'];
     const rows = selectedVisible.map((task) => [
       task.customer, task.no, task.waybillNo, task.customerOrderNo, task.latestTracking,
-      task.reason, task.actualBoxes || task.boxes, (task.instructionFees || []).map(formatInstructionFee).join('；'), task.customerNote || '', task.internalRemark || task.remark || '', task.applicant,
+      task.reason, task.actualBoxes || task.boxes, (task.instructionFees || []).map(formatInstructionFee).join('；'), getReconciliationStatus(task), task.customerNote || '', task.internalRemark || task.remark || '', task.applicant,
       task.appliedAt, task.handler || '', task.handleAt || '',
     ]);
     const csv = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -1395,6 +1414,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
           <label className="mc-filter-field"><span>柜号</span><input value={draftFilters.container} onChange={(e) => updateDraftFilter('container', e.target.value)} placeholder="请输入柜号" /></label>
           <label className="mc-filter-field"><span>最新运踪</span><input value={draftFilters.latestTracking} onChange={(e) => updateDraftFilter('latestTracking', e.target.value)} placeholder="请输入运踪关键词" /></label>
           <label className="mc-filter-field"><span>客户名称</span><select value={draftFilters.customer} onChange={(e) => updateDraftFilter('customer', e.target.value)}><option value="">全部客户</option>{customers.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label className="mc-filter-field"><span>核销状态</span><select value={draftFilters.reconciliationStatus} onChange={(e) => updateDraftFilter('reconciliationStatus', e.target.value)}><option value="">全部状态</option><option value="有待核销">有待核销</option><option value="部分核销">部分核销</option><option value="已核销">已核销</option></select></label>
           <label className="mc-filter-field mc-intercept-date-filter"><span>申请时间</span><span className="mc-date-range"><input value={draftFilters.dateFrom} onChange={(e) => updateDraftFilter('dateFrom', e.target.value)} type="date" /><em>→</em><input value={draftFilters.dateTo} onChange={(e) => updateDraftFilter('dateTo', e.target.value)} type="date" /><b>□</b></span></label>
         </div>
         <div className="mc-filter-actions">
@@ -1434,7 +1454,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
             </thead>
             <tbody>
               {!filteredTasks.length ? (
-                <tr className="mc-intercept-empty"><td colSpan={17}>暂无匹配的拦截任务</td></tr>
+                <tr className="mc-intercept-empty"><td colSpan={18}>暂无匹配的拦截任务</td></tr>
               ) : filteredTasks.map((task) => (
                 <tr key={task.id}>
                   <td className="mc-intercept-check">
@@ -1451,6 +1471,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   <td className="mc-intercept-instruction-fee-cell">
                     {(task.instructionFees || []).length > 0 ? (task.instructionFees || []).map((fee) => <div key={fee.code}>{formatInstructionFee(fee)}</div>) : '-'}
                   </td>
+                  <td><span className={`mc-reconciliation-status mc-reconciliation-${getReconciliationStatus(task)}`}>{getReconciliationStatus(task)}</span></td>
                   <td className="mc-intercept-customer-note-cell" title={task.customerNote || '-'}>{task.customerNote || '-'}</td>
                   <td className="mc-intercept-remark-cell" title={task.internalRemark || task.remark || '-'}>
                     <span className="mc-intercept-remark-text" title={task.internalRemark || task.remark || '-'}>
@@ -1502,6 +1523,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   <DetailField label="柜号" value={detailTask.container || '-'} />
                   <DetailField label="拦截原因" value={detailTask.reason} />
                   <DetailField label="拦截箱数" value={`${detailTask.actualBoxes || detailTask.boxes} 箱`} />
+                  <DetailField label="核销状态" value={<span className={`mc-reconciliation-status mc-reconciliation-${getReconciliationStatus(detailTask)}`}>{getReconciliationStatus(detailTask)}</span>} />
                   <DetailField label="出库状态" value={detailTask.outboundStatus} />
                   <DetailField label="申请人" value={detailTask.applicant} />
                   <DetailField label="申请时间" value={detailTask.appliedAt} />

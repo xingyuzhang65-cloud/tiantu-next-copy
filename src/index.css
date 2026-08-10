@@ -252,7 +252,7 @@
 
 .mc-intercept-table {
   width: 100%;
-  min-width: 2500px;
+  min-width: 2600px;
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
@@ -287,7 +287,7 @@
   background: #f8fbfe;
 }
 
-.mc-intercept-table tbody tr:hover td:nth-child(17) {
+.mc-intercept-table tbody tr:hover td:nth-child(18) {
   background: #fff;
 }
 
@@ -313,15 +313,16 @@
 .mc-intercept-table th:nth-child(8) { width: 190px; }
 .mc-intercept-table th:nth-child(9) { width: 86px; }
 .mc-intercept-table th:nth-child(10) { width: 270px; }
-.mc-intercept-table th:nth-child(11) { width: 160px; }
-.mc-intercept-table th:nth-child(12) { width: 190px; }
-.mc-intercept-table th:nth-child(13) { width: 94px; }
-.mc-intercept-table th:nth-child(14),
-.mc-intercept-table th:nth-child(15) { width: 142px; }
-.mc-intercept-table th:nth-child(16) { width: 96px; }
+.mc-intercept-table th:nth-child(11) { width: 110px; }
+.mc-intercept-table th:nth-child(12) { width: 160px; }
+.mc-intercept-table th:nth-child(13) { width: 190px; }
+.mc-intercept-table th:nth-child(14) { width: 94px; }
+.mc-intercept-table th:nth-child(15),
+.mc-intercept-table th:nth-child(16) { width: 142px; }
+.mc-intercept-table th:nth-child(17) { width: 96px; }
 
-.mc-intercept-table th:nth-child(17),
-.mc-intercept-table td:nth-child(17) {
+.mc-intercept-table th:nth-child(18),
+.mc-intercept-table td:nth-child(18) {
   position: sticky;
   z-index: 3;
   right: 0;
@@ -333,6 +334,21 @@
   box-shadow: -8px 0 12px rgba(29, 42, 54, .08);
   white-space: nowrap;
 }
+
+.mc-reconciliation-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 62px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mc-reconciliation-有待核销 { color: #b7791f; background: #fff7e6; }
+.mc-reconciliation-部分核销 { color: #2b6cb0; background: #ebf8ff; }
+.mc-reconciliation-已核销 { color: #2f855a; background: #f0fff4; }
 
 .mc-intercept-attachment-link {
   display: inline-block;
