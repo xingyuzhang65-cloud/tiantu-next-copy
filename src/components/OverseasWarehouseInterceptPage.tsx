@@ -37,7 +37,6 @@ interface InterceptTask {
   no: string;
   container: string;
   customer: string;
-  warehouse: string;
   waybillNo: string;
   customerOrderNo: string;
   latestTracking: string;
@@ -72,7 +71,6 @@ interface FilterState {
   no: string;
   container: string;
   customer: string;
-  warehouse: string;
   waybillNo: string;
   customerOrderNo: string;
   latestTracking: string;
@@ -91,7 +89,6 @@ const emptyFilters: FilterState = {
   no: '',
   container: '',
   customer: '',
-  warehouse: '',
   waybillNo: '',
   customerOrderNo: '',
   latestTracking: '',
@@ -101,7 +98,7 @@ const emptyFilters: FilterState = {
 };
 
 const statusTabs: Array<InterceptStatus | '全部'> = ['待处理', '拦截中', '拦截成功', '拦截失败', '已取消', '全部'];
-const tableHeaders = ['客户名称', '拦截单号', '运单号', '客户单号', '柜号', '最新运踪', '仓库', '货物状态', '拦截原因', '附件', '拦截箱数', '内部备注', '申请人', '申请时间', '处理人', '处理时间', '操作'];
+const tableHeaders = ['客户名称', '拦截单号', '运单号', '客户单号', '柜号', '最新运踪', '货物状态', '拦截原因', '拦截箱数', '内部备注', '申请人', '申请时间', '处理人', '处理时间', '操作'];
 
 const initialTasks: InterceptTask[] = [
   {
@@ -109,7 +106,6 @@ const initialTasks: InterceptTask[] = [
     no: '202608040001',
     container: 'WEMA1131231',
     customer: 'TTTX',
-    warehouse: '美仓1号仓',
     waybillNo: 'YDH2026080401',
     customerOrderNo: 'CO-20260804-01',
     latestTracking: '2026-08-04 08:30 到达洛杉矶港，等待清关',
@@ -147,7 +143,6 @@ const initialTasks: InterceptTask[] = [
     no: '202608040002',
     container: 'MSCU7654321',
     customer: 'ABC-US',
-    warehouse: '美仓1号仓',
     waybillNo: 'YDH2026080402',
     customerOrderNo: 'CO-20260804-02',
     latestTracking: '2026-08-03 15:00 已入库美仓1号仓',
@@ -184,7 +179,6 @@ const initialTasks: InterceptTask[] = [
     no: '202608030015',
     container: '8889990',
     customer: '23',
-    warehouse: '美仓1号仓',
     waybillNo: 'YDH2026080303',
     customerOrderNo: 'CO-20260803-03',
     latestTracking: '2026-08-03 12:00 货物在库，拦截中',
@@ -224,7 +218,6 @@ const initialTasks: InterceptTask[] = [
     no: '202608020009',
     container: 'CCCA1414141',
     customer: 'TTTX',
-    warehouse: '美仓1号仓',
     waybillNo: 'YDH2026080204',
     customerOrderNo: 'CO-20260802-04',
     latestTracking: '2026-08-02 14:00 已转入暂存库位 A02-03',
@@ -266,7 +259,6 @@ const initialTasks: InterceptTask[] = [
     no: '202608010004',
     container: 'TLLU2026072',
     customer: '23',
-    warehouse: '美仓1号仓',
     waybillNo: 'YDH2026080105',
     customerOrderNo: 'CO-20260801-05',
     latestTracking: '2026-08-01 16:00 货物已完成出库，已送达',
@@ -304,7 +296,6 @@ const initialTasks: InterceptTask[] = [
     no: '202607310018',
     container: 'AAAA0000000',
     customer: 'TTTX',
-    warehouse: '美仓1号仓',
     waybillNo: 'YDH2026073106',
     customerOrderNo: 'CO-20260731-06',
     latestTracking: '2026-07-31 09:00 已取消，货物正常出库',
@@ -348,7 +339,6 @@ const createInterceptTaskFromRequest = (request: OverseasInterceptRequest): Inte
   no: request.interceptNo,
   container: request.container || '-',
   customer: request.customer || '-',
-  warehouse: request.warehouse || '-',
   waybillNo: request.waybillNo,
   customerOrderNo: request.customerOrderNo || '-',
   latestTracking: '已创建海外仓拦截任务，等待仓库处理',
@@ -457,7 +447,6 @@ interface InterceptCargoRow {
   boxNo: string;
   customerLines: string[];
   pickingLines: string[];
-  warehouse: string;
   returnNo: string;
   status: string;
   note: string;
@@ -487,13 +476,11 @@ function getInterceptCargoRows(task: InterceptTask): InterceptCargoRow[] {
       customerLines: [
         `客户：${task.customer}`,
         `拦截单：${task.no}`,
-        `申请仓库：${task.warehouse}`,
       ],
       pickingLines: [
         `系统拣货 ${boxIndex}/${count}`,
         `材重 ${boxWeight} / 实重 ${boxRealWeight}`,
       ],
-      warehouse: task.warehouse,
       returnNo: task.storageNo || '-',
       status: currentStatus,
       note: task.resultRemark || task.remark || task.reason,
@@ -595,7 +582,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
 
   const customers = useMemo(() => Array.from(new Set(tasks.map((task) => task.customer))), [tasks]);
-  const warehouses = useMemo(() => Array.from(new Set(tasks.map((task) => task.warehouse))), [tasks]);
   const detailTask = detailTaskId ? tasks.find((task) => task.id === detailTaskId) || null : null;
   const logTask = logTaskId ? tasks.find((task) => task.id === logTaskId) || null : null;
   const editingRemarkTask = editingRemarkId ? tasks.find((task) => task.id === editingRemarkId) || null : null;
@@ -679,7 +665,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       && matchText(task.customerOrderNo, filters.customerOrderNo)
       && matchText(task.latestTracking, filters.latestTracking)
       && (!filters.customer || task.customer === filters.customer)
-      && (!filters.warehouse || task.warehouse === filters.warehouse)
       && (!filters.cargoStatus || task.cargoStatus === filters.cargoStatus)
       && (!filters.dateFrom || task.appliedAt.slice(0, 10) >= filters.dateFrom)
       && (!filters.dateTo || task.appliedAt.slice(0, 10) <= filters.dateTo);
@@ -1087,9 +1072,9 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       notifySelectionMissing();
       return;
     }
-    const headers = ['客户名称', '拦截单号', '运单号', '客户单号', '最新运踪', '仓库', '货物状态', '拦截原因', '拦截箱数', '申请人', '申请时间', '处理人', '处理时间', '备注'];
+    const headers = ['客户名称', '拦截单号', '运单号', '客户单号', '最新运踪', '货物状态', '拦截原因', '拦截箱数', '申请人', '申请时间', '处理人', '处理时间', '备注'];
     const rows = selectedVisible.map((task) => [
-      task.customer, task.no, task.waybillNo, task.customerOrderNo, task.latestTracking, task.warehouse,
+      task.customer, task.no, task.waybillNo, task.customerOrderNo, task.latestTracking,
       task.cargoStatus, task.reason, task.actualBoxes || task.boxes, task.applicant,
       task.appliedAt, task.handler || '', task.handleAt || '', task.remark || task.internalRemark || '',
     ]);
@@ -1182,7 +1167,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
           <label className="mc-filter-field"><span>柜号</span><input value={draftFilters.container} onChange={(e) => updateDraftFilter('container', e.target.value)} placeholder="请输入柜号" /></label>
           <label className="mc-filter-field"><span>最新运踪</span><input value={draftFilters.latestTracking} onChange={(e) => updateDraftFilter('latestTracking', e.target.value)} placeholder="请输入运踪关键词" /></label>
           <label className="mc-filter-field"><span>客户名称</span><select value={draftFilters.customer} onChange={(e) => updateDraftFilter('customer', e.target.value)}><option value="">全部客户</option>{customers.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label className="mc-filter-field"><span>仓库</span><select value={draftFilters.warehouse} onChange={(e) => updateDraftFilter('warehouse', e.target.value)}><option value="">全部仓库</option>{warehouses.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label className="mc-filter-field"><span>货物状态</span><select value={draftFilters.cargoStatus} onChange={(e) => updateDraftFilter('cargoStatus', e.target.value)}><option value="">全部货物状态</option><option>未拆柜</option><option>已拆柜</option><option>已出库</option><option>暂存中</option></select></label>
           <label className="mc-filter-field mc-intercept-date-filter"><span>申请时间</span><span className="mc-date-range"><input value={draftFilters.dateFrom} onChange={(e) => updateDraftFilter('dateFrom', e.target.value)} type="date" /><em>→</em><input value={draftFilters.dateTo} onChange={(e) => updateDraftFilter('dateTo', e.target.value)} type="date" /><b>□</b></span></label>
         </div>
@@ -1224,7 +1208,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
             </thead>
             <tbody>
               {!filteredTasks.length ? (
-                <tr className="mc-intercept-empty"><td colSpan={18}>暂无匹配的拦截任务</td></tr>
+                <tr className="mc-intercept-empty"><td colSpan={16}>暂无匹配的拦截任务</td></tr>
               ) : filteredTasks.map((task) => (
                 <tr key={task.id}>
                   <td className="mc-intercept-check">
@@ -1236,10 +1220,8 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   <td title={task.customerOrderNo || '-'}>{task.customerOrderNo || '-'}</td>
                   <td title={task.container || '-'}>{task.container || '-'}</td>
                   <td title={task.latestTracking || '-'}>{task.latestTracking || '-'}</td>
-                  <td>{task.warehouse}</td>
                   <td><span className={`mc-intercept-cargo-status ${task.cargoStatus === '已出库' ? 'is-outbound' : task.cargoStatus === '暂存中' ? 'is-storage' : ''}`}>{task.cargoStatus}</span></td>
                   <td title={task.reason}>{task.reason}</td>
-                  <td>{task.attachment === '-' ? '-' : <a className="mc-intercept-attachment-link" href={makeDownloadHref(task)} download={task.attachment} title={task.attachment}>{task.attachment}</a>}</td>
                   <td>{task.actualBoxes || task.boxes}</td>
                   <td className="mc-intercept-remark-cell" title={task.internalRemark || task.remark || '-'}>
                     <span className="mc-intercept-remark-text" onClick={() => startEditRemark(task)} style={{ cursor: 'pointer', minHeight: '18px', display: 'inline-block' }}>
@@ -1292,17 +1274,8 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   <DetailField label="系统柜号" value={detailTask.container || '-'} />
                   <DetailField label="客户名称" value={detailTask.customer} />
                   <DetailField label="拦截原因" value={detailTask.reason} fullWidth />
-                  <DetailField
-                    label="附件"
-                    value={detailTask.attachment === '-' ? '-' : (
-                      <a className="mc-intercept-attachment-link" href={makeDownloadHref(detailTask)} download={detailTask.attachment}>
-                        {detailTask.attachment}
-                      </a>
-                    )}
-                  />
                   <DetailField label="拦截箱数" value={`${detailTask.actualBoxes || detailTask.boxes} 箱`} />
                   <DetailField label="货物状态" value={<span className={`mc-intercept-cargo-status ${detailTask.cargoStatus === '已出库' ? 'is-outbound' : detailTask.cargoStatus === '暂存中' ? 'is-storage' : ''}`}>{detailTask.cargoStatus}</span>} />
-                  <DetailField label="所在仓库" value={detailTask.warehouse} />
                   <DetailField label="出库状态" value={detailTask.outboundStatus} />
                   <DetailField label="申请人" value={detailTask.applicant} />
                   <DetailField label="申请时间" value={detailTask.appliedAt} />
