@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FileText } from 'lucide-react';
 import OverseasFeeModal from './OverseasFeeModal';
 import type { OverseasFeeEditableField } from './OverseasFeeModal';
-import type { OverseasInterceptRequest } from '../types';
+import type { OverseasInterceptInstructionFee, OverseasInterceptRequest } from '../types';
 
 type InterceptStatus = '待处理' | '拦截中' | '拦截成功' | '拦截失败' | '已取消';
 type CargoStatus = '未拆柜' | '已拆柜' | '已出库' | '暂存中';
@@ -32,6 +32,8 @@ interface InterceptFee {
   remark?: string;
 }
 
+type InterceptInstructionFee = OverseasInterceptInstructionFee;
+
 interface InterceptTask {
   id: number;
   no: string;
@@ -57,6 +59,7 @@ interface InterceptTask {
   storageNo: string;
   resultRemark: string;
   fees: InterceptFee[];
+  instructionFees?: InterceptInstructionFee[];
   valueAddedServices: string[];
   valueAddedRemark: string;
   warehouseRemark: string;
@@ -74,7 +77,6 @@ interface FilterState {
   waybillNo: string;
   customerOrderNo: string;
   latestTracking: string;
-  cargoStatus: string;
   dateFrom: string;
   dateTo: string;
 }
@@ -92,13 +94,12 @@ const emptyFilters: FilterState = {
   waybillNo: '',
   customerOrderNo: '',
   latestTracking: '',
-  cargoStatus: '',
   dateFrom: '',
   dateTo: '',
 };
 
 const statusTabs: Array<InterceptStatus | '全部'> = ['待处理', '拦截中', '拦截成功', '拦截失败', '已取消', '全部'];
-const tableHeaders = ['客户名称', '拦截单号', '运单号', '客户单号', '柜号', '最新运踪', '货物状态', '拦截原因', '拦截箱数', '内部备注', '申请人', '申请时间', '处理人', '处理时间', '操作'];
+const tableHeaders = ['客户名称', '拦截单号', '运单号', '客户单号', '柜号', '最新运踪', '拦截原因', '拦截箱数', '指令费用', '客户备注', '内部备注', '申请人', '申请时间', '处理人', '处理时间', '操作'];
 
 const initialTasks: InterceptTask[] = [
   {
@@ -129,6 +130,7 @@ const initialTasks: InterceptTask[] = [
       { id: 1, name: '卸柜费', type: '操作费', unit: '箱', unitPrice: 15, quantity: 11, currency: '人民币', total: 165, addedAt: '2026-08-04 09:20:00', addedBy: '系统', description: '按箱计费' },
       { id: 2, name: '仓储费', type: '仓储费', unit: '票', unitPrice: 50, quantity: 1, currency: '人民币', total: 50, addedAt: '2026-08-04 09:20:00', addedBy: '系统', description: '暂存期间仓储费' },
     ],
+    instructionFees: [{ code: 'FY202509260004', name: '拦截-免仓7天', type: '仓储费', unit: '票', price: '4', quantity: '1', currency: '人民币', exchangeRate: '1', description: '提柜入仓当天起算', addedAt: '2026-08-04 09:20:00', addedBy: '系统' }],
     valueAddedServices: ['拍照', '验货'],
     valueAddedRemark: '客户要求拍照确认货物外观',
     warehouseRemark: '货物状态良好，等待客户确认',
@@ -201,6 +203,7 @@ const initialTasks: InterceptTask[] = [
     fees: [
       { id: 4, name: '拦截操作费', type: '操作费', unit: '票', unitPrice: 200, quantity: 1, currency: '人民币', total: 200, addedAt: '2026-08-03 15:35:00', addedBy: '仓库-李明', description: '拦截操作人工费' },
     ],
+    instructionFees: [{ code: 'FY202509260005', name: '拦截-免仓8-90天', type: '仓储费', unit: '票', price: '3', quantity: '1', currency: '人民币', exchangeRate: '1', description: '按1级单价收取', addedAt: '2026-08-03 15:35:00', addedBy: '仓库-李明' }],
     valueAddedServices: ['测量尺寸', '拍照'],
     valueAddedRemark: '已确认货物状态',
     warehouseRemark: '货物在A01-05库位',
@@ -359,10 +362,11 @@ const createInterceptTaskFromRequest = (request: OverseasInterceptRequest): Inte
   storageNo: '',
   resultRemark: '',
   fees: [],
+  instructionFees: request.instructionFees || [],
   valueAddedServices: [],
   valueAddedRemark: '',
   warehouseRemark: '',
-  customerNote: '',
+  customerNote: request.customerNote || '',
   overseasWarehouseNote: '',
   internalRemark: '',
   attachments: request.attachmentName ? [request.attachmentName] : [],
@@ -401,7 +405,7 @@ function makeDownloadHref(task: InterceptTask) {
   return `data:text/plain;charset=utf-8,${encodeURIComponent(`拦截单号: ${task.no}\n拦截原因: ${task.reason}\n附件名称: ${task.attachment}\n`)}`;
 }
 
-const interceptDetailTabs = ['货箱信息', '费用信息', '其它信息'] as const;
+const interceptDetailTabs = ['货箱信息', '指令费用', '费用信息', '其它信息'] as const;
 type InterceptDetailTab = (typeof interceptDetailTabs)[number];
 
 type InterceptFeeDraft = {
@@ -415,6 +419,12 @@ type InterceptFeeDraft = {
   quantity: string;
   currency: string;
   remark: string;
+};
+
+type InterceptInstructionFeeDraft = Omit<InterceptFeeDraft, 'id'> & {
+  id: string;
+  code: string;
+  description: string;
 };
 
 type InterceptAttachmentRow = {
@@ -442,6 +452,21 @@ const emptyInterceptAttachmentForm: InterceptAttachmentFormState = {
   type: '其他',
   customerVisible: '可见',
 };
+
+type InterceptInstructionFeeCatalogRow = Pick<InterceptInstructionFee, 'code' | 'name' | 'type' | 'unit' | 'price' | 'currency' | 'description'>;
+
+const interceptInstructionFeeCatalog: InterceptInstructionFeeCatalogRow[] = [
+  { code: 'FY202509260001', name: '仓储渠道-免仓30天', type: '仓储费', unit: '票', price: '3', currency: '人民币', description: '提柜入仓当天起算' },
+  { code: 'FY202509260002', name: '仓储渠道-31-90天', type: '仓储费', unit: '票', price: '4', currency: '人民币', description: '按1级单价收取' },
+  { code: 'FY202509260003', name: '仓储渠道-90天以上', type: '仓储费', unit: '票', price: '2', currency: '人民币', description: '按2级单价收取' },
+  { code: 'FY202509260004', name: '拦截-免仓7天', type: '仓储费', unit: '票', price: '4', currency: '人民币', description: '提柜入仓当天起算' },
+  { code: 'FY202509260005', name: '拦截-免仓8-90天', type: '仓储费', unit: '票', price: '3', currency: '人民币', description: '按1级单价收取' },
+  { code: 'FY202509260006', name: '拦截-免仓90天以上', type: '仓储费', unit: '票', price: '2', currency: '人民币', description: '按2级单价收取' },
+  { code: 'FY202509260007', name: '扣货-无免仓期', type: '仓储费', unit: '票', price: '2', currency: '人民币', description: '按1级单价收取' },
+];
+
+const findInterceptInstructionFeeCatalogRow = (value: string) =>
+  interceptInstructionFeeCatalog.find((item) => item.name === value || item.code === value);
 
 interface InterceptCargoRow {
   boxNo: string;
@@ -539,6 +564,49 @@ const createEmptyInterceptFeeDraft = (): InterceptFeeDraft => ({
   remark: '',
 });
 
+const createInstructionFeeDraft = (fee: InterceptInstructionFee): InterceptInstructionFeeDraft => ({
+  id: fee.code,
+  code: fee.code,
+  billingTime: fee.billingTime || fee.addedAt || nowText(),
+  name: fee.name,
+  type: fee.type,
+  unit: fee.unit,
+  exchangeRate: fee.exchangeRate || (fee.currency === 'USD' ? '7.014' : '1'),
+  unitPrice: fee.price,
+  quantity: fee.quantity || '1',
+  currency: fee.currency,
+  remark: fee.remark || fee.description || '',
+  description: fee.description || '',
+});
+
+const createEmptyInstructionFeeDraft = (): InterceptInstructionFeeDraft => ({
+  id: `intercept-instruction-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  code: '',
+  billingTime: nowText(),
+  name: '',
+  type: '操作费',
+  unit: '票',
+  exchangeRate: '1',
+  unitPrice: '0',
+  quantity: '1',
+  currency: '人民币',
+  remark: '',
+  description: '',
+});
+
+const formatInstructionFeeAmount = (value: number) => Number(value.toFixed(2)).toString();
+const formatInstructionFeeCurrency = (currency: string) => {
+  const normalized = currency.trim().toUpperCase();
+  if (currency === '人民币' || normalized === 'RMB' || normalized === 'CNY') return 'CNY';
+  if (currency === '美元' || normalized === 'USD') return 'USD';
+  return normalized || 'CNY';
+};
+const formatInstructionFee = (row: InterceptInstructionFee) => {
+  const quantity = parseInterceptFeeNumber(row.quantity || '1') || 1;
+  const total = parseInterceptFeeNumber(row.price) * quantity;
+  return `${formatInstructionFeeAmount(total)} ${formatInstructionFeeCurrency(row.currency)} ${row.name} (${row.price}/${row.unit})`;
+};
+
 type CancelReasonContext = {
   mode: 'single' | 'batch';
   taskIds: number[];
@@ -559,12 +627,11 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   const [feedbackNote, setFeedbackNote] = useState('');
   const [feedbackFailureReason, setFeedbackFailureReason] = useState('');
   const [editingRemarkId, setEditingRemarkId] = useState<number | null>(null);
+  const [editingRemarkField, setEditingRemarkField] = useState<'customer' | 'internal'>('internal');
   const [editRemarkValue, setEditRemarkValue] = useState('');
   const [cancelReasonOpen, setCancelReasonOpen] = useState(false);
   const [cancelReasonContext, setCancelReasonContext] = useState<CancelReasonContext>({ mode: 'single', taskIds: [] });
   const [cancelReason, setCancelReason] = useState('');
-  const [batchRemarkOpen, setBatchRemarkOpen] = useState(false);
-  const [batchRemarkText, setBatchRemarkText] = useState('');
   const [batchSuccessOpen, setBatchSuccessOpen] = useState(false);
   const [batchSuccessNote, setBatchSuccessNote] = useState('');
   const [batchFailureOpen, setBatchFailureOpen] = useState(false);
@@ -574,6 +641,11 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   const [showFeeModal, setShowFeeModal] = useState(false);
   const [feeDraftRows, setFeeDraftRows] = useState<InterceptFeeDraft[]>([]);
   const [feeFocusId, setFeeFocusId] = useState<number | null>(null);
+  const [instructionFeeDraftRows, setInstructionFeeDraftRows] = useState<InterceptInstructionFeeDraft[]>([]);
+  const [instructionFeeFocusId, setInstructionFeeFocusId] = useState<string | null>(null);
+  const [showInstructionFeeModal, setShowInstructionFeeModal] = useState(false);
+  const [editingInstructionFee, setEditingInstructionFee] = useState<InterceptInstructionFee | null>(null);
+  const [deletingInstructionFee, setDeletingInstructionFee] = useState<InterceptInstructionFee | null>(null);
   const [attachmentRowsByTask, setAttachmentRowsByTask] = useState<Record<number, InterceptAttachmentRow[]>>({});
   const [showAttachmentModal, setShowAttachmentModal] = useState(false);
   const [editingAttachment, setEditingAttachment] = useState<InterceptAttachmentRow | null>(null);
@@ -590,6 +662,8 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     : [];
   const detailFeeOriginalTotal = detailTask?.fees.reduce((sum, fee) => sum + getInterceptFeeOriginalAmount(fee), 0) || 0;
   const detailFeeRmbTotal = detailTask?.fees.reduce((sum, fee) => sum + getInterceptFeeRmbAmount(fee), 0) || 0;
+  const detailInstructionFees = detailTask?.instructionFees || [];
+  const detailInstructionFeeTotal = detailInstructionFees.reduce((sum, fee) => sum + parseInterceptFeeNumber(fee.price) * (parseInterceptFeeNumber(fee.quantity || '1') || 1), 0);
 
   const openFeeModal = (focusId: number | null = null) => {
     if (!detailTask) return;
@@ -602,6 +676,182 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     setShowFeeModal(false);
     setFeeDraftRows([]);
     setFeeFocusId(null);
+  };
+
+  const openInstructionFeeModal = (focusId: string | null = null) => {
+    if (!detailTask) return;
+    setInstructionFeeDraftRows((detailTask.instructionFees || []).map(createInstructionFeeDraft));
+    setInstructionFeeFocusId(focusId);
+    setShowInstructionFeeModal(true);
+  };
+
+  const closeInstructionFeeModal = () => {
+    setShowInstructionFeeModal(false);
+    setInstructionFeeDraftRows([]);
+    setInstructionFeeFocusId(null);
+  };
+
+  const updateInstructionFeeDraftRow = (draftId: string, field: OverseasFeeEditableField, value: string) => {
+    setInstructionFeeDraftRows((rows) => rows.map((row) => {
+      if (row.id !== draftId) return row;
+      if (field === 'name') {
+        const catalog = findInterceptInstructionFeeCatalogRow(value);
+        return catalog
+          ? {
+              ...row,
+              code: catalog.code,
+              name: catalog.name,
+              type: catalog.type,
+              unit: catalog.unit,
+              unitPrice: catalog.price,
+              currency: catalog.currency,
+              exchangeRate: catalog.currency === '人民币' ? '1' : (row.exchangeRate === '1' ? '7.014' : row.exchangeRate),
+              description: catalog.description,
+              remark: catalog.description,
+            }
+          : { ...row, code: '', name: value };
+      }
+      if (field === 'currency') {
+        return {
+          ...row,
+          currency: value,
+          exchangeRate: value === '人民币' ? '1' : (row.exchangeRate === '1' ? '7.014' : row.exchangeRate),
+        };
+      }
+      return { ...row, [field]: value };
+    }));
+  };
+
+  const addInstructionFeeDraftRow = () => setInstructionFeeDraftRows((rows) => [...rows, createEmptyInstructionFeeDraft()]);
+  const removeInstructionFeeDraftRow = (draftId: string) => setInstructionFeeDraftRows((rows) => rows.filter((row) => row.id !== draftId));
+
+  const saveInstructionFeeDraftRows = () => {
+    if (!detailTask) return;
+    const confirmedAt = nowText();
+    const addedBy = detailTask.handler || detailTask.applicant || '仓库-李明';
+    const usedCodes = new Set<string>();
+    const nextRows: InterceptInstructionFee[] = instructionFeeDraftRows.map((row, index) => {
+      const existing = detailInstructionFees.find((fee) => fee.code === row.id || fee.code === row.code);
+      const catalogRow = findInterceptInstructionFeeCatalogRow(row.code) || findInterceptInstructionFeeCatalogRow(row.name.trim());
+      const code = row.code.trim() || catalogRow?.code || `INTERCEPT-FEE-${detailTask.id}-${index + 1}`;
+      const uniqueCode = usedCodes.has(code) ? `${code}-${index + 1}` : code;
+      usedCodes.add(uniqueCode);
+      const description = row.remark.trim() || row.description.trim() || catalogRow?.description || '';
+      const currency = row.currency || catalogRow?.currency || '人民币';
+      const exchangeRate = row.exchangeRate.trim() || (currency === '人民币' ? '1' : '7.014');
+      return {
+        ...(catalogRow || {
+          code: uniqueCode,
+          name: row.name.trim() || `费用${index + 1}`,
+          type: row.type.trim() || '操作费',
+          unit: row.unit.trim() || '票',
+          price: row.unitPrice.trim() || '0',
+          currency,
+          description,
+        }),
+        code: uniqueCode,
+        name: row.name.trim() || `费用${index + 1}`,
+        type: row.type.trim() || catalogRow?.type || '操作费',
+        unit: row.unit.trim() || catalogRow?.unit || '票',
+        price: row.unitPrice.trim() || catalogRow?.price || '0',
+        quantity: row.quantity.trim() || '1',
+        currency,
+        exchangeRate,
+        description,
+        remark: description,
+        billingTime: row.billingTime.trim() || existing?.billingTime || confirmedAt,
+        addedAt: existing?.addedAt || confirmedAt,
+        addedBy: existing?.addedBy || addedBy,
+      };
+    });
+    updateTask(detailTask.id, (task) => ({
+      ...task,
+      instructionFees: nextRows,
+      logs: [
+        ...task.logs,
+        {
+          time: confirmedAt,
+          user: addedBy,
+          action: '新增操作指令',
+          change: '-',
+          note: nextRows.map(formatInstructionFee).join('；'),
+        },
+      ],
+    }));
+    addToast?.('指令费用已保存', 'success');
+    closeInstructionFeeModal();
+  };
+
+  const openEditingInstructionFee = (row: InterceptInstructionFee) => {
+    setEditingInstructionFee({ ...row });
+  };
+
+  const closeEditingInstructionFee = () => {
+    setEditingInstructionFee(null);
+  };
+
+  const updateEditingInstructionFee = (field: keyof InterceptInstructionFee, value: string) => {
+    setEditingInstructionFee((current) => {
+      if (!current) return current;
+      const next: InterceptInstructionFee = { ...current, [field]: value };
+      if (field === 'currency') {
+        next.exchangeRate = value === '人民币' ? '1' : (current.exchangeRate === '1' ? '7.014' : current.exchangeRate || '7.014');
+      }
+      if (field === 'quantity' && !value.trim()) {
+        next.quantity = '1';
+      }
+      if (field === 'remark') {
+        next.description = value;
+      }
+      return next;
+    });
+  };
+
+  const saveEditingInstructionFee = () => {
+    if (!detailTask || !editingInstructionFee) return;
+    const nextRow: InterceptInstructionFee = {
+      ...editingInstructionFee,
+      quantity: editingInstructionFee.quantity || '1',
+      exchangeRate: editingInstructionFee.currency === '人民币'
+        ? '1'
+        : (editingInstructionFee.exchangeRate === '1' ? '7.014' : editingInstructionFee.exchangeRate || '7.014'),
+    };
+    updateTask(detailTask.id, (task) => ({
+      ...task,
+      instructionFees: (task.instructionFees || []).map((row) => (row.code === nextRow.code ? nextRow : row)),
+      logs: [
+        ...task.logs,
+        {
+          time: nowText(),
+          user: task.handler || '仓库-李明',
+          action: '编辑操作指令',
+          change: nextRow.name,
+          note: `单价 ${nextRow.price}，数量 ${nextRow.quantity || '1'}，币种 ${nextRow.currency}`,
+        },
+      ],
+    }));
+    setEditingInstructionFee(null);
+    addToast?.('操作指令已更新', 'success');
+  };
+
+  const confirmDeleteInstructionFee = () => {
+    if (!detailTask || !deletingInstructionFee) return;
+    updateTask(detailTask.id, (task) => ({
+      ...task,
+      instructionFees: (task.instructionFees || []).filter((row) => row.code !== deletingInstructionFee.code),
+      logs: [
+        ...task.logs,
+        {
+          time: nowText(),
+          user: task.handler || '仓库-李明',
+          action: '删除操作指令',
+          change: deletingInstructionFee.name,
+          note: `删除费用项：${deletingInstructionFee.name}`,
+        },
+      ],
+    }));
+    setDeletingInstructionFee(null);
+    addToast?.('操作指令已删除', 'info');
   };
 
   const updateFeeDraftRow = (draftId: number, field: OverseasFeeEditableField, value: string) => {
@@ -665,7 +915,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       && matchText(task.customerOrderNo, filters.customerOrderNo)
       && matchText(task.latestTracking, filters.latestTracking)
       && (!filters.customer || task.customer === filters.customer)
-      && (!filters.cargoStatus || task.cargoStatus === filters.cargoStatus)
       && (!filters.dateFrom || task.appliedAt.slice(0, 10) >= filters.dateFrom)
       && (!filters.dateTo || task.appliedAt.slice(0, 10) <= filters.dateTo);
   }), [activeTab, filters, tasks]);
@@ -926,58 +1175,33 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     setBatchFailureOpen(true);
   };
 
-  const openBatchRemark = () => {
-    if (!selectedVisible.length) {
-      notifySelectionMissing();
-      return;
-    }
-    setBatchRemarkText('');
-    setBatchRemarkOpen(true);
-  };
-
-  const startEditRemark = (task: InterceptTask) => {
+  const startEditRemark = (task: InterceptTask, field: 'customer' | 'internal' = 'internal') => {
     setEditingRemarkId(task.id);
-    setEditRemarkValue(task.remark || task.internalRemark || '');
+    setEditingRemarkField(field);
+    setEditRemarkValue(field === 'customer' ? task.customerNote : task.remark || task.internalRemark || '');
   };
 
   const saveEditRemark = (taskId: number) => {
     const remark = editRemarkValue.trim();
-    updateTask(taskId, (task) => ({
-      ...appendLog(task, '修改备注', `"${task.remark || task.internalRemark || '-'}" → "${remark || '-'}"`),
-      remark,
-      internalRemark: remark,
-    }));
+    updateTask(taskId, (task) => {
+      const previousRemark = editingRemarkField === 'customer' ? task.customerNote : task.remark || task.internalRemark || '';
+      const updated = editingRemarkField === 'customer'
+        ? { ...task, customerNote: remark }
+        : { ...task, remark, internalRemark: remark };
+      return {
+        ...appendLog(updated, editingRemarkField === 'customer' ? '修改客户备注' : '修改内部备注', `"${previousRemark || '-'}" → "${remark || '-'}"`),
+      };
+    });
     setEditingRemarkId(null);
+    setEditingRemarkField('internal');
     setEditRemarkValue('');
-    addToast?.('备注已更新', 'success');
+    addToast?.(`${editingRemarkField === 'customer' ? '客户备注' : '内部备注'}已更新`, 'success');
   };
 
   const cancelEditRemark = () => {
     setEditingRemarkId(null);
+    setEditingRemarkField('internal');
     setEditRemarkValue('');
-  };
-
-  const handleBatchRemark = () => {
-    const remarkText = batchRemarkText.trim();
-    if (!remarkText) {
-      window.alert('请输入备注内容');
-      return;
-    }
-    const selectedCount = selectedVisible.length;
-    setTasks((prev) => prev.map((task) => {
-      if (!selectedIds.includes(task.id)) return task;
-      const previousRemark = task.remark || task.internalRemark || '';
-      const nextRemark = previousRemark ? `${previousRemark}；${remarkText}` : remarkText;
-      return {
-        ...appendLog(task, '批量备注', remarkText),
-        remark: nextRemark,
-        internalRemark: nextRemark,
-      };
-    }));
-    setBatchRemarkOpen(false);
-    setBatchRemarkText('');
-    setSelectedIds([]);
-    addToast?.(`已为 ${selectedCount} 条记录批量备注`, 'success');
   };
 
   const openFeedback = (mode: 'success' | 'failure', task: InterceptTask = detailTask as InterceptTask) => {
@@ -1072,11 +1296,11 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       notifySelectionMissing();
       return;
     }
-    const headers = ['客户名称', '拦截单号', '运单号', '客户单号', '最新运踪', '货物状态', '拦截原因', '拦截箱数', '申请人', '申请时间', '处理人', '处理时间', '备注'];
+    const headers = ['客户名称', '拦截单号', '运单号', '客户单号', '最新运踪', '拦截原因', '拦截箱数', '指令费用', '客户备注', '内部备注', '申请人', '申请时间', '处理人', '处理时间'];
     const rows = selectedVisible.map((task) => [
       task.customer, task.no, task.waybillNo, task.customerOrderNo, task.latestTracking,
-      task.cargoStatus, task.reason, task.actualBoxes || task.boxes, task.applicant,
-      task.appliedAt, task.handler || '', task.handleAt || '', task.remark || task.internalRemark || '',
+      task.reason, task.actualBoxes || task.boxes, (task.instructionFees || []).map(formatInstructionFee).join('；'), task.customerNote || '', task.internalRemark || task.remark || '', task.applicant,
+      task.appliedAt, task.handler || '', task.handleAt || '',
     ]);
     const csv = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }));
@@ -1129,10 +1353,16 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       if (editingRemarkId !== null) {
         setEditingRemarkId(null);
         setEditRemarkValue('');
+      } else if (editingInstructionFee) {
+        closeEditingInstructionFee();
+      } else if (deletingInstructionFee) {
+        setDeletingInstructionFee(null);
       } else if (deletingAttachment) {
         setDeletingAttachment(null);
       } else if (showAttachmentModal) {
         closeAttachmentModal();
+      } else if (showInstructionFeeModal) {
+        closeInstructionFeeModal();
       } else if (showFeeModal) {
         closeFeeModal();
       } else if (cancelReasonOpen) {
@@ -1143,8 +1373,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
         setBatchSuccessOpen(false);
       } else if (batchFailureOpen) {
         setBatchFailureOpen(false);
-      } else if (batchRemarkOpen) {
-        setBatchRemarkOpen(false);
       } else if (logTaskId !== null) {
         setLogTaskId(null);
       } else if (detailTaskId !== null) {
@@ -1155,7 +1383,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [batchFailureOpen, batchRemarkOpen, batchSuccessOpen, cancelReasonOpen, deletingAttachment, detailTaskId, editingRemarkId, feedbackMode, logTaskId, showAttachmentModal, showFeeModal]);
+  }, [batchFailureOpen, batchSuccessOpen, cancelReasonOpen, deletingAttachment, deletingInstructionFee, detailTaskId, editingInstructionFee, editingRemarkId, feedbackMode, logTaskId, showAttachmentModal, showFeeModal, showInstructionFeeModal]);
 
   return (
     <div className="mc-intercept-page">
@@ -1167,7 +1395,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
           <label className="mc-filter-field"><span>柜号</span><input value={draftFilters.container} onChange={(e) => updateDraftFilter('container', e.target.value)} placeholder="请输入柜号" /></label>
           <label className="mc-filter-field"><span>最新运踪</span><input value={draftFilters.latestTracking} onChange={(e) => updateDraftFilter('latestTracking', e.target.value)} placeholder="请输入运踪关键词" /></label>
           <label className="mc-filter-field"><span>客户名称</span><select value={draftFilters.customer} onChange={(e) => updateDraftFilter('customer', e.target.value)}><option value="">全部客户</option>{customers.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label className="mc-filter-field"><span>货物状态</span><select value={draftFilters.cargoStatus} onChange={(e) => updateDraftFilter('cargoStatus', e.target.value)}><option value="">全部货物状态</option><option>未拆柜</option><option>已拆柜</option><option>已出库</option><option>暂存中</option></select></label>
           <label className="mc-filter-field mc-intercept-date-filter"><span>申请时间</span><span className="mc-date-range"><input value={draftFilters.dateFrom} onChange={(e) => updateDraftFilter('dateFrom', e.target.value)} type="date" /><em>→</em><input value={draftFilters.dateTo} onChange={(e) => updateDraftFilter('dateTo', e.target.value)} type="date" /><b>□</b></span></label>
         </div>
         <div className="mc-filter-actions">
@@ -1193,7 +1420,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
             {isPendingView && <button className="mc-btn primary" type="button" onClick={handleBatchConfirm}>批量确认拦截</button>}
             {isProcessingView && <button className="mc-btn primary" type="button" onClick={openBatchSuccess}>批量拦截成功</button>}
             {isProcessingView && <button className="mc-btn danger" type="button" onClick={openBatchFailure}>批量拦截失败</button>}
-            <button className="mc-btn" type="button" onClick={openBatchRemark}>批量备注</button>
             <button className="mc-btn" type="button" onClick={exportTasks}>导出</button>
           </div>
         </div>
@@ -1208,7 +1434,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
             </thead>
             <tbody>
               {!filteredTasks.length ? (
-                <tr className="mc-intercept-empty"><td colSpan={16}>暂无匹配的拦截任务</td></tr>
+                <tr className="mc-intercept-empty"><td colSpan={17}>暂无匹配的拦截任务</td></tr>
               ) : filteredTasks.map((task) => (
                 <tr key={task.id}>
                   <td className="mc-intercept-check">
@@ -1220,11 +1446,14 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   <td title={task.customerOrderNo || '-'}>{task.customerOrderNo || '-'}</td>
                   <td title={task.container || '-'}>{task.container || '-'}</td>
                   <td title={task.latestTracking || '-'}>{task.latestTracking || '-'}</td>
-                  <td><span className={`mc-intercept-cargo-status ${task.cargoStatus === '已出库' ? 'is-outbound' : task.cargoStatus === '暂存中' ? 'is-storage' : ''}`}>{task.cargoStatus}</span></td>
                   <td title={task.reason}>{task.reason}</td>
                   <td>{task.actualBoxes || task.boxes}</td>
+                  <td className="mc-intercept-instruction-fee-cell">
+                    {(task.instructionFees || []).length > 0 ? (task.instructionFees || []).map((fee) => <div key={fee.code}>{formatInstructionFee(fee)}</div>) : '-'}
+                  </td>
+                  <td className="mc-intercept-customer-note-cell" title={task.customerNote || '-'}>{task.customerNote || '-'}</td>
                   <td className="mc-intercept-remark-cell" title={task.internalRemark || task.remark || '-'}>
-                    <span className="mc-intercept-remark-text" onClick={() => startEditRemark(task)} style={{ cursor: 'pointer', minHeight: '18px', display: 'inline-block' }}>
+                    <span className="mc-intercept-remark-text" title={task.internalRemark || task.remark || '-'}>
                       {task.internalRemark || task.remark || '-'}
                     </span>
                   </td>
@@ -1235,7 +1464,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   <td>
                     <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('view'); setDetailContentTab('货箱信息'); setDetailTaskId(task.id); }}>详情</button>
                     {(task.status === '待处理' || task.status === '拦截中') && <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('process'); setDetailContentTab('货箱信息'); setDetailTaskId(task.id); }}>处理</button>}
-                    {task.status !== '已取消' && <button className="mc-intercept-action" type="button" onClick={() => startEditRemark(task)}>备注</button>}
                     <button className="mc-intercept-action" type="button" onClick={() => setLogTaskId(task.id)}>日志</button>
                   </td>
                 </tr>
@@ -1268,26 +1496,35 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
               <section className="mc-intercept-detail-card">
                 <h3 className="mc-intercept-detail-card-title">基础信息</h3>
                 <div className="mc-intercept-basic-grid">
+                  <DetailField label="客户名称" value={detailTask.customer} />
                   <DetailField label="拦截单号" value={detailTask.no} highlight />
                   <DetailField label="入仓号" value={detailTask.waybillNo || '-'} />
                   <DetailField label="柜号" value={detailTask.container || '-'} />
-                  <DetailField label="系统柜号" value={detailTask.container || '-'} />
-                  <DetailField label="客户名称" value={detailTask.customer} />
-                  <DetailField label="拦截原因" value={detailTask.reason} fullWidth />
+                  <DetailField label="拦截原因" value={detailTask.reason} />
                   <DetailField label="拦截箱数" value={`${detailTask.actualBoxes || detailTask.boxes} 箱`} />
-                  <DetailField label="货物状态" value={<span className={`mc-intercept-cargo-status ${detailTask.cargoStatus === '已出库' ? 'is-outbound' : detailTask.cargoStatus === '暂存中' ? 'is-storage' : ''}`}>{detailTask.cargoStatus}</span>} />
                   <DetailField label="出库状态" value={detailTask.outboundStatus} />
                   <DetailField label="申请人" value={detailTask.applicant} />
                   <DetailField label="申请时间" value={detailTask.appliedAt} />
-                  <div className="mc-intercept-detail-field mc-intercept-detail-field-full">
-                    <dt>备注</dt>
-                    <dd>
-                      <span>{detailTask.remark || '-'}</span>
-                      {detailTask.status !== '已取消' && (
-                        <button className="mc-intercept-detail-edit-button" type="button" onClick={() => startEditRemark(detailTask)} aria-label="编辑备注" title="编辑备注">✎</button>
-                      )}
-                    </dd>
-                  </div>
+                  <DetailField
+                    label="客户备注"
+                    value={(
+                      <span className="mc-intercept-detail-editable-value">
+                        <span>{detailTask.customerNote || '-'}</span>
+                        <button className="mc-intercept-detail-edit-button" type="button" onClick={() => startEditRemark(detailTask, 'customer')} aria-label="编辑客户备注" title="编辑客户备注">✎</button>
+                      </span>
+                    )}
+                  />
+                  <DetailField
+                    label="内部备注"
+                    value={(
+                      <span className="mc-intercept-detail-editable-value">
+                        <span>{detailTask.internalRemark || detailTask.remark || '-'}</span>
+                        {detailTask.status !== '已取消' && (
+                          <button className="mc-intercept-detail-edit-button" type="button" onClick={() => startEditRemark(detailTask, 'internal')} aria-label="编辑内部备注" title="编辑内部备注">✎</button>
+                        )}
+                      </span>
+                    )}
+                  />
                 </div>
               </section>
 
@@ -1331,6 +1568,53 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                             </td>
                           </tr>
                         ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+
+              {/* 指令费用 Tab：关联海外中转单操作指令 */}
+              {detailContentTab === '指令费用' && (
+                <section className="mc-intercept-detail-card">
+                  <div className="mc-intercept-detail-toolbar">
+                    <div>
+                      <h3 className="mc-intercept-detail-card-title">操作指令</h3>
+                      <div className="mc-intercept-detail-summary">
+                        <span>共 <strong>{detailInstructionFees.length}</strong> 条</span>
+                        <span>指令费用合计 <strong>{formatInstructionFeeAmount(detailInstructionFeeTotal)}</strong></span>
+                      </div>
+                    </div>
+                    <button type="button" className="mc-btn primary" onClick={() => openInstructionFeeModal()}>新增</button>
+                  </div>
+                  <div className="mc-intercept-cargo-box-wrap">
+                    <table className="mc-intercept-instruction-fee-table">
+                      <thead>
+                        <tr>
+                          {['费用名称', '费用类型', '*计费单位', '*计费单价（元）', '*计费数量', '*币种', '总价（元）', '添加时间', '添加人', '描述', '操作'].map((head) => <th key={head}>{head}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detailInstructionFees.length > 0 ? detailInstructionFees.map((row) => (
+                          <tr key={row.code}>
+                            <td>{row.name}</td>
+                            <td>{row.type}</td>
+                            <td>{row.unit}</td>
+                            <td>{row.price}</td>
+                            <td>{row.quantity || '1'}</td>
+                            <td>{row.currency}</td>
+                            <td>{formatInstructionFeeAmount(parseInterceptFeeNumber(row.price) * (parseInterceptFeeNumber(row.quantity || '1') || 1))}</td>
+                            <td>{row.addedAt || '-'}</td>
+                            <td>{row.addedBy || '-'}</td>
+                            <td>{row.description || '-'}</td>
+                            <td>
+                              <button className="mc-intercept-action" type="button" onClick={() => openEditingInstructionFee(row)}>编辑</button>
+                              <button className="mc-intercept-action" type="button" onClick={() => setDeletingInstructionFee(row)}>删除</button>
+                            </td>
+                          </tr>
+                        )) : (
+                          <tr><td colSpan={11} className="mc-intercept-fee-empty"><FileText className="mx-auto mb-2 h-8 w-8 text-slate-200" />暂无数据</td></tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1494,6 +1778,62 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
         />
       )}
 
+      {showInstructionFeeModal && detailTask && (
+        <OverseasFeeModal
+          rows={instructionFeeDraftRows}
+          catalogRows={interceptInstructionFeeCatalog}
+          focusedRowId={instructionFeeFocusId}
+          onAdd={addInstructionFeeDraftRow}
+          onUpdate={updateInstructionFeeDraftRow}
+          onRemove={removeInstructionFeeDraftRow}
+          onCancel={closeInstructionFeeModal}
+          onConfirm={saveInstructionFeeDraftRows}
+        />
+      )}
+
+      {editingInstructionFee && (
+        <div className="mc-intercept-overlay mc-intercept-feedback-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeEditingInstructionFee(); }}>
+          <section className="mc-intercept-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="interceptInstructionEditTitle">
+            <header><h2 id="interceptInstructionEditTitle">编辑操作指令</h2><button className="mc-intercept-close" type="button" aria-label="关闭编辑操作指令" onClick={closeEditingInstructionFee}>×</button></header>
+            <form onSubmit={(event) => { event.preventDefault(); saveEditingInstructionFee(); }}>
+              <div className="mc-intercept-feedback-content">
+                <label><span className="mc-required">费用名称</span><input value={editingInstructionFee.name} onChange={(event) => updateEditingInstructionFee('name', event.target.value)} required autoFocus /></label>
+                <label><span className="mc-required">费用类型</span><select value={editingInstructionFee.type} onChange={(event) => updateEditingInstructionFee('type', event.target.value)}>
+                  <option value="仓储费">仓储费</option>
+                  <option value="操作费">操作费</option>
+                </select></label>
+                <label><span className="mc-required">计费单位</span><select value={editingInstructionFee.unit} onChange={(event) => updateEditingInstructionFee('unit', event.target.value)}>
+                  <option value="票">票</option>
+                  <option value="箱">箱</option>
+                  <option value="KG">KG</option>
+                  <option value="CBM">CBM</option>
+                </select></label>
+                <label><span className="mc-required">计费单价</span><input type="number" min="0" step="any" value={editingInstructionFee.price} onChange={(event) => updateEditingInstructionFee('price', event.target.value)} /></label>
+                <label><span className="mc-required">计费数量</span><input type="number" min="0" step="any" value={editingInstructionFee.quantity || '1'} onChange={(event) => updateEditingInstructionFee('quantity', event.target.value)} /></label>
+                <label><span className="mc-required">币种</span><select value={editingInstructionFee.currency} onChange={(event) => updateEditingInstructionFee('currency', event.target.value)}>
+                  <option value="人民币">人民币</option>
+                  <option value="USD">USD</option>
+                </select></label>
+                <label><span>费用备注</span><textarea value={editingInstructionFee.remark || editingInstructionFee.description || ''} onChange={(event) => updateEditingInstructionFee('remark' as keyof InterceptInstructionFee, event.target.value)} maxLength={200} placeholder="请输入费用备注" /></label>
+              </div>
+              <footer><button className="mc-btn" type="button" onClick={closeEditingInstructionFee}>取消</button><button className="mc-btn primary" type="submit">保存</button></footer>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {deletingInstructionFee && (
+        <div className="mc-intercept-overlay mc-intercept-feedback-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeletingInstructionFee(null); }}>
+          <section className="mc-intercept-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="interceptInstructionDeleteTitle">
+            <header><h2 id="interceptInstructionDeleteTitle">删除操作指令</h2><button className="mc-intercept-close" type="button" aria-label="关闭删除操作指令" onClick={() => setDeletingInstructionFee(null)}>×</button></header>
+            <div className="mc-intercept-feedback-content">
+              <p>确定删除费用项“{deletingInstructionFee.name}”吗？</p>
+            </div>
+            <footer><button className="mc-btn" type="button" onClick={() => setDeletingInstructionFee(null)}>取消</button><button className="mc-btn primary" type="button" onClick={confirmDeleteInstructionFee}>确定</button></footer>
+          </section>
+        </div>
+      )}
+
       {showAttachmentModal && detailTask && (
         <div
           className="mc-intercept-overlay mc-intercept-feedback-overlay mc-intercept-attachment-overlay"
@@ -1616,11 +1956,11 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       {editingRemarkTask && (
         <div className="mc-intercept-overlay mc-intercept-feedback-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) cancelEditRemark(); }}>
           <section className="mc-intercept-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="interceptRemarkTitle">
-            <header><h2 id="interceptRemarkTitle">编辑备注</h2><button className="mc-intercept-close" type="button" aria-label="关闭备注编辑" onClick={cancelEditRemark}>×</button></header>
+            <header><h2 id="interceptRemarkTitle">编辑{editingRemarkField === 'customer' ? '客户备注' : '内部备注'}</h2><button className="mc-intercept-close" type="button" aria-label="关闭备注编辑" onClick={cancelEditRemark}>×</button></header>
             <form onSubmit={(event) => { event.preventDefault(); saveEditRemark(editingRemarkTask.id); }}>
               <div className="mc-intercept-feedback-content">
                 <p>拦截单号：{editingRemarkTask.no}</p>
-                <label><span>备注内容</span><textarea value={editRemarkValue} onChange={(event) => setEditRemarkValue(event.target.value)} maxLength={200} placeholder="请输入备注内容" autoFocus /></label>
+                <label><span>{editingRemarkField === 'customer' ? '客户备注' : '内部备注'}</span><textarea value={editRemarkValue} onChange={(event) => setEditRemarkValue(event.target.value)} maxLength={200} placeholder={`请输入${editingRemarkField === 'customer' ? '客户备注' : '内部备注'}内容`} autoFocus /></label>
               </div>
               <footer><button className="mc-btn" type="button" onClick={cancelEditRemark}>取消</button><button className="mc-btn primary" type="submit">保存</button></footer>
             </form>
@@ -1699,18 +2039,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
         </div>
       )}
 
-      {batchRemarkOpen && (
-        <div className="mc-intercept-overlay mc-intercept-batch-remark-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setBatchRemarkOpen(false); }}>
-          <section className="mc-intercept-batch-remark-modal" role="dialog" aria-modal="true" aria-labelledby="batchRemarkTitle">
-            <header><h2 id="batchRemarkTitle">批量备注</h2><button className="mc-intercept-close" type="button" aria-label="关闭批量备注" onClick={() => setBatchRemarkOpen(false)}>×</button></header>
-            <div className="mc-intercept-batch-remark-content">
-              <p>将为已选择的 <b>{selectedVisible.length}</b> 条记录统一设置备注。</p>
-              <textarea className="mc-intercept-batch-remark-textarea" value={batchRemarkText} onChange={(event) => setBatchRemarkText(event.target.value)} maxLength={200} placeholder="请输入批量备注内容" autoFocus />
-            </div>
-            <footer><button className="mc-btn" type="button" onClick={() => setBatchRemarkOpen(false)}>取消</button><button className="mc-btn primary" type="button" onClick={handleBatchRemark}>确认提交</button></footer>
-          </section>
-        </div>
-      )}
     </div>
   );
 }

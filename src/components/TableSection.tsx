@@ -735,6 +735,8 @@ export default function TableSection({
           warehouse: waybill.warehouseCode || waybill.station || '-',
           boxes: waybill.packagesCount || 1,
           reason,
+          customerNote: waybill.remarks || '',
+          instructionFees: waybill.instructionFees || [],
           attachmentName: attachment?.name || '-',
           createdAt,
         } satisfies OverseasInterceptRequest;

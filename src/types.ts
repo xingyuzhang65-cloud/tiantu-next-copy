@@ -7,6 +7,22 @@ export interface WaybillAttachment {
   dataUrl?: string;
 }
 
+export interface OverseasInterceptInstructionFee {
+  code: string;
+  name: string;
+  type: string;
+  unit: string;
+  price: string;
+  quantity?: string;
+  currency: string;
+  exchangeRate?: string;
+  description: string;
+  remark?: string;
+  addedAt?: string;
+  addedBy?: string;
+  billingTime?: string;
+}
+
 export interface Waybill {
   id: string; // e.g. HD2606161063
   fbaCode: string; // e.g. FBA19G6M4C7B
@@ -25,6 +41,7 @@ export interface Waybill {
   insurance: boolean;
   hasUploadedInvoice?: boolean;
   attachments?: WaybillAttachment[];
+  instructionFees?: OverseasInterceptInstructionFee[];
   remarks?: string;
   customerName?: string;
   customerOrderNo?: string;
@@ -71,6 +88,8 @@ export interface OverseasInterceptRequest {
   warehouse: string;
   boxes: number;
   reason: string;
+  customerNote?: string;
+  instructionFees?: OverseasInterceptInstructionFee[];
   attachmentName: string;
   createdAt: string;
 }

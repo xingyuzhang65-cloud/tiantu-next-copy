@@ -287,7 +287,7 @@
   background: #f8fbfe;
 }
 
-.mc-intercept-table tbody tr:hover td:nth-child(16) {
+.mc-intercept-table tbody tr:hover td:nth-child(17) {
   background: #fff;
 }
 
@@ -310,17 +310,18 @@
 .mc-intercept-table th:nth-child(5) { width: 140px; }
 .mc-intercept-table th:nth-child(6) { width: 126px; }
 .mc-intercept-table th:nth-child(7) { width: 160px; }
-.mc-intercept-table th:nth-child(8) { width: 90px; }
-.mc-intercept-table th:nth-child(9) { width: 190px; }
-.mc-intercept-table th:nth-child(10) { width: 86px; }
-.mc-intercept-table th:nth-child(11) { width: 140px; }
-.mc-intercept-table th:nth-child(12) { width: 94px; }
-.mc-intercept-table th:nth-child(13),
-.mc-intercept-table th:nth-child(14) { width: 142px; }
-.mc-intercept-table th:nth-child(15) { width: 96px; }
+.mc-intercept-table th:nth-child(8) { width: 190px; }
+.mc-intercept-table th:nth-child(9) { width: 86px; }
+.mc-intercept-table th:nth-child(10) { width: 270px; }
+.mc-intercept-table th:nth-child(11) { width: 160px; }
+.mc-intercept-table th:nth-child(12) { width: 190px; }
+.mc-intercept-table th:nth-child(13) { width: 94px; }
+.mc-intercept-table th:nth-child(14),
+.mc-intercept-table th:nth-child(15) { width: 142px; }
+.mc-intercept-table th:nth-child(16) { width: 96px; }
 
-.mc-intercept-table th:nth-child(16),
-.mc-intercept-table td:nth-child(16) {
+.mc-intercept-table th:nth-child(17),
+.mc-intercept-table td:nth-child(17) {
   position: sticky;
   z-index: 3;
   right: 0;
@@ -395,6 +396,27 @@
   padding: 4px 6px !important;
   height: auto !important;
   min-height: 52px;
+}
+
+.mc-intercept-customer-note-cell {
+  max-width: 190px;
+  overflow: hidden;
+  color: #596773;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-intercept-instruction-fee-cell {
+  padding: 4px 10px !important;
+  color: #d29216;
+  text-align: left !important;
+  line-height: 18px;
+}
+
+.mc-intercept-instruction-fee-cell div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mc-intercept-remark-text {
@@ -751,7 +773,7 @@
 
 .mc-intercept-detail-card {
   margin: 14px 14px 0;
-  padding: 20px 22px;
+  padding: 16px 18px;
   border: 1px solid #e6ebef;
   border-radius: 8px;
   background: #fff;
@@ -763,7 +785,7 @@
 }
 
 .mc-intercept-detail-card-title {
-  margin: 0 0 18px;
+  margin: 0 0 14px;
   color: #26323d;
   font-size: 13px;
   font-weight: 700;
@@ -828,33 +850,43 @@
   background: #168ff5;
 }
 
-/* 基础信息 grid */
+/* 基础信息：参考业务抽屉的横向键值排版 */
 .mc-intercept-basic-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 32px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 26px;
   margin: 0;
 }
 
 .mc-intercept-detail-field {
   display: grid;
-  min-height: 48px;
+  min-height: 32px;
   min-width: 0;
-  grid-template-columns: 92px minmax(0, 1fr);
-  align-items: start;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid #eef2f5;
-  font-size: 12px;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 11px;
 }
 
 .mc-intercept-detail-field-full {
   grid-column: 1 / -1;
 }
 
+.mc-intercept-detail-editable-value {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.mc-intercept-detail-editable-value > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .mc-intercept-detail-field dt {
-  padding-top: 1px;
-  color: #8a949d;
+  color: #7c8791;
   font-weight: 500;
   white-space: nowrap;
 }
@@ -864,7 +896,7 @@
   margin: 0;
   overflow-wrap: anywhere;
   color: #3c4853;
-  line-height: 20px;
+  line-height: 18px;
 }
 
 .mc-intercept-detail-field-full dd {
@@ -900,6 +932,43 @@
   color: #46515c;
   background: #f8fafc;
   font-weight: 600;
+}
+
+.mc-intercept-instruction-fee-table {
+  width: 100%;
+  min-width: 1320px;
+  table-layout: fixed;
+  border-collapse: collapse;
+  color: #55616c;
+  font-size: 11px;
+}
+
+.mc-intercept-instruction-fee-table th,
+.mc-intercept-instruction-fee-table td {
+  height: 40px;
+  padding: 6px 10px;
+  border: 1px solid #e1e6eb;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.mc-intercept-instruction-fee-table th {
+  color: #17212b;
+  background: #fafbfc;
+  font-weight: 700;
+}
+
+.mc-intercept-instruction-fee-table th:nth-child(1),
+.mc-intercept-instruction-fee-table th:nth-child(10) {
+  width: 170px;
+}
+
+.mc-intercept-instruction-fee-table th:nth-child(8) {
+  width: 150px;
+}
+
+.mc-intercept-instruction-fee-table th:nth-child(11) {
+  width: 110px;
 }
 
 .mc-intercept-fee-table tbody tr:nth-child(even) td {
@@ -1355,6 +1424,7 @@
   .mc-intercept-basic-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
 }
 
 @media (max-width: 720px) {
