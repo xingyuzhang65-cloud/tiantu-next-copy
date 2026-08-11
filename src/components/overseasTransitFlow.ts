@@ -13,7 +13,7 @@ export type CreatedTransitInstruction = {
   addedBy: string;
 };
 
-export type TransitReconciliationStatus = '已核销' | '未核销' | '部分核销';
+export type TransitReconciliationStatus = '已核销' | '待核销' | '部分核销';
 export type OverseasWarehouseArrivalStatus = '是' | '否';
 export type CreatedTransitAttachment = {
   id: string;

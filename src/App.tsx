@@ -431,11 +431,11 @@ export default function App() {
       return [...currentRequests, ...requests.filter((request) => !existingIds.has(request.id))];
     });
 
-    const targetTab = '海外仓拦截';
+    const targetTab = '海外拦截';
     setCurrentSubView(targetTab);
     setOpenTabs((tabs) => tabs.includes(targetTab) ? tabs : [...tabs, targetTab]);
     setCurrentTab(targetTab);
-    addToast(`已创建 ${requests.length} 门海外仓拦截任务，自动进入“拦截中”页面`, 'success');
+    addToast(`已创建 ${requests.length} 门海外拦截任务，自动进入“拦截中”页面`, 'success');
   };
 
   const handleCloseTab = (tabName: string) => {
@@ -564,7 +564,7 @@ export default function App() {
           <OverseasTransitOrderPage addToast={addToast} />
         ) : currentTab === '海外暂存' ? (
           <OverseasTransitPage addToast={addToast} initialView="list" mode="storage" />
-        ) : currentTab === '海外仓拦截' ? (
+        ) : currentTab === '海外拦截' ? (
           <OverseasWarehouseInterceptPage
             addToast={addToast}
             incomingRequests={pendingOverseasIntercepts}

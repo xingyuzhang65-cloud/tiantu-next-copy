@@ -745,7 +745,7 @@ export default function TableSection({
 
     selectedIds.forEach((id) => {
       const waybill = waybills.find((item) => item.id === id);
-      const nextRemarks = [waybill?.remarks, `海外仓拦截：${reason}`].filter(Boolean).join('；');
+      const nextRemarks = [waybill?.remarks, `海外拦截：${reason}`].filter(Boolean).join('；');
       onUpdateWaybill(id, {
         remarks: nextRemarks,
         ...(attachment ? { attachments: [...(waybill?.attachments || []), attachment] } : {}),
@@ -758,7 +758,7 @@ export default function TableSection({
     setOverseasInterceptModalOpen(false);
     setOverseasInterceptReason('');
     setOverseasInterceptAttachment(null);
-    addToast(`已提交 ${count} 门运单的海外仓拦截申请`, 'success');
+    addToast(`已提交 ${count} 门运单的海外拦截申请`, 'success');
   };
 
   const handlePrintSystemLabel = () => {
@@ -1489,10 +1489,10 @@ export default function TableSection({
               type="button"
               onClick={handleOpenOverseasIntercept}
               className="flex items-center gap-1 rounded bg-amber-500 px-4 py-1.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-amber-600"
-              title="对勾选的运单发起海外仓拦截，支持批量"
+              title="对勾选的运单发起海外拦截，支持批量"
             >
               <ShieldAlert className="h-3.5 w-3.5" />
-              海外仓拦截
+              海外拦截
             </button>
           )}
         </div>
@@ -3144,12 +3144,12 @@ export default function TableSection({
         <div className="fixed inset-0 z-[90] flex items-start justify-center bg-slate-950/50 pt-10">
           <div className="w-[620px] max-w-[calc(100vw-32px)] rounded-sm bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-              <h3 className="text-xl font-bold text-slate-900">海外仓拦截</h3>
+              <h3 className="text-xl font-bold text-slate-900">海外拦截</h3>
               <button
                 type="button"
                 onClick={() => setOverseasInterceptModalOpen(false)}
                 className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                aria-label="关闭海外仓拦截"
+                aria-label="关闭海外拦截"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -3239,7 +3239,7 @@ export default function TableSection({
                 <AlertOctagon className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-slate-900">确认提交海外仓拦截？</h3>
+                <h3 className="text-base font-bold text-slate-900">确认提交海外拦截？</h3>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
                   海外仓将尝试进行拦截，但无法保证100%拦截成功。拦截过程中可能产生拦截费、操作费等相关费用，具体费用以实际账单为准。确认继续提交吗？
                 </p>

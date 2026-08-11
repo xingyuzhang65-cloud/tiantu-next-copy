@@ -934,7 +934,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
       shippingEnabled: storageShippingEnabled,
       releaseInstruction: storageReleaseInstruction,
       instructions: activeStorageInstructionRows.map((row) => ({ ...row })),
-      reconciliationStatus: '未核销',
+      reconciliationStatus: '待核销',
       overseasWarehouseArrivalStatus: '否',
       fbaCode: activeStorageOrder.fbaNo || `FBA-${activeStorageOrderKey}`,
       customerName: activeStorageOrder.customer,

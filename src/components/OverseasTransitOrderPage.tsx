@@ -108,7 +108,7 @@ const getMockReferenceId = (source: string, createdAt: string | undefined, order
   'REF-FBA-' + getMockIdentifierSerial(source, createdAt, orderSeq);
 
 const getMockReconciliationStatus = (orderSeq = 1): TransitReconciliationStatus => (
-  ['未核销', '部分核销', '已核销'][(Math.max(orderSeq, 1) - 1) % 3] as TransitReconciliationStatus
+  ['待核销', '部分核销', '已核销'][(Math.max(orderSeq, 1) - 1) % 3] as TransitReconciliationStatus
 );
 
 const getMockOverseasWarehouseArrivalStatus = (orderSeq = 1): OverseasWarehouseArrivalStatus =>
@@ -667,7 +667,7 @@ const baseOrderSearchFields: OrderSearchField[] = [
   { label: '入仓号', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'inboundNo' },
   { label: 'Shipment ID', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'shipmentId' },
   { label: 'Reference ID', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'referenceId' },
-  { label: '核销状态', type: 'select', options: ['已核销', '未核销', '部分核销'], searchKey: 'reconciliationStatus' },
+  { label: '核销状态', type: 'select', options: ['待核销', '部分核销', '已核销'], searchKey: 'reconciliationStatus' },
   { label: '客户简称', type: 'select', options: ['深圳天图电子有限公司', '博创跨境贸易', '广州跨境供应链'] },
   { label: '仓库代码', type: 'select', options: overseasWarehouseCodes },
   { label: '下单类型', type: 'select', options: releaseInstructionOptions, searchKey: 'releaseInstruction' },
@@ -685,7 +685,7 @@ const fullOrderSearchFields: OrderSearchField[] = [
   { label: '入仓号', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'inboundNo' },
   { label: 'Shipment ID', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'shipmentId' },
   { label: 'Reference ID', type: 'input', placeholder: '支持单个/模糊查询', searchKey: 'referenceId' },
-  { label: '核销状态', type: 'select', options: ['已核销', '未核销', '部分核销'], searchKey: 'reconciliationStatus' },
+  { label: '核销状态', type: 'select', options: ['待核销', '部分核销', '已核销'], searchKey: 'reconciliationStatus' },
   { label: '客户简称', type: 'select', options: ['深圳天图电子有限公司', '博创跨境贸易', '广州跨境供应链'] },
   { label: '仓库代码', type: 'select', options: overseasWarehouseCodes },
   { label: '下单类型', type: 'select', options: releaseInstructionOptions, searchKey: 'releaseInstruction' },
@@ -797,14 +797,14 @@ type TransitFeeDraft = OverseasFeeDraftRow<string> & {
 type AttachmentRow = (typeof attachmentRows)[number] & { file?: File };
 
 const getReconciliationStatus = (row: Pick<OverseasTransitRow, 'reconciliationStatus'>): TransitReconciliationStatus =>
-  row.reconciliationStatus || '未核销';
+  row.reconciliationStatus || '待核销';
 
 const getOverseasWarehouseArrivalStatus = (row: Pick<OverseasTransitRow, 'overseasWarehouseArrivalStatus'>): OverseasWarehouseArrivalStatus =>
   row.overseasWarehouseArrivalStatus || '否';
 
 const reconciliationStatusStyles: Record<TransitReconciliationStatus, { badge: string; fee: string }> = {
   已核销: { badge: 'bg-emerald-50 text-emerald-600', fee: 'text-emerald-600' },
-  未核销: { badge: 'bg-yellow-50 text-yellow-600', fee: 'text-yellow-600' },
+  待核销: { badge: 'bg-yellow-50 text-yellow-600', fee: 'text-yellow-600' },
   部分核销: { badge: 'bg-blue-50 text-blue-600', fee: 'text-blue-600' },
 };
 
@@ -4788,7 +4788,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
             </div>
             <div className="px-8 py-7 text-sm leading-6 text-slate-700">
               {confirmedOrderSubmissionCheck === 'reconciliation'
-                ? <>所选 {confirmedOrderSubmissionRows.length} 条运单中包含未核销或部分核销的指令费用。是否仍要下单？</>
+                ? <>所选 {confirmedOrderSubmissionRows.length} 条运单中包含待核销或部分核销的指令费用。是否仍要下单？</>
                 : <>所选 {confirmedOrderSubmissionRows.length} 条运单中有货物尚未到达海外仓。继续下单将进入下单流程，是否仍要下单？</>}
             </div>
             <div className="flex justify-end gap-3 px-8 pb-6">

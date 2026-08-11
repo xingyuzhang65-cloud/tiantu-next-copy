@@ -346,7 +346,7 @@
   font-weight: 600;
 }
 
-.mc-reconciliation-有待核销 { color: #b7791f; background: #fff7e6; }
+.mc-reconciliation-待核销 { color: #b7791f; background: #fff7e6; }
 .mc-reconciliation-部分核销 { color: #2b6cb0; background: #ebf8ff; }
 .mc-reconciliation-已核销 { color: #2f855a; background: #f0fff4; }
 
