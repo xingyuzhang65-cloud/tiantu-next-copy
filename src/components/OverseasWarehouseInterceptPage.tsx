@@ -1210,10 +1210,10 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
             })}
           </div>
           <div className="mc-status-actions">
-            {isPendingView && <button className="mc-btn" type="button" onClick={handleBatchCancel}>批量取消拦截</button>}
-            {isPendingView && <button className="mc-btn primary" type="button" onClick={handleBatchConfirm}>批量确认拦截</button>}
-            {isProcessingView && <button className="mc-btn primary" type="button" onClick={openBatchSuccess}>批量拦截成功</button>}
-            {isProcessingView && <button className="mc-btn danger" type="button" onClick={openBatchFailure}>批量拦截失败</button>}
+            {isPendingView && <button className="mc-btn" type="button" onClick={handleBatchCancel}>取消拦截</button>}
+            {isPendingView && <button className="mc-btn primary" type="button" onClick={handleBatchConfirm}>确认拦截</button>}
+            {isProcessingView && <button className="mc-btn primary" type="button" onClick={openBatchSuccess}>拦截成功</button>}
+            {isProcessingView && <button className="mc-btn danger" type="button" onClick={openBatchFailure}>拦截失败</button>}
             <button className="mc-btn" type="button" onClick={exportTasks}>导出</button>
           </div>
         </div>
