@@ -260,6 +260,10 @@
   font-size: 11px;
 }
 
+.mc-intercept-table.has-failure-reason {
+  min-width: 2800px;
+}
+
 .mc-intercept-table th,
 .mc-intercept-table td {
   overflow: hidden;
@@ -287,7 +291,7 @@
   background: #f8fbfe;
 }
 
-.mc-intercept-table tbody tr:hover td:nth-child(18) {
+.mc-intercept-table tbody tr:hover .mc-intercept-actions-cell {
   background: #fff;
 }
 
@@ -308,31 +312,36 @@
 .mc-intercept-table th:nth-child(3) { width: 138px; }
 .mc-intercept-table th:nth-child(4) { width: 140px; }
 .mc-intercept-table th:nth-child(5) { width: 140px; }
-.mc-intercept-table th:nth-child(6) { width: 126px; }
-.mc-intercept-table th:nth-child(7) { width: 160px; }
-.mc-intercept-table th:nth-child(8) { width: 190px; }
-.mc-intercept-table th:nth-child(9) { width: 86px; }
-.mc-intercept-table th:nth-child(10) { width: 270px; }
-.mc-intercept-table th:nth-child(11) { width: 110px; }
-.mc-intercept-table th:nth-child(12) { width: 160px; }
-.mc-intercept-table th:nth-child(13) { width: 190px; }
-.mc-intercept-table th:nth-child(14) { width: 94px; }
-.mc-intercept-table th:nth-child(15),
-.mc-intercept-table th:nth-child(16) { width: 142px; }
-.mc-intercept-table th:nth-child(17) { width: 96px; }
+.mc-intercept-table th:nth-child(6) { width: 160px; }
+.mc-intercept-table th:nth-child(7) { width: 190px; }
+.mc-intercept-table th:nth-child(8) { width: 86px; }
+.mc-intercept-table th:nth-child(9) { width: 270px; }
+.mc-intercept-table th:nth-child(10) { width: 110px; }
+.mc-intercept-table th:nth-child(11) { width: 160px; }
+.mc-intercept-table th:nth-child(12) { width: 190px; }
+.mc-intercept-table th:nth-child(13) { width: 94px; }
+.mc-intercept-table th:nth-child(14),
+.mc-intercept-table th:nth-child(15) { width: 142px; }
+.mc-intercept-table th:nth-child(16) { width: 96px; }
 
-.mc-intercept-table th:nth-child(18),
-.mc-intercept-table td:nth-child(18) {
+.mc-intercept-table .mc-intercept-actions-cell {
   position: sticky;
   z-index: 3;
   right: 0;
-  width: 150px;
-  min-width: 150px;
+  width: 168px;
+  min-width: 168px;
   overflow: visible;
+  padding: 0 12px;
   border-left: 1px solid #e8ebee;
   background: #fff;
   box-shadow: -8px 0 12px rgba(29, 42, 54, .08);
   white-space: nowrap;
+}
+
+.mc-intercept-table .mc-intercept-failure-reason-cell {
+  width: 190px;
+  min-width: 190px;
+  color: #c2410c;
 }
 
 .mc-reconciliation-status {
@@ -395,11 +404,20 @@
 }
 
 .mc-intercept-action {
-  margin: 0 5px;
+  flex: 0 0 auto;
+  margin: 0;
   padding: 0;
   border: 0;
   color: #168ff5;
   background: transparent;
+}
+
+.mc-intercept-actions {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
 }
 
 .mc-intercept-action:hover {

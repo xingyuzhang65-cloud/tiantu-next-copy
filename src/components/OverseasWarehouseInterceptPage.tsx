@@ -74,7 +74,6 @@ interface InterceptTask {
 
 interface FilterState {
   no: string;
-  container: string;
   customer: string;
   waybillNo: string;
   customerOrderNo: string;
@@ -92,7 +91,6 @@ interface OverseasWarehouseInterceptPageProps {
 
 const emptyFilters: FilterState = {
   no: '',
-  container: '',
   customer: '',
   waybillNo: '',
   customerOrderNo: '',
@@ -103,7 +101,7 @@ const emptyFilters: FilterState = {
 };
 
 const statusTabs: Array<InterceptStatus | '全部'> = ['待处理', '拦截中', '拦截成功', '拦截失败', '已取消', '全部'];
-const tableHeaders = ['客户名称', '拦截单号', '运单号', '客户单号', '柜号', '最新运踪', '拦截原因', '拦截箱数', '指令费用', '核销状态', '客户备注', '内部备注', '申请人', '申请时间', '处理人', '处理时间', '操作'];
+const tableHeaders = ['客户名称', '拦截单号', '运单号', '客户单号', '最新运踪', '拦截原因', '拦截箱数', '指令费用', '核销状态', '客户备注', '内部备注', '申请人', '申请时间', '处理人', '处理时间', '操作'];
 
 const initialTasks: InterceptTask[] = [
   {
@@ -584,6 +582,14 @@ type CancelReasonContext = {
   taskIds: number[];
 };
 
+type EditableDetailField = 'customer' | 'internal' | 'failure';
+
+const editableDetailFieldLabel = (field: EditableDetailField) => ({
+  customer: '客户备注',
+  internal: '内部备注',
+  failure: '失败原因',
+}[field]);
+
 export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage, incomingRequests = [] }: OverseasWarehouseInterceptPageProps) {
   const [tasks, setTasks] = useState<InterceptTask[]>(() => persistedInterceptTasks || initialTasks);
   const [draftFilters, setDraftFilters] = useState<FilterState>(emptyFilters);
@@ -599,7 +605,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   const [feedbackNote, setFeedbackNote] = useState('');
   const [feedbackFailureReason, setFeedbackFailureReason] = useState('');
   const [editingRemarkId, setEditingRemarkId] = useState<number | null>(null);
-  const [editingRemarkField, setEditingRemarkField] = useState<'customer' | 'internal'>('internal');
+  const [editingRemarkField, setEditingRemarkField] = useState<EditableDetailField>('internal');
   const [editRemarkValue, setEditRemarkValue] = useState('');
   const [cancelReasonOpen, setCancelReasonOpen] = useState(false);
   const [cancelReasonContext, setCancelReasonContext] = useState<CancelReasonContext>({ mode: 'single', taskIds: [] });
@@ -698,7 +704,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     const matchText = (value: string, query: string) => !query || value.toLowerCase().includes(query.toLowerCase());
     return (activeTab === '全部' || task.status === activeTab)
       && matchText(task.no, filters.no)
-      && matchText(task.container, filters.container)
       && matchText(task.waybillNo, filters.waybillNo)
       && matchText(task.customerOrderNo, filters.customerOrderNo)
       && matchText(task.latestTracking, filters.latestTracking)
@@ -715,6 +720,10 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   const selectedProcessingCount = visibleProcessing.filter((task) => selectedIds.includes(task.id)).length;
   const isPendingView = activeTab === '待处理';
   const isProcessingView = activeTab === '拦截中';
+  const showFailureReasonColumn = activeTab === '拦截失败';
+  const visibleTableHeaders = showFailureReasonColumn
+    ? [...tableHeaders.slice(0, -1), '失败原因', '操作']
+    : tableHeaders;
 
   const updateDraftFilter = (key: keyof FilterState, value: string) => {
     setDraftFilters((prev) => ({ ...prev, [key]: value }));
@@ -974,27 +983,44 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     setBatchFailureOpen(true);
   };
 
-  const startEditRemark = (task: InterceptTask, field: 'customer' | 'internal' = 'internal') => {
+  const startEditRemark = (task: InterceptTask, field: EditableDetailField = 'internal') => {
     setEditingRemarkId(task.id);
     setEditingRemarkField(field);
-    setEditRemarkValue(field === 'customer' ? task.customerNote : task.remark || task.internalRemark || '');
+    setEditRemarkValue(
+      field === 'customer'
+        ? task.customerNote
+        : field === 'failure'
+          ? task.failReason
+          : task.remark || task.internalRemark || '',
+    );
   };
 
   const saveEditRemark = (taskId: number) => {
     const remark = editRemarkValue.trim();
+    if (editingRemarkField === 'failure' && !remark) {
+      window.alert('请输入失败原因');
+      return;
+    }
     updateTask(taskId, (task) => {
-      const previousRemark = editingRemarkField === 'customer' ? task.customerNote : task.remark || task.internalRemark || '';
+      const previousRemark = editingRemarkField === 'customer'
+        ? task.customerNote
+        : editingRemarkField === 'failure'
+          ? task.failReason
+          : task.remark || task.internalRemark || '';
       const updated = editingRemarkField === 'customer'
         ? { ...task, customerNote: remark }
-        : { ...task, remark, internalRemark: remark };
+        : editingRemarkField === 'failure'
+          ? { ...task, failReason: remark }
+          : { ...task, remark, internalRemark: remark };
       return {
-        ...appendLog(updated, editingRemarkField === 'customer' ? '修改客户备注' : '修改内部备注', `"${previousRemark || '-'}" → "${remark || '-'}"`),
+        ...appendLog(updated, `修改${editableDetailFieldLabel(editingRemarkField)}`, `"${previousRemark || '-'}" → "${remark || '-'}"`),
       };
     });
+    const fieldLabel = editableDetailFieldLabel(editingRemarkField);
     setEditingRemarkId(null);
     setEditingRemarkField('internal');
     setEditRemarkValue('');
-    addToast?.(`${editingRemarkField === 'customer' ? '客户备注' : '内部备注'}已更新`, 'success');
+    addToast?.(`${fieldLabel}已更新`, 'success');
   };
 
   const cancelEditRemark = () => {
@@ -1185,7 +1211,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
           <label className="mc-filter-field"><span>拦截单号</span><input value={draftFilters.no} onChange={(e) => updateDraftFilter('no', e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') setFilters(draftFilters); }} placeholder="请输入拦截单号" /></label>
           <label className="mc-filter-field"><span>运单号</span><input value={draftFilters.waybillNo} onChange={(e) => updateDraftFilter('waybillNo', e.target.value)} placeholder="请输入运单号" /></label>
           <label className="mc-filter-field"><span>客户单号</span><input value={draftFilters.customerOrderNo} onChange={(e) => updateDraftFilter('customerOrderNo', e.target.value)} placeholder="请输入客户单号" /></label>
-          <label className="mc-filter-field"><span>柜号</span><input value={draftFilters.container} onChange={(e) => updateDraftFilter('container', e.target.value)} placeholder="请输入柜号" /></label>
           <label className="mc-filter-field"><span>最新运踪</span><input value={draftFilters.latestTracking} onChange={(e) => updateDraftFilter('latestTracking', e.target.value)} placeholder="请输入运踪关键词" /></label>
           <label className="mc-filter-field"><span>客户名称</span><select value={draftFilters.customer} onChange={(e) => updateDraftFilter('customer', e.target.value)}><option value="">全部客户</option>{customers.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label className="mc-filter-field"><span>核销状态</span><select value={draftFilters.reconciliationStatus} onChange={(e) => updateDraftFilter('reconciliationStatus', e.target.value)}><option value="">全部状态</option><option value="待核销">待核销</option><option value="部分核销">部分核销</option><option value="已核销">已核销</option></select></label>
@@ -1219,16 +1244,23 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
         </div>
         <div className="mc-intercept-list-summary"><span>共 {filteredTasks.length} 条拦截任务</span><span>拦截成功后将自动生成暂存单</span></div>
         <div className="mc-table-scroll">
-          <table className="mc-intercept-table">
+          <table className={`mc-intercept-table ${showFailureReasonColumn ? 'has-failure-reason' : ''}`}>
             <thead>
               <tr>
                 <th className="mc-intercept-check"><input ref={selectAllRef} type="checkbox" aria-label="全选拦截单" disabled={!filteredTasks.length} checked={allVisibleSelected} onChange={(e) => setSelectedIds(e.target.checked ? filteredTasks.map((task) => task.id) : [])} /></th>
-                {tableHeaders.map((head) => <th key={head}>{head}</th>)}
+                {visibleTableHeaders.map((head) => (
+                  <th
+                    key={head}
+                    className={head === '操作' ? 'mc-intercept-actions-cell' : head === '失败原因' ? 'mc-intercept-failure-reason-cell' : undefined}
+                  >
+                    {head}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {!filteredTasks.length ? (
-                <tr className="mc-intercept-empty"><td colSpan={18}>暂无匹配的拦截任务</td></tr>
+                <tr className="mc-intercept-empty"><td colSpan={visibleTableHeaders.length + 1}>暂无匹配的拦截任务</td></tr>
               ) : filteredTasks.map((task) => (
                 <tr key={task.id}>
                   <td className="mc-intercept-check">
@@ -1238,7 +1270,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   <td title={task.no}>{task.no}</td>
                   <td title={task.waybillNo || '-'}>{task.waybillNo || '-'}</td>
                   <td title={task.customerOrderNo || '-'}>{task.customerOrderNo || '-'}</td>
-                  <td title={task.container || '-'}>{task.container || '-'}</td>
                   <td title={task.latestTracking || '-'}>{task.latestTracking || '-'}</td>
                   <td title={task.reason}>{task.reason}</td>
                   <td>{task.actualBoxes || task.boxes}</td>
@@ -1256,10 +1287,13 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   <td>{task.appliedAt}</td>
                   <td>{task.handler || '-'}</td>
                   <td>{task.handleAt || '-'}</td>
-                  <td>
-                    <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('view'); setDetailContentTab('货箱信息'); setDetailTaskId(task.id); }}>详情</button>
-                    {(task.status === '待处理' || task.status === '拦截中') && <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('process'); setDetailContentTab('货箱信息'); setDetailTaskId(task.id); }}>处理</button>}
-                    <button className="mc-intercept-action" type="button" onClick={() => setLogTaskId(task.id)}>日志</button>
+                  {showFailureReasonColumn && <td className="mc-intercept-failure-reason-cell" title={task.failReason || '-'}>{task.failReason || '-'}</td>}
+                  <td className="mc-intercept-actions-cell">
+                    <div className="mc-intercept-actions">
+                      <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('view'); setDetailContentTab('货箱信息'); setDetailTaskId(task.id); }}>详情</button>
+                      {(task.status === '待处理' || task.status === '拦截中') && <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('process'); setDetailContentTab('货箱信息'); setDetailTaskId(task.id); }}>处理</button>}
+                      <button className="mc-intercept-action" type="button" onClick={() => setLogTaskId(task.id)}>日志</button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1294,8 +1328,18 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   <DetailField label="客户名称" value={detailTask.customer} />
                   <DetailField label="拦截单号" value={detailTask.no} highlight />
                   <DetailField label="入仓号" value={detailTask.waybillNo || '-'} />
-                  <DetailField label="柜号" value={detailTask.container || '-'} />
                   <DetailField label="拦截原因" value={detailTask.reason} />
+                  {detailTask.status === '拦截失败' && (
+                    <DetailField
+                      label="失败原因"
+                      value={(
+                        <span className="mc-intercept-detail-editable-value">
+                          <span>{detailTask.failReason || '-'}</span>
+                          <button className="mc-intercept-detail-edit-button" type="button" onClick={() => startEditRemark(detailTask, 'failure')} aria-label="编辑失败原因" title="编辑失败原因">✎</button>
+                        </span>
+                      )}
+                    />
+                  )}
                   <DetailField label="拦截箱数" value={`${detailTask.actualBoxes || detailTask.boxes} 箱`} />
                   <DetailField label="核销状态" value={<span className={`mc-reconciliation-status mc-reconciliation-${getReconciliationStatus(detailTask)}`}>{getReconciliationStatus(detailTask)}</span>} />
                   <DetailField label="申请人" value={detailTask.applicant} />
@@ -1648,11 +1692,11 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       {editingRemarkTask && (
         <div className="mc-intercept-overlay mc-intercept-feedback-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) cancelEditRemark(); }}>
           <section className="mc-intercept-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="interceptRemarkTitle">
-            <header><h2 id="interceptRemarkTitle">编辑{editingRemarkField === 'customer' ? '客户备注' : '内部备注'}</h2><button className="mc-intercept-close" type="button" aria-label="关闭备注编辑" onClick={cancelEditRemark}>×</button></header>
+            <header><h2 id="interceptRemarkTitle">编辑{editableDetailFieldLabel(editingRemarkField)}</h2><button className="mc-intercept-close" type="button" aria-label="关闭字段编辑" onClick={cancelEditRemark}>×</button></header>
             <form onSubmit={(event) => { event.preventDefault(); saveEditRemark(editingRemarkTask.id); }}>
               <div className="mc-intercept-feedback-content">
                 <p>拦截单号：{editingRemarkTask.no}</p>
-                <label><span>{editingRemarkField === 'customer' ? '客户备注' : '内部备注'}</span><textarea value={editRemarkValue} onChange={(event) => setEditRemarkValue(event.target.value)} maxLength={200} placeholder={`请输入${editingRemarkField === 'customer' ? '客户备注' : '内部备注'}内容`} autoFocus /></label>
+                <label><span className={editingRemarkField === 'failure' ? 'mc-required' : undefined}>{editableDetailFieldLabel(editingRemarkField)}</span><textarea value={editRemarkValue} onChange={(event) => setEditRemarkValue(event.target.value)} maxLength={200} required={editingRemarkField === 'failure'} placeholder={`请输入${editableDetailFieldLabel(editingRemarkField)}内容`} autoFocus /></label>
               </div>
               <footer><button className="mc-btn" type="button" onClick={cancelEditRemark}>取消</button><button className="mc-btn primary" type="submit">保存</button></footer>
             </form>
@@ -1689,7 +1733,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                 ) : (
                   <>
                     <p>请填写无法完成拦截的原因，系统将保留处理记录。</p>
-                    <label><span className="mc-required">失败原因</span><textarea value={feedbackFailureReason} onChange={(event) => setFeedbackFailureReason(event.target.value)} maxLength={200} required placeholder="例如：已出库、找不到货物、客户取消" /></label>
+                    <label><span className="mc-required">拦截失败原因</span><textarea value={feedbackFailureReason} onChange={(event) => setFeedbackFailureReason(event.target.value)} maxLength={200} required placeholder="例如：已出库、找不到货物、客户取消" autoFocus /></label>
                     <label><span>备注</span><textarea value={feedbackNote} onChange={(event) => setFeedbackNote(event.target.value)} maxLength={200} placeholder="请输入补充说明" /></label>
                   </>
                 )}
@@ -1722,7 +1766,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
             <form onSubmit={(event) => { event.preventDefault(); submitBatchFailure(); }}>
               <div className="mc-intercept-feedback-content">
                 <p>已选择 {selectedProcessingCount} 条拦截中的记录，请填写失败原因。</p>
-                <label><span className="mc-required">失败原因</span><textarea value={batchFailureReason} onChange={(event) => setBatchFailureReason(event.target.value)} maxLength={200} required placeholder="请填写失败原因" autoFocus /></label>
+                <label><span className="mc-required">拦截失败原因</span><textarea value={batchFailureReason} onChange={(event) => setBatchFailureReason(event.target.value)} maxLength={200} required placeholder="请填写拦截失败原因" autoFocus /></label>
                 <label><span>备注</span><textarea value={batchFailureNote} onChange={(event) => setBatchFailureNote(event.target.value)} maxLength={200} placeholder="请输入补充说明" /></label>
               </div>
               <footer><button className="mc-btn" type="button" onClick={() => setBatchFailureOpen(false)}>取消</button><button className="mc-btn primary" type="submit">确认提交</button></footer>
