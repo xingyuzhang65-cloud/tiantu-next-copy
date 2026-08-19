@@ -260,7 +260,7 @@
   font-size: 11px;
 }
 
-.mc-intercept-table.has-failure-reason {
+.mc-intercept-table.has-result-column {
   min-width: 2800px;
 }
 
@@ -338,9 +338,12 @@
   white-space: nowrap;
 }
 
-.mc-intercept-table .mc-intercept-failure-reason-cell {
+.mc-intercept-table .mc-intercept-result-cell {
   width: 190px;
   min-width: 190px;
+}
+
+.mc-intercept-table .mc-intercept-failure-reason-cell {
   color: #c2410c;
 }
 

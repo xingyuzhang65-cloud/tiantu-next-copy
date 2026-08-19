@@ -5,6 +5,7 @@ import type { OverseasFeeEditableField } from './OverseasFeeModal';
 import type { OverseasInterceptInstructionFee, OverseasInterceptRequest } from '../types';
 
 type InterceptStatus = '待处理' | '拦截中' | '拦截成功' | '拦截失败' | '已取消';
+type InterceptWorkbenchTab = InterceptStatus | '已完成' | '全部';
 type InterceptReconciliationStatus = '待核销' | '部分核销' | '已核销';
 type CargoStatus = '未拆柜' | '已拆柜' | '已出库' | '暂存中';
 
@@ -100,7 +101,8 @@ const emptyFilters: FilterState = {
   dateTo: '',
 };
 
-const statusTabs: Array<InterceptStatus | '全部'> = ['待处理', '拦截中', '拦截成功', '拦截失败', '已取消', '全部'];
+const completedStatuses: InterceptStatus[] = ['拦截成功', '拦截失败', '已取消'];
+const statusTabs: InterceptWorkbenchTab[] = ['待处理', '拦截中', '已完成', '拦截成功', '拦截失败', '已取消', '全部'];
 const tableHeaders = ['客户名称', '拦截单号', '运单号', '客户单号', '最新运踪', '拦截原因', '拦截箱数', '指令费用', '核销状态', '客户备注', '内部备注', '申请人', '申请时间', '处理人', '处理时间', '操作'];
 
 const initialTasks: InterceptTask[] = [
@@ -405,7 +407,7 @@ function statusClass(status: InterceptStatus) {
   }[status];
 }
 
-function tabLabel(status: InterceptStatus | '全部') {
+function tabLabel(status: InterceptWorkbenchTab) {
   if (status === '拦截中') return '处理中';
   if (status === '拦截成功') return '拦截成功';
   if (status === '拦截失败') return '拦截失败';
@@ -594,7 +596,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   const [tasks, setTasks] = useState<InterceptTask[]>(() => persistedInterceptTasks || initialTasks);
   const [draftFilters, setDraftFilters] = useState<FilterState>(emptyFilters);
   const [filters, setFilters] = useState<FilterState>(emptyFilters);
-  const [activeTab, setActiveTab] = useState<InterceptStatus | '全部'>('全部');
+  const [activeTab, setActiveTab] = useState<InterceptWorkbenchTab>('全部');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [detailTaskId, setDetailTaskId] = useState<number | null>(null);
   const [logTaskId, setLogTaskId] = useState<number | null>(null);
@@ -702,7 +704,9 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
 
   const filteredTasks = useMemo(() => tasks.filter((task) => {
     const matchText = (value: string, query: string) => !query || value.toLowerCase().includes(query.toLowerCase());
-    return (activeTab === '全部' || task.status === activeTab)
+    const matchesStatus = activeTab === '全部'
+      || (activeTab === '已完成' ? completedStatuses.includes(task.status) : task.status === activeTab);
+    return matchesStatus
       && matchText(task.no, filters.no)
       && matchText(task.waybillNo, filters.waybillNo)
       && matchText(task.customerOrderNo, filters.customerOrderNo)
@@ -720,10 +724,13 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   const selectedProcessingCount = visibleProcessing.filter((task) => selectedIds.includes(task.id)).length;
   const isPendingView = activeTab === '待处理';
   const isProcessingView = activeTab === '拦截中';
+  const isCompletedView = activeTab === '已完成';
   const showFailureReasonColumn = activeTab === '拦截失败';
-  const visibleTableHeaders = showFailureReasonColumn
-    ? [...tableHeaders.slice(0, -1), '失败原因', '操作']
-    : tableHeaders;
+  const visibleTableHeaders = isCompletedView
+    ? [...tableHeaders.slice(0, -1), '完成结果', '操作']
+    : showFailureReasonColumn
+      ? [...tableHeaders.slice(0, -1), '失败原因', '操作']
+      : tableHeaders;
 
   const updateDraftFilter = (key: keyof FilterState, value: string) => {
     setDraftFilters((prev) => ({ ...prev, [key]: value }));
@@ -1139,6 +1146,16 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     addToast?.(`已导出 ${selectedVisible.length} 条拦截记录`, 'success');
   };
 
+  const openSelectedCompletionReport = () => {
+    if (selectedVisible.length !== 1) {
+      addToast?.('请选择 1 条已完成记录查看处理报告', 'warning');
+      return;
+    }
+    setDetailMode('view');
+    setDetailContentTab('其它信息');
+    setDetailTaskId(selectedVisible[0].id);
+  };
+
   const openStorageDetails = (task: InterceptTask) => {
     if (onOpenStorage) {
       onOpenStorage(task.storageNo);
@@ -1226,7 +1243,11 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
         <div className="mc-status-bar">
           <div className="mc-status-tabs">
             {statusTabs.map((status) => {
-              const count = status === '全部' ? tasks.length : tasks.filter((task) => task.status === status).length;
+              const count = status === '全部'
+                ? tasks.length
+                : status === '已完成'
+                  ? tasks.filter((task) => completedStatuses.includes(task.status)).length
+                  : tasks.filter((task) => task.status === status).length;
               return (
                 <button key={status} className={`mc-status-tab ${activeTab === status ? 'active' : ''}`} type="button" onClick={() => { setActiveTab(status); setSelectedIds([]); }}>
                   {tabLabel(status)}({count})
@@ -1239,19 +1260,20 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
             {isPendingView && <button className="mc-btn primary" type="button" onClick={handleBatchConfirm}>确认拦截</button>}
             {isProcessingView && <button className="mc-btn primary" type="button" onClick={openBatchSuccess}>拦截成功</button>}
             {isProcessingView && <button className="mc-btn danger" type="button" onClick={openBatchFailure}>拦截失败</button>}
-            <button className="mc-btn" type="button" onClick={exportTasks}>导出</button>
+            {isCompletedView && <button className="mc-btn primary" type="button" onClick={openSelectedCompletionReport}>查看处理报告</button>}
+            <button className="mc-btn" type="button" onClick={exportTasks}>{isCompletedView ? '导出完成记录' : '导出'}</button>
           </div>
         </div>
-        <div className="mc-intercept-list-summary"><span>共 {filteredTasks.length} 条拦截任务</span><span>拦截成功后将自动生成暂存单</span></div>
+        <div className="mc-intercept-list-summary"><span>共 {filteredTasks.length} 条拦截任务</span><span>{isCompletedView ? '已完成记录包含拦截成功、拦截失败和已取消' : '拦截成功后将自动生成暂存单'}</span></div>
         <div className="mc-table-scroll">
-          <table className={`mc-intercept-table ${showFailureReasonColumn ? 'has-failure-reason' : ''}`}>
+          <table className={`mc-intercept-table ${showFailureReasonColumn || isCompletedView ? 'has-result-column' : ''}`}>
             <thead>
               <tr>
                 <th className="mc-intercept-check"><input ref={selectAllRef} type="checkbox" aria-label="全选拦截单" disabled={!filteredTasks.length} checked={allVisibleSelected} onChange={(e) => setSelectedIds(e.target.checked ? filteredTasks.map((task) => task.id) : [])} /></th>
                 {visibleTableHeaders.map((head) => (
                   <th
                     key={head}
-                    className={head === '操作' ? 'mc-intercept-actions-cell' : head === '失败原因' ? 'mc-intercept-failure-reason-cell' : undefined}
+                    className={head === '操作' ? 'mc-intercept-actions-cell' : head === '失败原因' || head === '完成结果' ? 'mc-intercept-result-cell' : undefined}
                   >
                     {head}
                   </th>
@@ -1287,11 +1309,14 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   <td>{task.appliedAt}</td>
                   <td>{task.handler || '-'}</td>
                   <td>{task.handleAt || '-'}</td>
-                  {showFailureReasonColumn && <td className="mc-intercept-failure-reason-cell" title={task.failReason || '-'}>{task.failReason || '-'}</td>}
+                  {showFailureReasonColumn && <td className="mc-intercept-result-cell mc-intercept-failure-reason-cell" title={task.failReason || '-'}>{task.failReason || '-'}</td>}
+                  {isCompletedView && <td className="mc-intercept-result-cell"><span className={`mc-intercept-status ${statusClass(task.status)}`}>{displayInterceptStatus(task.status)}</span></td>}
                   <td className="mc-intercept-actions-cell">
                     <div className="mc-intercept-actions">
                       <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('view'); setDetailContentTab('货箱信息'); setDetailTaskId(task.id); }}>详情</button>
                       {(task.status === '待处理' || task.status === '拦截中') && <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('process'); setDetailContentTab('货箱信息'); setDetailTaskId(task.id); }}>处理</button>}
+                      {isCompletedView && task.status === '拦截成功' && <button className="mc-intercept-action" type="button" onClick={() => openStorageDetails(task)}>查看暂存</button>}
+                      {isCompletedView && task.status !== '拦截成功' && <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('view'); setDetailContentTab('其它信息'); setDetailTaskId(task.id); }}>查看结果</button>}
                       <button className="mc-intercept-action" type="button" onClick={() => setLogTaskId(task.id)}>日志</button>
                     </div>
                   </td>
