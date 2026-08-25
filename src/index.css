@@ -388,6 +388,7 @@
 }
 
 .mc-intercept-status.is-pending { color: #b96d00; background: #fff7e6; }
+.mc-intercept-status.is-confirmed { color: #0369a1; background: #f0f9ff; }
 .mc-intercept-status.is-processing { color: #2563eb; background: #eff6ff; }
 .mc-intercept-status.is-success { color: #15803d; background: #ecfdf3; }
 .mc-intercept-status.is-failed { color: #dc2626; background: #fef2f2; }

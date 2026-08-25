@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import {
   emptyAddressForm,
+  getReleaseInstructionLabel,
   getShippingEnabledForReleaseInstruction,
   overseasDeliveryMethods,
   overseasOrderTypes,
@@ -1551,7 +1552,7 @@ export default function OverseasTransitPage({ addToast, initialView = 'list', mo
                           checked={storageReleaseInstruction === option}
                           onChange={() => setStorageReleaseInstruction(option)}
                         />
-                        {option}
+                        {getReleaseInstructionLabel(option)}
                       </label>
                     ))}
                   </div>

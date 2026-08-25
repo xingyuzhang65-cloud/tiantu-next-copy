@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import {
   emptyAddressForm,
+  getReleaseInstructionLabel,
   getReleaseInstructionFromShippingEnabled,
   getShippingEnabledForReleaseInstruction,
   overseasDeliveryMethods,
@@ -3076,7 +3077,11 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                   >
                     <option value="">请选择</option>
                     {field.options?.map((option) => (
-                      <option key={option}>{option}</option>
+                      <option key={option} value={option}>
+                        {field.searchKey === 'releaseInstruction'
+                          ? getReleaseInstructionLabel(option as ReleaseInstruction)
+                          : option}
+                      </option>
                     ))}
                   </select>
                 ) : (
@@ -3384,7 +3389,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                   <td className="truncate border border-slate-200 px-3 text-center">{row.customerName}</td>
                   <td className="border border-slate-200 px-3 text-center font-mono">{row.warehouseCode || '-'}</td>
                   {showOverseasWaybillNo && <td className="border border-slate-200 px-3 text-center font-mono">{row.zipCode || '-'}</td>}
-                  <td className="border border-slate-200 px-3 text-center">{getOrderReleaseInstructionForRow(row)}</td>
+                  <td className="border border-slate-200 px-3 text-center">{getReleaseInstructionLabel(getOrderReleaseInstructionForRow(row))}</td>
                   {showOverseasWaybillNo && <td className="border border-slate-200 px-3 text-center">{row.orderType || '-'}</td>}
                   <td className="border border-slate-200 px-3 text-center">{row.deliveryMethod || '-'}</td>
                   <td className="border border-slate-200 px-3 text-center">{row.destination}</td>
@@ -3584,7 +3589,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                               disabled={!isOrderFormEditing}
                               onChange={() => setReleaseInstructionByOrder((prev) => ({ ...prev, [activeOrderKey]: option }))}
                             />
-                            {option}
+                            {getReleaseInstructionLabel(option)}
                           </label>
                         ))}
                       </div>
@@ -3829,7 +3834,7 @@ export default function OverseasTransitOrderPage({ addToast, activeNode = '待�
                       <DetailField label="海外仓运单号" highlight>{getOverseasWaybillNo(activeOrder)}</DetailField>
                       <DetailField label="客户简称">{activeOrder.customerName}</DetailField>
                       <DetailField label="目的地">{activeOrder.destination}</DetailField>
-                      <DetailField label="下单类型">{getOrderReleaseInstructionForRow(activeOrder)}</DetailField>
+                      <DetailField label="下单类型">{getReleaseInstructionLabel(getOrderReleaseInstructionForRow(activeOrder))}</DetailField>
                       <DetailField label="运单类型">{activeOrder.orderType || '-'}</DetailField>
                       <DetailField label="仓库代码">{activeOrder.warehouseCode || '-'}</DetailField>
                       <DetailField label="入仓号">{activeOrder.inboundNo || '-'}</DetailField>

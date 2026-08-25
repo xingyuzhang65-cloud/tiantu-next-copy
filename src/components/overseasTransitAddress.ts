@@ -20,6 +20,15 @@ export type ReleaseInstruction = '放货' | '不放货' | '销毁';
 
 export const releaseInstructionOptions: ReleaseInstruction[] = ['放货', '不放货', '销毁'];
 
+const releaseInstructionLabels: Record<ReleaseInstruction, string> = {
+  放货: '发货',
+  不放货: '增值服务',
+  销毁: '销毁',
+};
+
+export const getReleaseInstructionLabel = (releaseInstruction: ReleaseInstruction) =>
+  releaseInstructionLabels[releaseInstruction];
+
 export const getReleaseInstructionFromShippingEnabled = (shippingEnabled?: boolean): ReleaseInstruction =>
   shippingEnabled === false ? '不放货' : '放货';
 
