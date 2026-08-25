@@ -13,6 +13,7 @@ import OverseasWarehouseInterceptPage from './components/OverseasWarehouseInterc
 import ExpressOrderPage from './components/ExpressOrderPage';
 import UserManagementPage from './components/UserManagementPage';
 import MarketingDashboardPage from './components/MarketingDashboardPage';
+import CustomerInstructionCreatePage from './components/CustomerInstructionCreatePage';
 import { Waybill, OrderType, WaybillChangeLog, OverseasInterceptRequest } from './types';
 import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from 'lucide-react';
 
@@ -575,6 +576,8 @@ export default function App() {
               addToast(storageNo ? `已打开暂存单 ${storageNo}` : '已打开海外暂存', 'info');
             }}
           />
+        ) : currentTab === '创建客户指令' ? (
+          <CustomerInstructionCreatePage />
         ) : currentTab === '快递单' ? (
           <ExpressOrderPage addToast={addToast} />
         ) : currentTab === '仓库出货' ? (
@@ -643,7 +646,7 @@ export default function App() {
         )}
 
         {/* Global Floating Footer Help Desk Info (Minimal, professional logistics footer) */}
-        <div className="bg-white border-t border-slate-200 px-4 py-2 flex items-center justify-between text-[11px] text-slate-400 select-none">
+        {currentTab !== '创建客户指令' && <div className="bg-white border-t border-slate-200 px-4 py-2 flex items-center justify-between text-[11px] text-slate-400 select-none">
           <div className="flex items-center gap-4">
             <span>天图通逊操作后台 v4.62 (高级版)</span>
             <span>|</span>
@@ -663,7 +666,7 @@ export default function App() {
               400-888-2026
             </span>
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Floating active Create Waybill Modal Overlay */}
