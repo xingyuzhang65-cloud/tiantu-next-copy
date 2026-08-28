@@ -14,6 +14,7 @@ import ExpressOrderPage from './components/ExpressOrderPage';
 import UserManagementPage from './components/UserManagementPage';
 import MarketingDashboardPage from './components/MarketingDashboardPage';
 import CustomerInstructionCreatePage from './components/CustomerInstructionCreatePage';
+import InstructionListPage from './components/InstructionListPage';
 import { Waybill, OrderType, WaybillChangeLog, OverseasInterceptRequest } from './types';
 import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from 'lucide-react';
 
@@ -576,6 +577,8 @@ export default function App() {
               addToast(storageNo ? `已打开暂存单 ${storageNo}` : '已打开海外暂存', 'info');
             }}
           />
+        ) : currentTab === '指令列表' || currentTab === '指令管理' ? (
+          <InstructionListPage addToast={addToast} />
         ) : currentTab === '创建客户指令' ? (
           <CustomerInstructionCreatePage />
         ) : currentTab === '快递单' ? (

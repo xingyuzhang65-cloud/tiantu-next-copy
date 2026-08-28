@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Calendar, ChevronDown, CirclePlus, Minus, Plus } from 'lucide-react';
+import { operationInstructionOptions } from './customerInstructionData';
 
 const inputClass = 'h-8 rounded border border-[#d8e0ec] bg-white px-3 text-xs text-slate-700 outline-none placeholder:text-[#b8c3d4] focus:border-[#409eff] focus:ring-1 focus:ring-[#409eff]';
 const textareaClass = 'h-10 resize-none rounded border border-[#d8e0ec] bg-white px-3 py-2 text-xs text-slate-700 outline-none placeholder:text-[#b8c3d4] focus:border-[#409eff] focus:ring-1 focus:ring-[#409eff]';
@@ -103,11 +104,30 @@ function FieldRow({
   );
 }
 
-function SelectBox({ placeholder, width = 'w-full' }: { placeholder: string; width?: string }) {
+function SelectBox({
+  placeholder,
+  width = 'w-full',
+  options = [],
+  value = '',
+  onChange,
+}: {
+  placeholder: string;
+  width?: string;
+  options?: readonly string[];
+  value?: string;
+  onChange?: (value: string) => void;
+}) {
   return (
     <div className={`relative ${width}`}>
-      <select className={`${selectClass} w-full text-[#b8c3d4]`} defaultValue="">
+      <select
+        className={`${selectClass} w-full ${value ? 'text-slate-700' : 'text-[#b8c3d4]'}`}
+        value={value}
+        onChange={(event) => onChange?.(event.target.value)}
+      >
         <option value="" disabled>{placeholder}</option>
+        {options.map((option) => (
+          <option key={option} value={option}>{option}</option>
+        ))}
       </select>
       <ChevronDown className="pointer-events-none absolute right-2 top-2 h-4 w-4 text-[#b8c3d4]" />
     </div>
@@ -116,7 +136,9 @@ function SelectBox({ placeholder, width = 'w-full' }: { placeholder: string; wid
 
 export default function CustomerInstructionCreatePage() {
   const [selectedInstructionType, setSelectedInstructionType] = useState<(typeof instructionTypes)[number]['title']>('放货');
+  const [selectedOperationInstruction, setSelectedOperationInstruction] = useState(operationInstructionOptions[0].name);
   const needsAddress = selectedInstructionType === '放货';
+  const operationInstruction = operationInstructionOptions.find((item) => item.name === selectedOperationInstruction) || operationInstructionOptions[0];
 
   return (
     <div className="relative flex-1 overflow-auto bg-[#f5f7fb] px-5 pb-10 pt-4 text-slate-700">
@@ -226,18 +248,23 @@ export default function CustomerInstructionCreatePage() {
                 <tr className="h-[52px] text-slate-700">
                   <td className="border border-[#dfe6f1] text-center">1</td>
                   <td className="border border-[#dfe6f1] px-3">
-                    <SelectBox placeholder="请选择" />
+                    <SelectBox
+                      placeholder="请选择"
+                      options={operationInstructionOptions.map((item) => item.name)}
+                      value={selectedOperationInstruction}
+                      onChange={(value) => setSelectedOperationInstruction(value as typeof selectedOperationInstruction)}
+                    />
                   </td>
-                  <td className="border border-[#dfe6f1] px-3">-</td>
-                  <td className="border border-[#dfe6f1] px-3">-</td>
+                  <td className="border border-[#dfe6f1] px-3">{operationInstruction.feeType}</td>
+                  <td className="border border-[#dfe6f1] px-3">{operationInstruction.unit}</td>
                   <td className="border border-[#dfe6f1] px-3">
                     <div className="flex h-8 w-[110px] items-center overflow-hidden rounded border border-[#dfe6f1] bg-white">
                       <button type="button" className="flex h-full w-8 items-center justify-center border-r border-[#dfe6f1] bg-[#f7f9fc] text-[#b8c3d4]"><Minus className="h-3.5 w-3.5" /></button>
-                      <input className="h-full min-w-0 flex-1 text-center text-xs outline-none" defaultValue="0.01" />
+                      <input className="h-full min-w-0 flex-1 text-center text-xs outline-none" value={operationInstruction.price} readOnly />
                       <button type="button" className="flex h-full w-8 items-center justify-center border-l border-[#dfe6f1] bg-[#f7f9fc] text-slate-500"><Plus className="h-3.5 w-3.5" /></button>
                     </div>
                   </td>
-                  <td className="border border-[#dfe6f1] px-3">-</td>
+                  <td className="border border-[#dfe6f1] px-3">{operationInstruction.currency}</td>
                   <td className="border border-[#dfe6f1] px-3">
                     <textarea className={`${textareaClass} h-9 w-full`} placeholder="请输入指令要求" />
                   </td>
