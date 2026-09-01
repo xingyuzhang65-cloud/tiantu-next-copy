@@ -3,7 +3,7 @@ import {
   Search, RotateCcw, ChevronDown, ChevronUp, Plus, Trash2, 
   RefreshCw, Settings2, ShieldCheck, HelpCircle, ArrowUpDown,
   FileDown, Check, AlertOctagon, MapPin, X,
-  Copy, Printer, ShieldAlert, Paperclip
+  Copy, Printer, ShieldAlert, Paperclip, ClipboardList
 } from 'lucide-react';
 import { Waybill, SearchParams, OrderType, WaybillAttachment, WaybillChangeLog, OverseasInterceptRequest } from '../types';
 
@@ -292,6 +292,15 @@ export default function TableSection({
   const [systemLabelPanelOpen, setSystemLabelPanelOpen] = useState(false);
   const [systemLabelDownloadMode, setSystemLabelDownloadMode] = useState<'split' | 'continuous'>('continuous');
   const [batchMenuOpen, setBatchMenuOpen] = useState(false);
+  const [workOrderOpen, setWorkOrderOpen] = useState(false);
+  const [otherMenuOpen, setOtherMenuOpen] = useState(false);
+  const [workOrderType, setWorkOrderType] = useState('拦截');
+  const [workOrderReason, setWorkOrderReason] = useState('');
+  const [workOrderProgress, setWorkOrderProgress] = useState('');
+  const [workOrderCustomerVisible, setWorkOrderCustomerVisible] = useState(true);
+  const [workOrderProgressVisible, setWorkOrderProgressVisible] = useState(true);
+  const [workOrderVisibleUser, setWorkOrderVisibleUser] = useState('');
+  const [workOrderAttachment, setWorkOrderAttachment] = useState<File | null>(null);
   const [batchTradePanelOpen, setBatchTradePanelOpen] = useState(false);
   const [batchTradeMode, setBatchTradeMode] = useState('');
   const [batchCustomsDeclPanelOpen, setBatchCustomsDeclPanelOpen] = useState(false);
@@ -306,6 +315,7 @@ export default function TableSection({
   const [overseasInterceptConfirmOpen, setOverseasInterceptConfirmOpen] = useState(false);
   const [overseasInterceptReason, setOverseasInterceptReason] = useState('');
   const [overseasInterceptAttachment, setOverseasInterceptAttachment] = useState<File | null>(null);
+  const [linkedReminderOpen, setLinkedReminderOpen] = useState(false);
 
   const [activeDetailWaybill, setActiveDetailWaybill] = useState<Waybill | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState('基础信息');
@@ -680,6 +690,20 @@ export default function TableSection({
     }, 1000);
   };
 
+  const handleOpenWorkOrder = () => { setWorkOrderReason(''); setWorkOrderProgress(''); setWorkOrderVisibleUser(''); setWorkOrderAttachment(null); setWorkOrderOpen(true); };
+  const handleSaveWorkOrder = () => {
+    if (!workOrderReason.trim() || !workOrderProgress.trim()) {
+      addToast('请填写拦截原因和处理进度描述', 'warning');
+      return;
+    }
+    setWorkOrderOpen(false);
+    if (getMergedRelatedWaybills(selectedIds).length > 0) {
+      setLinkedReminderOpen(true);
+      return;
+    }
+    addToast('工单已保存', 'success');
+  };
+
   const handleOpenOverseasIntercept = () => {
     if (selectedIds.length === 0) {
       addToast('请先在下方列表中勾选需要拦截的运单，支持批量选择', 'warning');
@@ -691,6 +715,13 @@ export default function TableSection({
     setOverseasInterceptModalOpen(true);
   };
 
+  const getMergedRelatedWaybills = (ids) => {
+    const keys = waybills.filter((w) => ids.includes(w.id)).map((w) => w.associatedNo || w.groupCode).filter(Boolean);
+    const related = waybills.filter((w) => !ids.includes(w.id) && keys.includes(w.associatedNo || w.groupCode));
+    // 当前 mock 运单全部属于合并报关场景；没有显式批次号时，取其它运单作为同批次关联数据。
+    return related.length > 0 ? related : waybills.filter((w) => !ids.includes(w.id)).slice(0, 3);
+  };
+
   const handleSubmitOverseasIntercept = () => {
     const reason = overseasInterceptReason.trim();
     if (!reason) {
@@ -698,6 +729,7 @@ export default function TableSection({
       return;
     }
 
+    if (getMergedRelatedWaybills(selectedIds).length) { setLinkedReminderOpen(true); return; }
     setOverseasInterceptConfirmOpen(true);
   };
 
@@ -1504,10 +1536,10 @@ export default function TableSection({
           {/* 其他 Dropdown */}
           <button
             type="button"
-            onClick={() => addToast('展开更多平台管理运维工具...', 'info')}
+            onClick={handleOpenWorkOrder}
             className="flex items-center gap-1 rounded bg-[#004bb1] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#003b91] transition-all"
           >
-            <span>其他</span>
+            <ClipboardList className="h-3.5 w-3.5" /><span>拦截/问题件</span>
             <ChevronDown className="h-3 w-3" />
           </button>
 
@@ -3231,7 +3263,7 @@ export default function TableSection({
         </div>
       )}
 
-      {overseasInterceptConfirmOpen && (
+      {linkedReminderOpen && (<div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/55 px-4"><div className="w-[650px] max-w-[calc(100vw-32px)] rounded-lg bg-white shadow-2xl"><div className="border-b border-slate-100 px-6 py-5"><h3 id="linked-reminder-title" className="text-base font-bold text-slate-900">合并报关联动提醒</h3><p className="mt-2 text-xs leading-5 text-slate-600">当前运单与另外 {getMergedRelatedWaybills(selectedIds).length} 票货物合并报关，为避免同一报关批次处理状态不一致，建议同步处理</p></div><div className="px-6 py-4"><table className="w-full border-collapse text-xs"><thead><tr className="bg-slate-50 text-slate-600"><th className="border border-slate-200 px-3 py-2 text-left">运单号</th><th className="border border-slate-200 px-3 py-2 text-left">当前拦截状态</th><th className="border border-slate-200 px-3 py-2 text-left">本次处理结果/是否可操作</th></tr></thead><tbody>{[...waybills.filter((w)=>selectedIds.includes(w.id)), ...getMergedRelatedWaybills(selectedIds)].map((row)=><tr key={row.id}><td className="border border-slate-200 px-3 py-2 font-mono text-[#0759b6]">{row.id}</td><td className="border border-slate-200 px-3 py-2">{row.status === '转运中' ? '未拦截' : row.status === '异常件' ? '拦截成功' : '拦截中'}</td><td className="border border-slate-200 px-3 py-2">{row.status === '转运中' ? '本次发起' : row.status === '异常件' ? '不可取消：已拦截成功' : '无需重复发起'}</td></tr>)}</tbody></table></div><div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4"><button type="button" onClick={()=>setLinkedReminderOpen(false)} className="rounded border border-slate-300 bg-white px-5 py-1.5 text-xs font-semibold text-slate-600">取消</button><button type="button" onClick={()=>{setLinkedReminderOpen(false); handleConfirmOverseasIntercept();}} className="rounded bg-[#004bb1] px-5 py-1.5 text-xs font-bold text-white">全部发起拦截</button></div></div></div>)}\n      {overseasInterceptConfirmOpen && (
         <div className="fixed inset-0 z-[100] flex items-start justify-center bg-slate-950/55 pt-28">
           <div className="w-[440px] max-w-[calc(100vw-32px)] rounded-lg bg-white shadow-2xl">
             <div className="flex items-start gap-3 border-b border-slate-100 px-6 py-5">
@@ -3681,6 +3713,8 @@ export default function TableSection({
           </div>
         </div>
       )}
+      {workOrderOpen && (<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setWorkOrderOpen(false); }}><div className="w-full max-w-[575px] overflow-hidden rounded-sm bg-white shadow-2xl" role="dialog" aria-modal="true"><div className="flex h-11 items-center border-b border-slate-200 px-4"><h2 id="work-order-title" className="text-[16px] font-bold text-slate-800">工单</h2></div><div className="space-y-4 px-4 py-4 text-[12px] text-slate-600"><div className="flex items-center gap-3"><span className="w-[72px] text-right">运单号：</span><div className="flex min-h-7 flex-1 flex-wrap items-center gap-1 rounded border border-slate-200 px-2 py-1">{(selectedIds.length ? selectedIds : [sortedWaybills[0]?.id]).filter(Boolean).slice(0,3).map((id)=><span key={id} className="rounded bg-[#eaf3ff] px-2 py-0.5 text-[11px] font-semibold text-[#3e83d4]">{id}</span>)}</div></div><label className="flex items-center gap-3"><span className="w-[72px] text-right"><i className="mr-1 text-red-500">*</i>工单类型：</span><select value={workOrderType} onChange={(e)=>setWorkOrderType(e.target.value)} className="h-7 flex-1 rounded border border-[#86bfff] px-2"><option>拦截</option><option>问题件</option></select></label><label className="flex items-start gap-3"><span className="w-[72px] pt-2 text-right"><i className="mr-1 text-red-500">*</i>拦截原因：</span><textarea value={workOrderReason} onChange={(e)=>setWorkOrderReason(e.target.value)} className="h-20 flex-1 resize-none rounded border border-slate-300 p-2" placeholder="请输入"/></label><div className="flex items-center gap-3"><span className="w-[72px] text-right"><i className="mr-1 text-red-500">*</i>可见范围：</span><label className="flex items-center gap-1.5 text-[#0759b6]"><input type="radio" checked={workOrderCustomerVisible} onChange={()=>setWorkOrderCustomerVisible(true)}/>客户可见</label><label className="flex items-center gap-1.5"><input type="radio" checked={!workOrderCustomerVisible} onChange={()=>setWorkOrderCustomerVisible(false)}/>客户不可见</label></div><h3 className="pt-1 text-[15px] font-bold text-slate-700">问题进度</h3><label className="flex items-start gap-3"><span className="w-[72px] pt-2 text-right"><i className="mr-1 text-red-500">*</i>处理进度描述：</span><div className="relative flex-1"><textarea value={workOrderProgress} onChange={(e)=>setWorkOrderProgress(e.target.value.slice(0,500))} className="h-20 w-full resize-none rounded border border-slate-300 p-2" placeholder="请输入"/><span className="absolute bottom-1 right-2 text-[10px] text-slate-400">{workOrderProgress.length}/500</span></div></label><div className="flex items-center gap-3"><span className="w-[72px] text-right"><i className="mr-1 text-red-500">*</i>进度可见范围：</span><label className="flex items-center gap-1.5 text-[#0759b6]"><input type="radio" checked={workOrderProgressVisible} onChange={()=>setWorkOrderProgressVisible(true)}/>客户可见</label><label className="flex items-center gap-1.5"><input type="radio" checked={!workOrderProgressVisible} onChange={()=>setWorkOrderProgressVisible(false)}/>客户不可见</label></div><label className="flex items-center gap-3"><span className="w-[72px] text-right">指定可见用户：</span><input value={workOrderVisibleUser} onChange={(e)=>setWorkOrderVisibleUser(e.target.value)} className="h-7 flex-1 rounded border border-slate-300 px-2" placeholder="请选择"/></label><div className="flex items-start gap-3"><span className="w-[72px] pt-1 text-right">文件附件：</span><label className="inline-flex cursor-pointer items-center rounded bg-[#0759b6] px-3 py-1.5 text-[11px] font-semibold text-white"><input type="file" className="hidden" onChange={(e)=>setWorkOrderAttachment(e.target.files?.[0]||null)}/>点击上传</label></div></div><div className="flex justify-end gap-2 border-t border-slate-100 px-4 py-4"><button type="button" onClick={handleSaveWorkOrder} className="rounded bg-[#0759b6] px-4 py-1.5 text-xs font-semibold text-white">保存</button><button type="button" onClick={()=>setWorkOrderOpen(false)} className="rounded border border-slate-200 bg-white px-4 py-1.5 text-xs">取消</button></div></div></div>)}\n
+
     </div>
   );
 }
