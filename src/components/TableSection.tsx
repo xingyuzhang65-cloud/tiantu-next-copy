@@ -15,6 +15,8 @@ interface TableSectionProps {
   onUpdateWaybillStatus: (id: string, nextStatus: Waybill['status']) => void;
   onUpdateWaybill: (id: string, patch: Partial<Waybill>) => void;
   onCreateOverseasIntercept: (requests: OverseasInterceptRequest[]) => void;
+  onBatchCancelIntercept: (ids: string[]) => void;
+  getCancelableInterceptWaybillIds: () => string[];
   addToast: (msg: string, type: 'success' | 'info' | 'warning') => void;
 }
 
@@ -206,6 +208,8 @@ export default function TableSection({
   onUpdateWaybillStatus,
   onUpdateWaybill,
   onCreateOverseasIntercept,
+  onBatchCancelIntercept,
+  getCancelableInterceptWaybillIds,
   addToast
 }: TableSectionProps) {
   // Filters state
@@ -316,6 +320,11 @@ export default function TableSection({
   const [overseasInterceptReason, setOverseasInterceptReason] = useState('');
   const [overseasInterceptAttachment, setOverseasInterceptAttachment] = useState<File | null>(null);
   const [linkedReminderOpen, setLinkedReminderOpen] = useState(false);
+  const [batchCancelInterceptOpen, setBatchCancelInterceptOpen] = useState(false);
+  const [cancelInterceptIds, setCancelInterceptIds] = useState<string[]>([]);
+  const [cancelRelatedIds, setCancelRelatedIds] = useState<string[]>([]);
+  const [cancelRelatedReviewed, setCancelRelatedReviewed] = useState(false);
+  const [mergedInterceptReviewed, setMergedInterceptReviewed] = useState(false);
 
   const [activeDetailWaybill, setActiveDetailWaybill] = useState<Waybill | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState('基础信息');
@@ -690,17 +699,17 @@ export default function TableSection({
     }, 1000);
   };
 
-  const handleOpenWorkOrder = () => { setWorkOrderReason(''); setWorkOrderProgress(''); setWorkOrderVisibleUser(''); setWorkOrderAttachment(null); setWorkOrderOpen(true); };
+  const handleOpenWorkOrder = () => { setWorkOrderReason(''); setWorkOrderProgress(''); setWorkOrderVisibleUser(''); setWorkOrderAttachment(null); setMergedInterceptReviewed(false); setWorkOrderOpen(true); };
   const handleSaveWorkOrder = () => {
     if (!workOrderReason.trim() || !workOrderProgress.trim()) {
       addToast('请填写拦截原因和处理进度描述', 'warning');
       return;
     }
-    setWorkOrderOpen(false);
-    if (getMergedRelatedWaybills(selectedIds).length > 0) {
+    if (!mergedInterceptReviewed && getMergedRelatedWaybills(selectedIds).length > 0) {
       setLinkedReminderOpen(true);
       return;
     }
+    setWorkOrderOpen(false);
     addToast('工单已保存', 'success');
   };
 
@@ -712,6 +721,7 @@ export default function TableSection({
 
     setOverseasInterceptReason('');
     setOverseasInterceptAttachment(null);
+    setMergedInterceptReviewed(false);
     setOverseasInterceptModalOpen(true);
   };
 
@@ -729,8 +739,41 @@ export default function TableSection({
       return;
     }
 
-    if (getMergedRelatedWaybills(selectedIds).length) { setLinkedReminderOpen(true); return; }
+    if (!mergedInterceptReviewed && getMergedRelatedWaybills(selectedIds).length) { setLinkedReminderOpen(true); return; }
     setOverseasInterceptConfirmOpen(true);
+  };
+
+  const handleMergedInterceptChoice = (includeRelated: boolean) => {
+    if (includeRelated) {
+      const relatedIds = getMergedRelatedWaybills(selectedIds).map((row) => row.id);
+      setSelectedIds((ids) => [...new Set([...ids, ...relatedIds])]);
+    }
+    setMergedInterceptReviewed(true);
+    setLinkedReminderOpen(false);
+  };
+
+  const handleConfirmBatchCancelIntercept = () => {
+    if (!cancelRelatedReviewed) {
+      // 演示约定：默认存在尚未取消拦截的合并报关关联运单。
+      const relatedIds = getMergedRelatedWaybills(cancelInterceptIds).map((row) => row.id);
+      if (!relatedIds.length) {
+        let demoNo = 2606164412;
+        while (cancelInterceptIds.includes(`HD${demoNo}`)) demoNo += 1;
+        relatedIds.push(`HD${demoNo}`);
+      }
+      if (relatedIds.length) {
+        setCancelRelatedIds(relatedIds);
+        return;
+      }
+    }
+    setBatchCancelInterceptOpen(false);
+    onBatchCancelIntercept(cancelInterceptIds);
+  };
+
+  const handleCancelRelatedChoice = (includeRelated: boolean) => {
+    if (includeRelated) setCancelInterceptIds((ids) => [...new Set([...ids, ...cancelRelatedIds])]);
+    setCancelRelatedReviewed(true);
+    setCancelRelatedIds([]);
   };
 
   const handleConfirmOverseasIntercept = () => {
@@ -1628,6 +1671,23 @@ export default function TableSection({
                   className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] text-slate-700 hover:bg-blue-50 hover:text-[#004bb1]"
                 >
                   <span>批量修改贸易方式</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedIds.length === 0) {
+                      addToast('请先勾选需要取消拦截的运单', 'warning');
+                      return;
+                    }
+                    setBatchMenuOpen(false);
+                    setCancelInterceptIds([...selectedIds]);
+                    setCancelRelatedIds([]);
+                    setCancelRelatedReviewed(false);
+                    setBatchCancelInterceptOpen(true);
+                  }}
+                  className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] text-slate-700 hover:bg-blue-50 hover:text-[#004bb1]"
+                >
+                  <span>批量取消拦截</span>
                 </button>
               </div>
             )}
@@ -3263,7 +3323,69 @@ export default function TableSection({
         </div>
       )}
 
-      {linkedReminderOpen && (<div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/55 px-4"><div className="w-[650px] max-w-[calc(100vw-32px)] rounded-lg bg-white shadow-2xl"><div className="border-b border-slate-100 px-6 py-5"><h3 id="linked-reminder-title" className="text-base font-bold text-slate-900">合并报关联动提醒</h3><p className="mt-2 text-xs leading-5 text-slate-600">当前运单与另外 {getMergedRelatedWaybills(selectedIds).length} 票货物合并报关，为避免同一报关批次处理状态不一致，建议同步处理</p></div><div className="px-6 py-4"><table className="w-full border-collapse text-xs"><thead><tr className="bg-slate-50 text-slate-600"><th className="border border-slate-200 px-3 py-2 text-left">运单号</th><th className="border border-slate-200 px-3 py-2 text-left">当前拦截状态</th><th className="border border-slate-200 px-3 py-2 text-left">本次处理结果/是否可操作</th></tr></thead><tbody>{[...waybills.filter((w)=>selectedIds.includes(w.id)), ...getMergedRelatedWaybills(selectedIds)].map((row)=><tr key={row.id}><td className="border border-slate-200 px-3 py-2 font-mono text-[#0759b6]">{row.id}</td><td className="border border-slate-200 px-3 py-2">{row.status === '转运中' ? '未拦截' : row.status === '异常件' ? '拦截成功' : '拦截中'}</td><td className="border border-slate-200 px-3 py-2">{row.status === '转运中' ? '本次发起' : row.status === '异常件' ? '不可取消：已拦截成功' : '无需重复发起'}</td></tr>)}</tbody></table></div><div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4"><button type="button" onClick={()=>setLinkedReminderOpen(false)} className="rounded border border-slate-300 bg-white px-5 py-1.5 text-xs font-semibold text-slate-600">取消</button><button type="button" onClick={()=>{setLinkedReminderOpen(false); handleConfirmOverseasIntercept();}} className="rounded bg-[#004bb1] px-5 py-1.5 text-xs font-bold text-white">全部发起拦截</button></div></div></div>)}\n      {overseasInterceptConfirmOpen && (
+      {batchCancelInterceptOpen && cancelRelatedIds.length === 0 && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50" onKeyDown={(event) => { if (event.key === 'Escape') setBatchCancelInterceptOpen(false); }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="batch-cancel-title" aria-describedby="batch-cancel-description" className="w-[420px] max-w-[calc(100vw-32px)] rounded-[3px] bg-white shadow-xl">
+            <div className="flex items-center justify-between px-4 pb-2 pt-4">
+              <h3 id="batch-cancel-title" className="text-base font-normal text-[#606266]">提示</h3>
+              <button type="button" aria-label="关闭" onClick={() => setBatchCancelInterceptOpen(false)} className="text-[#909399] hover:text-[#606266]"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="flex items-start gap-3 border-t border-[#ebeef5] px-6 pb-2 pt-5 text-sm leading-7 text-[#606266]">
+              <span className="shrink-0">运单号：</span>
+              <div className="max-h-52 min-w-0 flex-1 overflow-y-auto break-all">{cancelInterceptIds.join(',')}</div>
+            </div>
+            <div className="flex items-center gap-3 px-4 py-3">
+              <span aria-hidden="true" className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e6a23c] text-sm font-bold text-white">!</span>
+              <p id="batch-cancel-description" className="text-sm text-[#606266]">是否将勾选的运单取消拦截？</p>
+            </div>
+            <div className="flex justify-end gap-2 px-4 pb-3 pt-2">
+              <button type="button" autoFocus onClick={() => setBatchCancelInterceptOpen(false)} className="rounded-[3px] border border-[#dcdfe6] bg-white px-[15px] py-2 text-xs text-[#606266] hover:bg-slate-50">取消</button>
+              <button type="button" onClick={handleConfirmBatchCancelIntercept} className="rounded-[3px] border border-[#0052cc] bg-[#0052cc] px-[15px] py-2 text-xs text-white hover:bg-[#004bb1]">确定</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {batchCancelInterceptOpen && cancelRelatedIds.length > 0 && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 px-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="cancel-related-title" className="w-[560px] max-w-full rounded bg-white shadow-xl">
+            <div className="border-b border-slate-100 px-6 py-5">
+              <h3 id="cancel-related-title" className="text-base font-bold text-slate-900">是否同时取消关联运单的拦截？</h3>
+            </div>
+            <div className="px-6 py-4">
+              <div className="flex items-start gap-3 text-sm leading-7 text-[#606266]">
+                <span className="shrink-0">运单号：</span>
+                <div className="max-h-52 min-w-0 flex-1 overflow-y-auto break-all">{cancelRelatedIds.join(',')}</div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
+              <button type="button" autoFocus onClick={() => handleCancelRelatedChoice(false)} className="rounded border border-slate-300 px-5 py-1.5 text-xs text-slate-600">取消</button>
+              <button type="button" onClick={() => handleCancelRelatedChoice(true)} className="rounded bg-[#0052cc] px-5 py-1.5 text-xs text-white">确认</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {linkedReminderOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/55 px-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="linked-reminder-title" className="w-[560px] max-w-[calc(100vw-32px)] rounded-lg bg-white shadow-2xl">
+            <div className="border-b border-slate-100 px-6 py-5">
+              <h3 id="linked-reminder-title" className="text-base font-bold text-slate-900">是否同时拦截关联运单？</h3>
+            </div>
+            <div className="px-6 py-4">
+              <div className="flex items-start gap-3 text-sm leading-7 text-[#606266]">
+                <span className="shrink-0">运单号：</span>
+                <div className="max-h-52 min-w-0 flex-1 overflow-y-auto break-all">{getMergedRelatedWaybills(selectedIds).map((row) => row.id).join(',')}</div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
+              <button type="button" onClick={() => handleMergedInterceptChoice(false)} className="rounded border border-slate-300 bg-white px-5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">取消</button>
+              <button type="button" onClick={() => handleMergedInterceptChoice(true)} className="rounded bg-[#004bb1] px-5 py-1.5 text-xs font-bold text-white hover:bg-[#003b91]">确认</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {overseasInterceptConfirmOpen && (
         <div className="fixed inset-0 z-[100] flex items-start justify-center bg-slate-950/55 pt-28">
           <div className="w-[440px] max-w-[calc(100vw-32px)] rounded-lg bg-white shadow-2xl">
             <div className="flex items-start gap-3 border-b border-slate-100 px-6 py-5">
@@ -3713,7 +3835,7 @@ export default function TableSection({
           </div>
         </div>
       )}
-      {workOrderOpen && (<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setWorkOrderOpen(false); }}><div className="w-full max-w-[575px] overflow-hidden rounded-sm bg-white shadow-2xl" role="dialog" aria-modal="true"><div className="flex h-11 items-center border-b border-slate-200 px-4"><h2 id="work-order-title" className="text-[16px] font-bold text-slate-800">工单</h2></div><div className="space-y-4 px-4 py-4 text-[12px] text-slate-600"><div className="flex items-center gap-3"><span className="w-[72px] text-right">运单号：</span><div className="flex min-h-7 flex-1 flex-wrap items-center gap-1 rounded border border-slate-200 px-2 py-1">{(selectedIds.length ? selectedIds : [sortedWaybills[0]?.id]).filter(Boolean).slice(0,3).map((id)=><span key={id} className="rounded bg-[#eaf3ff] px-2 py-0.5 text-[11px] font-semibold text-[#3e83d4]">{id}</span>)}</div></div><label className="flex items-center gap-3"><span className="w-[72px] text-right"><i className="mr-1 text-red-500">*</i>工单类型：</span><select value={workOrderType} onChange={(e)=>setWorkOrderType(e.target.value)} className="h-7 flex-1 rounded border border-[#86bfff] px-2"><option>拦截</option><option>问题件</option></select></label><label className="flex items-start gap-3"><span className="w-[72px] pt-2 text-right"><i className="mr-1 text-red-500">*</i>拦截原因：</span><textarea value={workOrderReason} onChange={(e)=>setWorkOrderReason(e.target.value)} className="h-20 flex-1 resize-none rounded border border-slate-300 p-2" placeholder="请输入"/></label><div className="flex items-center gap-3"><span className="w-[72px] text-right"><i className="mr-1 text-red-500">*</i>可见范围：</span><label className="flex items-center gap-1.5 text-[#0759b6]"><input type="radio" checked={workOrderCustomerVisible} onChange={()=>setWorkOrderCustomerVisible(true)}/>客户可见</label><label className="flex items-center gap-1.5"><input type="radio" checked={!workOrderCustomerVisible} onChange={()=>setWorkOrderCustomerVisible(false)}/>客户不可见</label></div><h3 className="pt-1 text-[15px] font-bold text-slate-700">问题进度</h3><label className="flex items-start gap-3"><span className="w-[72px] pt-2 text-right"><i className="mr-1 text-red-500">*</i>处理进度描述：</span><div className="relative flex-1"><textarea value={workOrderProgress} onChange={(e)=>setWorkOrderProgress(e.target.value.slice(0,500))} className="h-20 w-full resize-none rounded border border-slate-300 p-2" placeholder="请输入"/><span className="absolute bottom-1 right-2 text-[10px] text-slate-400">{workOrderProgress.length}/500</span></div></label><div className="flex items-center gap-3"><span className="w-[72px] text-right"><i className="mr-1 text-red-500">*</i>进度可见范围：</span><label className="flex items-center gap-1.5 text-[#0759b6]"><input type="radio" checked={workOrderProgressVisible} onChange={()=>setWorkOrderProgressVisible(true)}/>客户可见</label><label className="flex items-center gap-1.5"><input type="radio" checked={!workOrderProgressVisible} onChange={()=>setWorkOrderProgressVisible(false)}/>客户不可见</label></div><label className="flex items-center gap-3"><span className="w-[72px] text-right">指定可见用户：</span><input value={workOrderVisibleUser} onChange={(e)=>setWorkOrderVisibleUser(e.target.value)} className="h-7 flex-1 rounded border border-slate-300 px-2" placeholder="请选择"/></label><div className="flex items-start gap-3"><span className="w-[72px] pt-1 text-right">文件附件：</span><label className="inline-flex cursor-pointer items-center rounded bg-[#0759b6] px-3 py-1.5 text-[11px] font-semibold text-white"><input type="file" className="hidden" onChange={(e)=>setWorkOrderAttachment(e.target.files?.[0]||null)}/>点击上传</label></div></div><div className="flex justify-end gap-2 border-t border-slate-100 px-4 py-4"><button type="button" onClick={handleSaveWorkOrder} className="rounded bg-[#0759b6] px-4 py-1.5 text-xs font-semibold text-white">保存</button><button type="button" onClick={()=>setWorkOrderOpen(false)} className="rounded border border-slate-200 bg-white px-4 py-1.5 text-xs">取消</button></div></div></div>)}\n
+      {workOrderOpen && (<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setWorkOrderOpen(false); }}><div className="w-full max-w-[575px] overflow-hidden rounded-sm bg-white shadow-2xl" role="dialog" aria-modal="true"><div className="flex h-11 items-center border-b border-slate-200 px-4"><h2 id="work-order-title" className="text-[16px] font-bold text-slate-800">工单</h2></div><div className="space-y-4 px-4 py-4 text-[12px] text-slate-600"><div className="flex items-center gap-3"><span className="w-[72px] text-right">运单号：</span><div className="flex min-h-7 flex-1 flex-wrap items-center gap-1 rounded border border-slate-200 px-2 py-1">{(selectedIds.length ? selectedIds : [sortedWaybills[0]?.id]).filter(Boolean).map((id)=><span key={id} className="rounded bg-[#eaf3ff] px-2 py-0.5 text-[11px] font-semibold text-[#3e83d4]">{id}</span>)}</div></div><label className="flex items-center gap-3"><span className="w-[72px] text-right"><i className="mr-1 text-red-500">*</i>工单类型：</span><select value={workOrderType} onChange={(e)=>setWorkOrderType(e.target.value)} className="h-7 flex-1 rounded border border-[#86bfff] px-2"><option>拦截</option><option>问题件</option></select></label><label className="flex items-start gap-3"><span className="w-[72px] pt-2 text-right"><i className="mr-1 text-red-500">*</i>拦截原因：</span><textarea value={workOrderReason} onChange={(e)=>setWorkOrderReason(e.target.value)} className="h-20 flex-1 resize-none rounded border border-slate-300 p-2" placeholder="请输入"/></label><div className="flex items-center gap-3"><span className="w-[72px] text-right"><i className="mr-1 text-red-500">*</i>可见范围：</span><label className="flex items-center gap-1.5 text-[#0759b6]"><input type="radio" checked={workOrderCustomerVisible} onChange={()=>setWorkOrderCustomerVisible(true)}/>客户可见</label><label className="flex items-center gap-1.5"><input type="radio" checked={!workOrderCustomerVisible} onChange={()=>setWorkOrderCustomerVisible(false)}/>客户不可见</label></div><h3 className="pt-1 text-[15px] font-bold text-slate-700">问题进度</h3><label className="flex items-start gap-3"><span className="w-[72px] pt-2 text-right"><i className="mr-1 text-red-500">*</i>处理进度描述：</span><div className="relative flex-1"><textarea value={workOrderProgress} onChange={(e)=>setWorkOrderProgress(e.target.value.slice(0,500))} className="h-20 w-full resize-none rounded border border-slate-300 p-2" placeholder="请输入"/><span className="absolute bottom-1 right-2 text-[10px] text-slate-400">{workOrderProgress.length}/500</span></div></label><div className="flex items-center gap-3"><span className="w-[72px] text-right"><i className="mr-1 text-red-500">*</i>进度可见范围：</span><label className="flex items-center gap-1.5 text-[#0759b6]"><input type="radio" checked={workOrderProgressVisible} onChange={()=>setWorkOrderProgressVisible(true)}/>客户可见</label><label className="flex items-center gap-1.5"><input type="radio" checked={!workOrderProgressVisible} onChange={()=>setWorkOrderProgressVisible(false)}/>客户不可见</label></div><label className="flex items-center gap-3"><span className="w-[72px] text-right">指定可见用户：</span><input value={workOrderVisibleUser} onChange={(e)=>setWorkOrderVisibleUser(e.target.value)} className="h-7 flex-1 rounded border border-slate-300 px-2" placeholder="请选择"/></label><div className="flex items-start gap-3"><span className="w-[72px] pt-1 text-right">文件附件：</span><label className="inline-flex cursor-pointer items-center rounded bg-[#0759b6] px-3 py-1.5 text-[11px] font-semibold text-white"><input type="file" className="hidden" onChange={(e)=>setWorkOrderAttachment(e.target.files?.[0]||null)}/>点击上传</label></div></div><div className="flex justify-end gap-2 border-t border-slate-100 px-4 py-4"><button type="button" onClick={handleSaveWorkOrder} className="rounded bg-[#0759b6] px-4 py-1.5 text-xs font-semibold text-white">保存</button><button type="button" onClick={()=>setWorkOrderOpen(false)} className="rounded border border-slate-200 bg-white px-4 py-1.5 text-xs">取消</button></div></div></div>)}\n
 
     </div>
   );

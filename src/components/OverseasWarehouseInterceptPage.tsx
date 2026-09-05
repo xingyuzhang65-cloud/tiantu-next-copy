@@ -88,6 +88,8 @@ interface OverseasWarehouseInterceptPageProps {
   addToast?: (text: string, type?: 'success' | 'info' | 'warning') => void;
   onOpenStorage?: (storageNo?: string) => void;
   incomingRequests?: OverseasInterceptRequest[];
+  cancelWaybillIds?: string[];
+  onCancelWaybillsHandled?: () => void;
 }
 
 const emptyFilters: FilterState = {
@@ -359,6 +361,36 @@ const getReconciliationStatus = (task: Pick<InterceptTask, 'reconciliationStatus
 
 let persistedInterceptTasks: InterceptTask[] | null = null;
 
+function getCurrentInterceptTasks(requests: OverseasInterceptRequest[]) {
+  const tasks = [...(persistedInterceptTasks || initialTasks)];
+  const existing = new Set(tasks.map((task) => task.id));
+  tasks.push(...requests.filter((request) => !existing.has(request.id)).map(createInterceptTaskFromRequest));
+  return tasks;
+}
+
+export function getCancelableInterceptWaybillIds(requests: OverseasInterceptRequest[]) {
+  return [...new Set(getCurrentInterceptTasks(requests).filter((task) => task.status === '待处理').map((task) => task.waybillNo))];
+}
+
+export function cancelInterceptsByWaybill(ids: string[], requests: OverseasInterceptRequest[]) {
+  const tasks = getCurrentInterceptTasks(requests);
+  let count = 0;
+  const stamp = new Date().toLocaleString('zh-CN', { hour12: false });
+  persistedInterceptTasks = tasks.map((task) => {
+    if (!ids.includes(task.waybillNo) || task.status !== '待处理') return task;
+    count += 1;
+    return {
+      ...task,
+      status: '已取消',
+      handler: '客服-张敏',
+      handleAt: stamp,
+      resultRemark: '运单批量取消拦截',
+      logs: [...task.logs, { time: stamp, user: '客服-张敏', action: '取消申请', change: '待处理 → 已取消', note: '运单批量取消拦截' }],
+    };
+  });
+  return count;
+}
+
 const createInterceptTaskFromRequest = (request: OverseasInterceptRequest): InterceptTask => ({
   id: request.id,
   no: request.interceptNo,
@@ -596,7 +628,7 @@ const editableDetailFieldLabel = (field: EditableDetailField) => ({
   failure: '失败原因',
 }[field]);
 
-export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage, incomingRequests = [] }: OverseasWarehouseInterceptPageProps) {
+export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage, incomingRequests = [], cancelWaybillIds = [], onCancelWaybillsHandled }: OverseasWarehouseInterceptPageProps) {
   const [tasks, setTasks] = useState<InterceptTask[]>(() => persistedInterceptTasks || initialTasks);
   const [draftFilters, setDraftFilters] = useState<FilterState>(emptyFilters);
   const [filters, setFilters] = useState<FilterState>(emptyFilters);
@@ -1218,6 +1250,21 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     setDraftFilters(emptyFilters);
     setFilters(emptyFilters);
   }, [incomingRequests]);
+
+  useEffect(() => {
+    if (!cancelWaybillIds.length) return;
+    const eligible = tasks.filter((task) => cancelWaybillIds.includes(task.waybillNo) && task.status === '待处理');
+    onCancelWaybillsHandled?.();
+    if (!eligible.length) {
+      addToast?.('所选运单没有可取消的待处理拦截申请', 'warning');
+      return;
+    }
+    if (new Set(eligible.map((task) => task.waybillNo)).size < cancelWaybillIds.length) {
+      addToast?.('已筛选可取消的申请，其余运单无待处理拦截申请', 'info');
+    }
+    setSelectedIds(eligible.map((task) => task.id));
+    openCancelReason({ mode: 'batch', taskIds: eligible.map((task) => task.id) });
+  }, [cancelWaybillIds, tasks]);
 
   useEffect(() => {
     if (!selectAllRef.current) return;

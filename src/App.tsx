@@ -9,7 +9,7 @@ import WarehouseTransitOutPage from './components/WarehouseTransitOutPage';
 import OverseasTransitPage from './components/OverseasTransitPage';
 import WarehouseShipmentPage from './components/WarehouseShipmentPage';
 import OverseasTransitOrderPage from './components/OverseasTransitOrderPage';
-import OverseasWarehouseInterceptPage from './components/OverseasWarehouseInterceptPage';
+import OverseasWarehouseInterceptPage, { cancelInterceptsByWaybill, getCancelableInterceptWaybillIds } from './components/OverseasWarehouseInterceptPage';
 import ExpressOrderPage from './components/ExpressOrderPage';
 import UserManagementPage from './components/UserManagementPage';
 import MarketingDashboardPage from './components/MarketingDashboardPage';
@@ -32,6 +32,7 @@ export default function App() {
   // Active Toast list
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [pendingOverseasIntercepts, setPendingOverseasIntercepts] = useState<OverseasInterceptRequest[]>([]);
+  const [cancelInterceptWaybillIds, setCancelInterceptWaybillIds] = useState<string[]>([]);
 
   // Function to drop a new notification toast
   const addToast = (text: string, type: 'success' | 'info' | 'warning' = 'info') => {
@@ -558,6 +559,11 @@ export default function App() {
             onUpdateWaybillStatus={handleUpdateWaybillStatus}
             onUpdateWaybill={handleUpdateWaybill}
             onCreateOverseasIntercept={handleCreateOverseasIntercept}
+            onBatchCancelIntercept={(ids) => {
+              const count = cancelInterceptsByWaybill(ids, pendingOverseasIntercepts);
+              addToast(count ? `已取消 ${count} 条拦截申请` : '所选运单没有可取消的待处理拦截申请', count ? 'success' : 'warning');
+            }}
+            getCancelableInterceptWaybillIds={() => getCancelableInterceptWaybillIds(pendingOverseasIntercepts)}
             addToast={addToast}
           />
         ) : currentTab === '贸易方式配置' || currentTab === '贸易方式校验规则查询' ? (
@@ -570,6 +576,8 @@ export default function App() {
           <OverseasWarehouseInterceptPage
             addToast={addToast}
             incomingRequests={pendingOverseasIntercepts}
+            cancelWaybillIds={cancelInterceptWaybillIds}
+            onCancelWaybillsHandled={() => setCancelInterceptWaybillIds([])}
             onOpenStorage={(storageNo) => {
               setCurrentTab('海外暂存');
               setCurrentSubView('海外暂存');
