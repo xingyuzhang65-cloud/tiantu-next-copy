@@ -3350,7 +3350,7 @@ export default function TableSection({
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 px-4">
           <div role="dialog" aria-modal="true" aria-labelledby="cancel-related-title" className="w-[560px] max-w-full rounded bg-white shadow-xl">
             <div className="border-b border-slate-100 px-6 py-5">
-              <h3 id="cancel-related-title" className="text-base font-bold text-slate-900">是否同时取消关联运单的拦截？</h3>
+              <h3 id="cancel-related-title" className="text-base font-bold text-slate-900">该运单为合并报关货物，是否同时取消关联运单的拦截？</h3>
             </div>
             <div className="px-6 py-4">
               <div className="flex items-start gap-3 text-sm leading-7 text-[#606266]">
@@ -3370,7 +3370,7 @@ export default function TableSection({
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/55 px-4">
           <div role="dialog" aria-modal="true" aria-labelledby="linked-reminder-title" className="w-[560px] max-w-[calc(100vw-32px)] rounded-lg bg-white shadow-2xl">
             <div className="border-b border-slate-100 px-6 py-5">
-              <h3 id="linked-reminder-title" className="text-base font-bold text-slate-900">是否同时拦截关联运单？</h3>
+              <h3 id="linked-reminder-title" className="text-base font-bold text-slate-900">该运单为合并报关货物，是否同时拦截关联运单？</h3>
             </div>
             <div className="px-6 py-4">
               <div className="flex items-start gap-3 text-sm leading-7 text-[#606266]">
