@@ -76,8 +76,8 @@ function InstructionTypeCard({
 }
 
 const instructionTypes = [
-  { title: '放货', desc: '需要填写收件地址' },
-  { title: '不放货', desc: '无需填写收件地址' },
+  { title: '发货', desc: '需要填写收件地址' },
+  { title: '增值服务', desc: '无需填写收件地址' },
   { title: '销毁', desc: '无需填写收件地址' },
   { title: '拦截', desc: '无需填写收件地址' },
 ] as const;
@@ -135,13 +135,16 @@ function SelectBox({
 }
 
 export default function CustomerInstructionCreatePage() {
-  const [selectedInstructionType, setSelectedInstructionType] = useState<(typeof instructionTypes)[number]['title']>('放货');
+  const [selectedInstructionType, setSelectedInstructionType] = useState<(typeof instructionTypes)[number]['title']>('发货');
   const [selectedOperationInstruction, setSelectedOperationInstruction] = useState(operationInstructionOptions[0].name);
-  const needsAddress = selectedInstructionType === '放货';
+  const needsAddress = selectedInstructionType === '发货';
   const operationInstruction = operationInstructionOptions.find((item) => item.name === selectedOperationInstruction) || operationInstructionOptions[0];
 
   return (
-    <div className="relative flex-1 overflow-auto bg-[#f5f7fb] px-5 pb-10 pt-4 text-slate-700">
+    <form
+      className="relative flex-1 overflow-auto bg-[#f5f7fb] px-5 pb-10 pt-4 text-slate-700"
+      onSubmit={(event) => event.preventDefault()}
+    >
       <Watermark />
       <div className="relative z-10 space-y-4">
         <Stepper />
@@ -172,6 +175,9 @@ export default function CustomerInstructionCreatePage() {
               <FieldRow label="仓库代码" required>
                 <SelectBox placeholder="请输入仓库代码" width="w-[180px]" />
               </FieldRow>
+              <FieldRow label="ShipmentID" required>
+                <input className={`${inputClass} w-full`} name="shipment" data-list-column="Shipment ID" placeholder="请输入ShipmentID" required />
+              </FieldRow>
               <FieldRow label="收件人">
                 <input className={`${inputClass} w-full`} placeholder="请输入收件人" />
               </FieldRow>
@@ -199,6 +205,9 @@ export default function CustomerInstructionCreatePage() {
               <FieldRow label="邮编" required>
                 <input className={`${inputClass} w-full`} placeholder="请输入邮编" />
               </FieldRow>
+              <FieldRow label="ReferenceID" required>
+                <input className={`${inputClass} w-full`} name="reference" data-list-column="Reference ID" placeholder="请输入ReferenceID" required />
+              </FieldRow>
               <FieldRow label="城市" required>
                 <input className={`${inputClass} w-full`} placeholder="请输入城市" />
               </FieldRow>
@@ -212,6 +221,17 @@ export default function CustomerInstructionCreatePage() {
                 </div>
               </FieldRow>
             </div>
+          </div>
+        </section>}
+
+        {!needsAddress && <section className="rounded-md bg-white px-5 py-4 shadow-[0_2px_10px_rgba(15,23,42,0.08)]">
+          <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+            <FieldRow label="海外仓备注">
+              <div className="relative">
+                <textarea className={`${textareaClass} w-full`} placeholder="请输入海外仓备注" maxLength={500} />
+                <span className="absolute bottom-1 right-2 text-[11px] text-[#9aa5b5]">0/500</span>
+              </div>
+            </FieldRow>
           </div>
         </section>}
 
@@ -278,11 +298,11 @@ export default function CustomerInstructionCreatePage() {
         </section>
 
         <div className="flex justify-center pt-1">
-          <button type="button" className="h-8 rounded bg-[#004bb1] px-5 text-xs font-bold text-white hover:bg-[#003b91]">
+          <button type="submit" className="h-8 rounded bg-[#004bb1] px-5 text-xs font-bold text-white hover:bg-[#003b91]">
             下一步：选择运单箱子
           </button>
         </div>
       </div>
-    </div>
+    </form>
   );
 }

@@ -320,6 +320,7 @@ export default function TableSection({
   const [overseasInterceptReason, setOverseasInterceptReason] = useState('');
   const [overseasInterceptAttachment, setOverseasInterceptAttachment] = useState<File | null>(null);
   const [linkedReminderOpen, setLinkedReminderOpen] = useState(false);
+  const [linkedReminderSource, setLinkedReminderSource] = useState<'workOrder' | 'overseasIntercept'>('overseasIntercept');
   const [batchCancelInterceptOpen, setBatchCancelInterceptOpen] = useState(false);
   const [cancelInterceptIds, setCancelInterceptIds] = useState<string[]>([]);
   const [cancelRelatedIds, setCancelRelatedIds] = useState<string[]>([]);
@@ -706,6 +707,7 @@ export default function TableSection({
       return;
     }
     if (!mergedInterceptReviewed && getMergedRelatedWaybills(selectedIds).length > 0) {
+      setLinkedReminderSource('workOrder');
       setLinkedReminderOpen(true);
       return;
     }
@@ -739,17 +741,28 @@ export default function TableSection({
       return;
     }
 
-    if (!mergedInterceptReviewed && getMergedRelatedWaybills(selectedIds).length) { setLinkedReminderOpen(true); return; }
+    if (!mergedInterceptReviewed && getMergedRelatedWaybills(selectedIds).length) {
+      setLinkedReminderSource('overseasIntercept');
+      setLinkedReminderOpen(true);
+      return;
+    }
     setOverseasInterceptConfirmOpen(true);
   };
 
   const handleMergedInterceptChoice = (includeRelated: boolean) => {
-    if (includeRelated) {
-      const relatedIds = getMergedRelatedWaybills(selectedIds).map((row) => row.id);
-      setSelectedIds((ids) => [...new Set([...ids, ...relatedIds])]);
-    }
+    const relatedIds = getMergedRelatedWaybills(selectedIds).map((row) => row.id);
+    const targetIds = includeRelated ? [...new Set([...selectedIds, ...relatedIds])] : [...selectedIds];
+    if (includeRelated) setSelectedIds(targetIds);
     setMergedInterceptReviewed(true);
     setLinkedReminderOpen(false);
+
+    if (linkedReminderSource === 'workOrder') {
+      setWorkOrderOpen(false);
+      addToast('工单已保存', 'success');
+      return;
+    }
+
+    handleConfirmOverseasIntercept(targetIds);
   };
 
   const handleConfirmBatchCancelIntercept = () => {
@@ -771,12 +784,17 @@ export default function TableSection({
   };
 
   const handleCancelRelatedChoice = (includeRelated: boolean) => {
-    if (includeRelated) setCancelInterceptIds((ids) => [...new Set([...ids, ...cancelRelatedIds])]);
+    const targetIds = includeRelated
+      ? [...new Set([...cancelInterceptIds, ...cancelRelatedIds])]
+      : [...cancelInterceptIds];
+    setCancelInterceptIds(targetIds);
     setCancelRelatedReviewed(true);
     setCancelRelatedIds([]);
+    setBatchCancelInterceptOpen(false);
+    onBatchCancelIntercept(targetIds);
   };
 
-  const handleConfirmOverseasIntercept = () => {
+  const handleConfirmOverseasIntercept = (targetIds: string[] = selectedIds) => {
     const reason = overseasInterceptReason.trim();
     if (!reason) {
       setOverseasInterceptConfirmOpen(false);
@@ -796,7 +814,7 @@ export default function TableSection({
 
     const createdAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const requestSeed = Date.now();
-    const requests = selectedIds
+    const requests = targetIds
       .map((id, index) => {
         const waybill = waybills.find((item) => item.id === id);
         if (!waybill) return null;
@@ -816,9 +834,9 @@ export default function TableSection({
           createdAt,
         } satisfies OverseasInterceptRequest;
       })
-      .filter((request): request is OverseasInterceptRequest => request !== null);
+      .filter((request) => request !== null);
 
-    selectedIds.forEach((id) => {
+    targetIds.forEach((id) => {
       const waybill = waybills.find((item) => item.id === id);
       const nextRemarks = [waybill?.remarks, `海外拦截：${reason}`].filter(Boolean).join('；');
       onUpdateWaybill(id, {
@@ -3350,17 +3368,17 @@ export default function TableSection({
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 px-4">
           <div role="dialog" aria-modal="true" aria-labelledby="cancel-related-title" className="w-[560px] max-w-full rounded bg-white shadow-xl">
             <div className="border-b border-slate-100 px-6 py-5">
-              <h3 id="cancel-related-title" className="text-base font-bold text-slate-900">该运单为合并报关货物，是否同时取消关联运单的拦截？</h3>
+              <h3 id="cancel-related-title" className="text-base font-bold leading-6 text-slate-900">所选运单关联同一合并报关单下的其他运单，请选择本次需要取消拦截的运单范围</h3>
             </div>
             <div className="px-6 py-4">
               <div className="flex items-start gap-3 text-sm leading-7 text-[#606266]">
-                <span className="shrink-0">运单号：</span>
+                <span className="shrink-0">关联运单号：</span>
                 <div className="max-h-52 min-w-0 flex-1 overflow-y-auto break-all">{cancelRelatedIds.join(',')}</div>
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
-              <button type="button" autoFocus onClick={() => handleCancelRelatedChoice(false)} className="rounded border border-slate-300 px-5 py-1.5 text-xs text-slate-600">取消</button>
-              <button type="button" onClick={() => handleCancelRelatedChoice(true)} className="rounded bg-[#0052cc] px-5 py-1.5 text-xs text-white">确认</button>
+              <button type="button" autoFocus onClick={() => handleCancelRelatedChoice(false)} className="rounded border border-slate-300 px-5 py-1.5 text-xs text-slate-600 hover:bg-slate-50">仅取消所选运单（{cancelInterceptIds.length}票）</button>
+              <button type="button" onClick={() => handleCancelRelatedChoice(true)} className="rounded bg-[#0052cc] px-5 py-1.5 text-xs text-white hover:bg-[#004bb1]">一并取消关联运单（共{new Set([...cancelInterceptIds, ...cancelRelatedIds]).size}票）</button>
             </div>
           </div>
         </div>
@@ -3370,17 +3388,17 @@ export default function TableSection({
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/55 px-4">
           <div role="dialog" aria-modal="true" aria-labelledby="linked-reminder-title" className="w-[560px] max-w-[calc(100vw-32px)] rounded-lg bg-white shadow-2xl">
             <div className="border-b border-slate-100 px-6 py-5">
-              <h3 id="linked-reminder-title" className="text-base font-bold text-slate-900">该运单为合并报关货物，是否同时拦截关联运单？</h3>
+              <h3 id="linked-reminder-title" className="text-base font-bold leading-6 text-slate-900">所选运单关联同一合并报关单下的其他运单，请选择本次需要拦截的运单范围</h3>
             </div>
             <div className="px-6 py-4">
               <div className="flex items-start gap-3 text-sm leading-7 text-[#606266]">
-                <span className="shrink-0">运单号：</span>
+                <span className="shrink-0">关联运单号：</span>
                 <div className="max-h-52 min-w-0 flex-1 overflow-y-auto break-all">{getMergedRelatedWaybills(selectedIds).map((row) => row.id).join(',')}</div>
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
-              <button type="button" onClick={() => handleMergedInterceptChoice(false)} className="rounded border border-slate-300 bg-white px-5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">取消</button>
-              <button type="button" onClick={() => handleMergedInterceptChoice(true)} className="rounded bg-[#004bb1] px-5 py-1.5 text-xs font-bold text-white hover:bg-[#003b91]">确认</button>
+              <button type="button" autoFocus onClick={() => handleMergedInterceptChoice(false)} className="rounded border border-slate-300 bg-white px-5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">仅拦截所选运单（{selectedIds.length}票）</button>
+              <button type="button" onClick={() => handleMergedInterceptChoice(true)} className="rounded bg-[#004bb1] px-5 py-1.5 text-xs font-bold text-white hover:bg-[#003b91]">一并拦截关联运单（共{new Set([...selectedIds, ...getMergedRelatedWaybills(selectedIds).map((row) => row.id)]).size}票）</button>
             </div>
           </div>
         </div>
@@ -3409,7 +3427,7 @@ export default function TableSection({
               </button>
               <button
                 type="button"
-                onClick={handleConfirmOverseasIntercept}
+                onClick={() => handleConfirmOverseasIntercept()}
                 className="rounded bg-[#004bb1] px-5 py-1.5 text-xs font-bold text-white hover:bg-[#003b91]"
               >
                 继续提交
