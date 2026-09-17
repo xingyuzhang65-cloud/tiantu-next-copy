@@ -226,6 +226,22 @@ export default function CustomerInstructionCreatePage() {
 
         {!needsAddress && <section className="rounded-md bg-white px-5 py-4 shadow-[0_2px_10px_rgba(15,23,42,0.08)]">
           <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+            {selectedInstructionType === '拦截' && (
+              <FieldRow label="拦截原因" required>
+                <div className="relative">
+                  <textarea
+                    className={`${textareaClass} w-full`}
+                    name="interceptReason"
+                    aria-label="拦截原因"
+                    placeholder="请输入拦截原因"
+                    required
+                    maxLength={500}
+                    onChange={(event) => event.target.setCustomValidity(event.target.value.trim() ? '' : '请输入拦截原因')}
+                    onInvalid={(event) => event.currentTarget.setCustomValidity('请输入拦截原因')}
+                  />
+                </div>
+              </FieldRow>
+            )}
             <FieldRow label="海外仓备注">
               <div className="relative">
                 <textarea className={`${textareaClass} w-full`} placeholder="请输入海外仓备注" maxLength={500} />
