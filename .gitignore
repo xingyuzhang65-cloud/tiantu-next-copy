@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# 构建 / 验证产物
+dist-deploy/
+tiantu-intercept-*.png
+tiantu-instruction-list-*.png
+tiantu-done-tab-*.png

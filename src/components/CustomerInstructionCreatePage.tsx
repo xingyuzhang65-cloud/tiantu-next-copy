@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Calendar, ChevronDown, CirclePlus, Minus, Plus } from 'lucide-react';
 import { operationInstructionOptions } from './customerInstructionData';
+import CustomerInstructionBoxSelection from './CustomerInstructionBoxSelection';
 
 const inputClass = 'h-8 rounded border border-[#d8e0ec] bg-white px-3 text-xs text-slate-700 outline-none placeholder:text-[#b8c3d4] focus:border-[#409eff] focus:ring-1 focus:ring-[#409eff]';
 const textareaClass = 'h-10 resize-none rounded border border-[#d8e0ec] bg-white px-3 py-2 text-xs text-slate-700 outline-none placeholder:text-[#b8c3d4] focus:border-[#409eff] focus:ring-1 focus:ring-[#409eff]';
@@ -25,11 +26,11 @@ function Watermark() {
   );
 }
 
-function Stepper() {
+function Stepper({ currentStep }: { currentStep: number }) {
   const steps = [
-    { index: 1, label: '创建指令', active: true },
-    { index: 2, label: '按指令选择运单箱子', active: false },
-    { index: 3, label: '提交完成', active: false },
+    { index: 1, label: '创建指令', active: currentStep >= 1 },
+    { index: 2, label: '按指令选择运单箱子', active: currentStep >= 2 },
+    { index: 3, label: '提交完成', active: currentStep >= 3 },
   ];
 
   return (
@@ -135,6 +136,8 @@ function SelectBox({
 }
 
 export default function CustomerInstructionCreatePage() {
+  const [currentStep, setCurrentStep] = useState(1);
+  const [requirement, setRequirement] = useState('');
   const [selectedInstructionType, setSelectedInstructionType] = useState<(typeof instructionTypes)[number]['title']>('发货');
   const [selectedOperationInstruction, setSelectedOperationInstruction] = useState(operationInstructionOptions[0].name);
   const needsAddress = selectedInstructionType === '发货';
@@ -143,11 +146,12 @@ export default function CustomerInstructionCreatePage() {
   return (
     <form
       className="relative flex-1 overflow-auto bg-[#f5f7fb] px-5 pb-10 pt-4 text-slate-700"
-      onSubmit={(event) => event.preventDefault()}
+      onSubmit={(event) => { event.preventDefault(); if (currentStep === 1) setCurrentStep(2); }}
     >
       <Watermark />
       <div className="relative z-10 space-y-4">
-        <Stepper />
+        <Stepper currentStep={currentStep} />
+        <div hidden={currentStep !== 1} className="space-y-4">
 
         <section className="rounded-md bg-white px-5 py-4 shadow-[0_2px_10px_rgba(15,23,42,0.08)]">
           <h2 className="text-base font-bold text-slate-950">创建客户指令</h2>
@@ -302,7 +306,7 @@ export default function CustomerInstructionCreatePage() {
                   </td>
                   <td className="border border-[#dfe6f1] px-3">{operationInstruction.currency}</td>
                   <td className="border border-[#dfe6f1] px-3">
-                    <textarea className={`${textareaClass} h-9 w-full`} placeholder="请输入指令要求" />
+                    <textarea className={`${textareaClass} h-9 w-full`} placeholder="请输入指令要求" value={requirement} onChange={(event) => setRequirement(event.target.value)} />
                   </td>
                   <td className="border border-[#dfe6f1] px-3 text-center">
                     <button type="button" className="font-semibold text-[#ff6b6b] hover:underline">删除</button>
@@ -317,6 +321,11 @@ export default function CustomerInstructionCreatePage() {
           <button type="submit" className="h-8 rounded bg-[#004bb1] px-5 text-xs font-bold text-white hover:bg-[#003b91]">
             下一步：选择运单箱子
           </button>
+        </div>
+        </div>
+        <div hidden={currentStep === 1}>
+          <CustomerInstructionBoxSelection instructionType={selectedInstructionType} requirement={requirement}
+            completed={currentStep === 3} onBack={() => setCurrentStep(1)} onComplete={() => setCurrentStep(3)} />
         </div>
       </div>
     </form>
