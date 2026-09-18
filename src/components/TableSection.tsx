@@ -17,6 +17,7 @@ interface TableSectionProps {
   onCreateOverseasIntercept: (requests: OverseasInterceptRequest[]) => void;
   onBatchCancelIntercept: (ids: string[]) => void;
   getCancelableInterceptWaybillIds: () => string[];
+  getActiveInterceptWaybillIds: () => string[];
   addToast: (msg: string, type: 'success' | 'info' | 'warning') => void;
 }
 
@@ -210,6 +211,7 @@ export default function TableSection({
   onCreateOverseasIntercept,
   onBatchCancelIntercept,
   getCancelableInterceptWaybillIds,
+  getActiveInterceptWaybillIds,
   addToast
 }: TableSectionProps) {
   // Filters state
@@ -727,11 +729,12 @@ export default function TableSection({
     setOverseasInterceptModalOpen(true);
   };
 
-  const getMergedRelatedWaybills = (ids) => {
+  const getMergedRelatedWaybills = (ids: string[], action: 'create' | 'cancel' = 'create') => {
     const keys = waybills.filter((w) => ids.includes(w.id)).map((w) => w.associatedNo || w.groupCode).filter(Boolean);
-    const related = waybills.filter((w) => !ids.includes(w.id) && keys.includes(w.associatedNo || w.groupCode));
-    // 当前 mock 运单全部属于合并报关场景；没有显式批次号时，取其它运单作为同批次关联数据。
-    return related.length > 0 ? related : waybills.filter((w) => !ids.includes(w.id)).slice(0, 3);
+    const statusIds = new Set(action === 'cancel' ? getCancelableInterceptWaybillIds() : getActiveInterceptWaybillIds());
+    return waybills.filter((w) => !ids.includes(w.id)
+      && keys.includes(w.associatedNo || w.groupCode)
+      && (action === 'cancel' ? statusIds.has(w.id) : !statusIds.has(w.id)));
   };
 
   const handleSubmitOverseasIntercept = () => {
@@ -767,13 +770,7 @@ export default function TableSection({
 
   const handleConfirmBatchCancelIntercept = () => {
     if (!cancelRelatedReviewed) {
-      // 演示约定：默认存在尚未取消拦截的合并报关关联运单。
-      const relatedIds = getMergedRelatedWaybills(cancelInterceptIds).map((row) => row.id);
-      if (!relatedIds.length) {
-        let demoNo = 2606164412;
-        while (cancelInterceptIds.includes(`HD${demoNo}`)) demoNo += 1;
-        relatedIds.push(`HD${demoNo}`);
-      }
+      const relatedIds = getMergedRelatedWaybills(cancelInterceptIds, 'cancel').map((row) => row.id);
       if (relatedIds.length) {
         setCancelRelatedIds(relatedIds);
         return;
@@ -3367,8 +3364,9 @@ export default function TableSection({
       {batchCancelInterceptOpen && cancelRelatedIds.length > 0 && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 px-4">
           <div role="dialog" aria-modal="true" aria-labelledby="cancel-related-title" className="w-[560px] max-w-full rounded bg-white shadow-xl">
-            <div className="border-b border-slate-100 px-6 py-5">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-6 py-5">
               <h3 id="cancel-related-title" className="text-base font-bold leading-6 text-slate-900">所选运单关联同一合并报关单下的其他运单，请选择本次需要取消拦截的运单范围</h3>
+              <button type="button" aria-label="关闭弹窗" title="返回原弹窗" onClick={() => { setCancelRelatedIds([]); setCancelRelatedReviewed(false); }} className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"><X className="h-5 w-5" /></button>
             </div>
             <div className="px-6 py-4">
               <div className="flex items-start gap-3 text-sm leading-7 text-[#606266]">
@@ -3387,8 +3385,9 @@ export default function TableSection({
       {linkedReminderOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/55 px-4">
           <div role="dialog" aria-modal="true" aria-labelledby="linked-reminder-title" className="w-[560px] max-w-[calc(100vw-32px)] rounded-lg bg-white shadow-2xl">
-            <div className="border-b border-slate-100 px-6 py-5">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-6 py-5">
               <h3 id="linked-reminder-title" className="text-base font-bold leading-6 text-slate-900">所选运单关联同一合并报关单下的其他运单，请选择本次需要拦截的运单范围</h3>
+              <button type="button" aria-label="关闭弹窗" title="返回原弹窗" onClick={() => { setLinkedReminderOpen(false); setMergedInterceptReviewed(false); }} className="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"><X className="h-5 w-5" /></button>
             </div>
             <div className="px-6 py-4">
               <div className="flex items-start gap-3 text-sm leading-7 text-[#606266]">

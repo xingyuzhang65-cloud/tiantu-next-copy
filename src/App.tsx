@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import TableSection from './components/TableSection';
@@ -9,7 +9,7 @@ import WarehouseTransitOutPage from './components/WarehouseTransitOutPage';
 import OverseasTransitPage from './components/OverseasTransitPage';
 import WarehouseShipmentPage from './components/WarehouseShipmentPage';
 import OverseasTransitOrderPage from './components/OverseasTransitOrderPage';
-import OverseasWarehouseInterceptPage, { cancelInterceptsByWaybill, getCancelableInterceptWaybillIds } from './components/OverseasWarehouseInterceptPage';
+import OverseasWarehouseInterceptPage, { cancelInterceptsByWaybill, getCancelableInterceptWaybillIds, getActiveInterceptWaybillIds, initializeMockCancelableIntercepts } from './components/OverseasWarehouseInterceptPage';
 import ExpressOrderPage from './components/ExpressOrderPage';
 import UserManagementPage from './components/UserManagementPage';
 import MarketingDashboardPage from './components/MarketingDashboardPage';
@@ -421,6 +421,10 @@ export default function App() {
     }
   ]);
 
+  useEffect(() => {
+    initializeMockCancelableIntercepts(waybills);
+  }, []);
+
   // Tab operators
   const handleTabChange = (tabName: string) => {
     setCurrentTab(tabName);
@@ -564,6 +568,7 @@ export default function App() {
               addToast(count ? `已取消 ${count} 条拦截申请` : '所选运单没有可取消的待处理拦截申请', count ? 'success' : 'warning');
             }}
             getCancelableInterceptWaybillIds={() => getCancelableInterceptWaybillIds(pendingOverseasIntercepts)}
+            getActiveInterceptWaybillIds={() => getActiveInterceptWaybillIds(pendingOverseasIntercepts)}
             addToast={addToast}
           />
         ) : currentTab === '贸易方式配置' || currentTab === '贸易方式校验规则查询' ? (
