@@ -9,6 +9,7 @@ import WarehouseTransitOutPage from './components/WarehouseTransitOutPage';
 import OverseasTransitPage from './components/OverseasTransitPage';
 import WarehouseShipmentPage from './components/WarehouseShipmentPage';
 import BillOfLadingPage from './components/BillOfLadingPage';
+import OvertimeWaybillsPage from './components/OvertimeWaybillsPage';
 import OverseasTransitOrderPage from './components/OverseasTransitOrderPage';
 import OverseasWarehouseInterceptPage, { cancelInterceptsByWaybill, getCancelableInterceptWaybillIds, getActiveInterceptWaybillIds, initializeMockCancelableIntercepts } from './components/OverseasWarehouseInterceptPage';
 import ExpressOrderPage from './components/ExpressOrderPage';
@@ -21,9 +22,9 @@ import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from
 
 export default function App() {
   // Tabs management
-  const [openTabs, setOpenTabs] = useState<string[]>(['运单', '常量管理']);
-  const [currentTab, setCurrentTab] = useState<string>('运单');
-  const [currentSubView, setCurrentSubView] = useState<string>('运单');
+  const [openTabs, setOpenTabs] = useState<string[]>(location.hash === '#overtime-waybills' ? ['运单', '运单时效监控'] : ['运单', '常量管理']);
+  const [currentTab, setCurrentTab] = useState<string>(location.hash === '#overtime-waybills' ? '运单时效监控' : '运单');
+  const [currentSubView, setCurrentSubView] = useState<string>(location.hash === '#overtime-waybills' ? '运单时效监控' : '运单');
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>('塘厦仓');
 
   // Keep the waybill list as the default landing view after refresh.
@@ -595,6 +596,8 @@ export default function App() {
           <InstructionListPage addToast={addToast} />
         ) : currentTab === '创建客户指令' ? (
           <CustomerInstructionCreatePage />
+        ) : currentTab === '运单时效监控' ? (
+          <OvertimeWaybillsPage />
         ) : currentTab === '提单' ? (
           <BillOfLadingPage addToast={addToast} />
         ) : currentTab === '快递单' ? (

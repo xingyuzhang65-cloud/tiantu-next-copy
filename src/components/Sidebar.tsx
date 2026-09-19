@@ -14,6 +14,7 @@ interface SidebarProps {
 
 export default function Sidebar({ currentSubView, onSubViewChange }: SidebarProps) {
   const [activeRail, setActiveRail] = useState('单据');
+  const [warningExpanded, setWarningExpanded] = useState(true);
   const [waybillExpanded, setWaybillExpanded] = useState(true);
   const [printExpanded, setPrintExpanded] = useState(true);
   const [overseasTransitExpanded, setOverseasTransitExpanded] = useState(true);
@@ -226,6 +227,15 @@ export default function Sidebar({ currentSubView, onSubViewChange }: SidebarProp
               </div>
 
               <div className="space-y-1">
+                <button type="button" onClick={() => setWarningExpanded(!warningExpanded)} className="flex w-full items-center justify-between rounded px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200/50">
+                  <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-slate-500" /><span>预警</span></div>
+                  {warningExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                </button>
+                {warningExpanded && <div className="ml-4 space-y-0.5 border-l border-slate-200 pl-2">
+                  {['预警', '运单时效监控'].map(name => <button key={name} type="button" onClick={() => onSubViewChange(name)} className={`flex w-full items-center rounded px-3 py-1.5 text-xs ${currentSubView === name ? 'bg-blue-50 font-semibold text-blue-600' : 'text-slate-600 hover:bg-slate-200/50'}`}>{name}</button>)}
+                </div>}
+              </div>
+              <div className="space-y-1">
                 <button
                   id="btn-fold-overseas-transit"
                   onClick={() => setOverseasTransitExpanded(!overseasTransitExpanded)}
@@ -274,6 +284,7 @@ export default function Sidebar({ currentSubView, onSubViewChange }: SidebarProp
             </>
           )}
 
+          {activeRail === '订单' && <div className="space-y-1">{['运单'].map(name => <button key={name} onClick={() => onSubViewChange(name)} className={`flex w-full items-center gap-2 rounded px-3 py-2 text-sm ${currentSubView === name ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-slate-700 hover:bg-slate-200/50'}`}><FileText className="h-4 w-4" />{name}</button>)}</div>}
           {activeRail === '产品' && (
             <div className="space-y-1">
               {/* 一级菜单：产品服务 */}
@@ -446,7 +457,7 @@ export default function Sidebar({ currentSubView, onSubViewChange }: SidebarProp
           )}
 
           {/* Fallback for other rails without a configured submenu */}
-          {activeRail !== '单据' && activeRail !== '产品' && activeRail !== '仓库' && activeRail !== '管理' && activeRail !== '营销' && (
+          {activeRail !== '订单' && activeRail !== '单据' && activeRail !== '产品' && activeRail !== '仓库' && activeRail !== '管理' && activeRail !== '营销' && (
             <div className="px-3 py-4 text-center text-xs text-slate-400">
               暂无子菜单
             </div>
