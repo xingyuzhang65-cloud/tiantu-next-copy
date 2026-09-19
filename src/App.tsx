@@ -8,6 +8,7 @@ import RuleConfigPage from './components/RuleConfigPage';
 import WarehouseTransitOutPage from './components/WarehouseTransitOutPage';
 import OverseasTransitPage from './components/OverseasTransitPage';
 import WarehouseShipmentPage from './components/WarehouseShipmentPage';
+import BillOfLadingPage from './components/BillOfLadingPage';
 import OverseasTransitOrderPage from './components/OverseasTransitOrderPage';
 import OverseasWarehouseInterceptPage, { cancelInterceptsByWaybill, getCancelableInterceptWaybillIds } from './components/OverseasWarehouseInterceptPage';
 import ExpressOrderPage from './components/ExpressOrderPage';
@@ -589,6 +590,8 @@ export default function App() {
           <InstructionListPage addToast={addToast} />
         ) : currentTab === '创建客户指令' ? (
           <CustomerInstructionCreatePage />
+        ) : currentTab === '提单' ? (
+          <BillOfLadingPage addToast={addToast} />
         ) : currentTab === '快递单' ? (
           <ExpressOrderPage addToast={addToast} />
         ) : currentTab === '仓库出货' ? (
