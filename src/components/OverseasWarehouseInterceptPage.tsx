@@ -360,6 +360,35 @@ const getReconciliationStatus = (task: Pick<InterceptTask, 'reconciliationStatus
 };
 
 let persistedInterceptTasks: InterceptTask[] | null = null;
+let mockCancellationInitialized = false;
+const defaultMockInterceptTaskIds = new Set<number>();
+
+export function initializeMockCancelableIntercepts(waybills: { id: string; groupCode: string }[]) {
+  if (mockCancellationInitialized) return;
+  const tasks = [...(persistedInterceptTasks || initialTasks)];
+  const mockWaybillIds = new Set(waybills.map((waybill) => waybill.id));
+  tasks.filter((task) => mockWaybillIds.has(task.waybillNo)).forEach((task) => defaultMockInterceptTaskIds.add(task.id));
+  const pendingIds = new Set(tasks.filter((task) => task.status === '待处理').map((task) => task.waybillNo));
+  const seed = Date.now();
+  waybills.filter((waybill) => !pendingIds.has(waybill.id)).forEach((waybill, index) => {
+    defaultMockInterceptTaskIds.add(seed + index);
+    tasks.push(createInterceptTaskFromRequest({
+      id: seed + index,
+      interceptNo: 'MOCK-INT-' + waybill.id,
+      waybillNo: waybill.id,
+      customerOrderNo: '-',
+      customer: 'MOCK',
+      container: waybill.groupCode,
+      warehouse: '-',
+      boxes: 1,
+      attachmentName: '', reason: 'MOCK cancellation test',
+      createdAt: nowText(),
+    }));
+  });
+  persistedInterceptTasks = tasks;
+  mockCancellationInitialized = true;
+}
+
 
 function getCurrentInterceptTasks(requests: OverseasInterceptRequest[]) {
   const tasks = [...(persistedInterceptTasks || initialTasks)];
@@ -370,6 +399,10 @@ function getCurrentInterceptTasks(requests: OverseasInterceptRequest[]) {
 
 export function getCancelableInterceptWaybillIds(requests: OverseasInterceptRequest[]) {
   return [...new Set(getCurrentInterceptTasks(requests).filter((task) => task.status === '待处理').map((task) => task.waybillNo))];
+}
+
+export function getActiveInterceptWaybillIds(requests: OverseasInterceptRequest[]) {
+  return [...new Set(getCurrentInterceptTasks(requests).filter((task) => !defaultMockInterceptTaskIds.has(task.id) && ['待处理', '已确认', '拦截中'].includes(task.status)).map((task) => task.waybillNo))];
 }
 
 export function cancelInterceptsByWaybill(ids: string[], requests: OverseasInterceptRequest[]) {
