@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
+import options from './niuKuTemplateOptions.json';
+import { isEuropeanOrder, requiresPartyInfo, partyFields } from './niuKuValidation';
+import './NiuKuOrderDrawer.css';
 
 type BaseForm = {
   channel: string;
@@ -12,6 +15,7 @@ type BaseForm = {
   vessel: string;
   customs: string;
   destinationPort: string;
+  destinationCountry: string;
   containerType: string;
   chassis: string;
   etd: string;
@@ -32,6 +36,7 @@ type BaseForm = {
   vatNo: string;
   eori: string;
   importerName: string;
+  importerAddress: string;
   importerPostcode: string;
   importerCity: string;
 };
@@ -73,7 +78,7 @@ type DeliveryRow = {
 };
 
 const initialBase = (container: string, bill: string): BaseForm => ({
-  channel: '美国转运',
+  channel: '',
   type: '海运',
   deliveryType: '拆柜',
   departurePort: '盐田 YTN',
@@ -82,13 +87,14 @@ const initialBase = (container: string, bill: string): BaseForm => ({
   containerNo: container || 'CSGU08040079',
   vessel: 'COSCO',
   customs: '是',
-  destinationPort: '美国 LAX',
+  destinationPort: '洛杉矶 LAX',
+  destinationCountry: '美国',
   containerType: '40HQ',
   chassis: '否',
   etd: '2026-09-18',
   eta: '2026-10-06',
   soBill: bill,
-  carrier: '中远海运',
+  carrier: '中远COS',
   customerCode: '',
   needPickup: '否',
   needUnpack: '是',
@@ -99,10 +105,11 @@ const initialBase = (container: string, bill: string): BaseForm => ({
   shipperAddress: '',
   shipperPostcode: '',
   shipperCity: '',
-  vatCountry: '美国',
+  vatCountry: '',
   vatNo: '',
   eori: '',
   importerName: '',
+  importerAddress: '',
   importerPostcode: '',
   importerCity: '',
 });
@@ -117,14 +124,24 @@ const initialRows: DeliveryRow[] = [
   { id: 7, waybill: 'USSZ202609080620', deliveryMethod: '卡派', deliveryType: '中转', code: 'Non', warehouse: 'Walmart-LAX1', fba: '/', reference: '/', pieces: '2', weight: '32.06', volume: '0.168', address: '/', zip: '/', size: '50*50*50', wood: '0', pallets: '0', value: '/', product: '/', requirement: '', lift: '否', etaStart: '', etaEnd: '', productEn: '', material: '', hs: '', productQty: '2', unit: '个', unitPrice: '', totalPrice: '', link: '', screenshot: '', netWeight: '32.06', boxNo: '' },
 ];
 
-const inputClass = 'h-7 w-full rounded border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-[#168ff5]';
-const labelClass = 'text-[11px] text-slate-600';
-const required = (label: string) => <span>{label}<b className="ml-0.5 text-red-500">*</b></span>;
+const inputClass = 'niuku-input';
+const labelClass = 'niuku-label';
+const required = (label: string) => <><b className="niuku-required" aria-hidden="true">*</b>{label}：</>;
 
 export default function NiuKuOrderDrawer({ open, bill, container, onClose, addToast }: { open: boolean; bill: string; container: string; onClose: () => void; addToast: (message: string, type: 'success' | 'info' | 'warning') => void }) {
   const [base, setBase] = useState<BaseForm>(() => initialBase(container, bill));
   const [rows, setRows] = useState<DeliveryRow[]>(initialRows);
   const [note, setNote] = useState('');
+  useEffect(() => { setBase(initialBase(container, bill)); setRows(initialRows.map(row => ({ ...row }))); setNote(''); }, [container, bill]);
+  const partyRequired = requiresPartyInfo(base);
+  const showPartyInfo = partyRequired;
+  const european = isEuropeanOrder(base);
+  const submit = () => {
+    if (partyRequired) { const missing = partyFields.filter(([key]) => !base[key].trim()); if (missing.length) { addToast('欧线自税订单请填写：' + missing.map(([, label]) => label).join('、'), 'warning'); return; } }
+    const form = document.getElementById('niuku-form') as HTMLFormElement | null; if (!form?.reportValidity()) return;
+    if (!rows.length) { addToast('请至少增加一条尾程派送明细', 'warning'); return; }
+    addToast('纽酷平台推送下单成功', 'success'); onClose();
+  };
 
   if (!open) return null;
 
@@ -162,97 +179,130 @@ export default function NiuKuOrderDrawer({ open, bill, container, onClose, addTo
   };
   const removeRow = (id: number) => setRows((current) => current.filter((row) => row.id !== id).map((row, index) => ({ ...row, id: index + 1 })));
   const renderBaseInput = (label: string, key: keyof BaseForm, requiredField = false, type = 'text') => (
-    <label className="flex min-w-0 items-center gap-2">
-      <span className={labelClass + ' shrink-0 text-right'}>{requiredField ? required(label) : label}</span>
-      <input type={type} value={base[key]} onChange={(event) => updateBase(key, event.target.value)} className={inputClass} />
+    <label className="niuku-field">
+      <span className={labelClass}>{requiredField ? required(label) : <>{label}：</>}</span>
+      <input aria-label={label} placeholder="请输入" required={requiredField} type={type} value={base[key]} onChange={(event) => updateBase(key, event.target.value)} className={inputClass} />
     </label>
   );
-  const renderBaseSelect = (label: string, key: keyof BaseForm, options: string[], requiredField = false) => (
-    <label className="flex min-w-0 items-center gap-2">
-      <span className={labelClass + ' shrink-0 text-right'}>{requiredField ? required(label) : label}</span>
-      <select value={base[key]} onChange={(event) => updateBase(key, event.target.value)} className={inputClass}>{options.map((option) => <option key={option}>{option}</option>)}</select>
-    </label>
-  );
+  const renderBaseSelect = (label: string, key: keyof BaseForm, values: string[], requiredField = false) => {
+    if (values.length === 2 && values.includes('是') && values.includes('否')) {
+      return (
+        <div className="niuku-field" role="group" aria-label={label}>
+          <span className={labelClass}>{requiredField ? required(label) : <>{label}：</>}</span>
+          <div className="niuku-radio-group">
+            {values.map(value => (
+              <label key={value} className="niuku-radio">
+                <input type="radio" name={'niuku-' + key} value={value} checked={base[key] === value} required={requiredField} onChange={() => updateBase(key, value)} />
+                <span>{value}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    return (
+      <label className="niuku-field">
+        <span className={labelClass}>{requiredField ? required(label) : <>{label}：</>}</span>
+        <select aria-label={label} required={requiredField} value={base[key]} onChange={(event) => updateBase(key, event.target.value)} className={inputClass}>
+          <option value="">请选择</option>
+          {values.map((option, index) => <option key={index} value={option}>{option}</option>)}
+        </select>
+      </label>
+    );
+  };
   const renderRowInput = (row: DeliveryRow, key: Exclude<keyof DeliveryRow, 'id'>, placeholder = '') => (
-    <input value={row[key]} onChange={(event) => updateRow(row.id, key, event.target.value)} placeholder={placeholder} className={inputClass} />
+    <input aria-label={String(row.id) + '-' + key} required={['pieces', 'weight', 'volume', 'wood', 'pallets'].includes(key) || (european && ['productEn', 'material', 'hs', 'productQty', 'unitPrice', 'totalPrice', 'link', 'screenshot', 'netWeight'].includes(key))} value={row[key]} onChange={(event) => updateRow(row.id, key, event.target.value)} placeholder={placeholder} className={inputClass} />
   );
-  const renderRowSelect = (row: DeliveryRow, key: 'deliveryMethod' | 'deliveryType' | 'lift', options: string[]) => (
-    <select value={row[key]} onChange={(event) => updateRow(row.id, key, event.target.value)} className={inputClass}>{options.map((option) => <option key={option}>{option}</option>)}</select>
+  const renderRowSelect = (row: DeliveryRow, key: 'deliveryMethod' | 'deliveryType' | 'lift' | 'warehouse' | 'unit', options: string[]) => (
+    <select aria-label={String(row.id) + '-' + key} required={key !== 'lift' && (key !== 'unit' || european)} value={row[key]} onChange={(event) => updateRow(row.id, key, event.target.value)} className={inputClass}><option value="">请选择</option>{options.map((option, index) => <option key={index} value={option}>{option}</option>)}</select>
   );
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-900/55" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <aside className="absolute right-0 top-0 flex h-full w-[78vw] min-w-[1180px] max-w-[1720px] flex-col bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="flex h-11 shrink-0 items-center justify-between border-b border-slate-200 px-4">
-          <h2 className="flex items-center gap-2 text-[15px] font-bold text-slate-800"><span className="h-4 w-1 rounded bg-[#0759b6]" />推送纽酷下单-{bill}</h2>
-          <button type="button" onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+    <div className="niuku-overlay fixed inset-0 z-[100]" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <aside className="niuku-drawer absolute right-0 top-0 flex h-full w-[67vw] min-w-[1080px] max-w-[1500px] flex-col" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="niuku-header flex h-10 shrink-0 items-center justify-between px-4">
+          <h2 className="flex items-center gap-2 text-[14px] font-bold"><span className="niuku-title-mark" />推送纽酷下单-{bill}</h2>
+          <button type="button" aria-label="关闭推送纽酷下单" onClick={onClose} className="niuku-close"><X className="h-4 w-4" /></button>
         </div>
-        <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-3">
-          <button type="button" onClick={addRow} className="rounded bg-[#0759b6] px-4 py-1.5 text-xs font-semibold text-white">增加</button>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => { addToast('纽酷平台推送下单成功', 'success'); onClose(); }} className="rounded bg-[#0759b6] px-4 py-1.5 text-xs font-semibold text-white">推送下单</button>
-            <button type="button" onClick={onClose} className="rounded border border-slate-200 px-4 py-1.5 text-xs text-slate-600">关闭</button>
+        <div className="niuku-toolbar flex shrink-0 items-center justify-between px-4">
+          <button type="button" onClick={addRow} className="niuku-btn niuku-btn-primary">增加</button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={submit} className="niuku-btn niuku-btn-primary">推送下单</button>
+            <button type="button" onClick={onClose} className="niuku-btn niuku-btn-secondary">关闭</button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto px-5 pb-6">
+        <form id="niuku-form" onSubmit={event => { event.preventDefault(); submit(); }} className="niuku-body min-h-0 flex-1 overflow-auto px-4 pb-8">
           <section>
-            <h3 className="border-b border-slate-100 py-3 text-[14px] font-bold text-slate-800">基础柜单信息</h3>
-            <div className="grid grid-cols-3 gap-x-8 gap-y-2.5 py-3">
-              {renderBaseSelect('渠道方式', 'channel', ['美国转运', '欧盟铁路尾程拆派', '美国迈阿密'], true)}
-              {renderBaseSelect('类型', 'type', ['海运', '铁路', '空运'], true)}
-              {renderBaseSelect('派送类型', 'deliveryType', ['拆柜', '整柜', '清关'], true)}
-              {renderBaseSelect('出运港', 'departurePort', ['盐田 YTN', '河内机场 HAN', '上海港 SHA', '宁波港 NGB'], true)}
-              {renderBaseSelect('是否含税', 'tax', ['含税', '不含税'], true)}
-              {renderBaseSelect('尾程类型', 'lastMile', ['柜子', '散货', '快递'], true)}
-              {renderBaseInput('柜号', 'containerNo', true)}
-              {renderBaseInput('船名航次', 'vessel')}
-              {renderBaseSelect('是否清关', 'customs', ['是', '否'], true)}
-              {renderBaseSelect('目的港', 'destinationPort', ['美国 LAX', '美国 JFK', '巴黎 CDG', '洛杉矶 LAX'], true)}
-              {renderBaseSelect('柜型', 'containerType', ['40HQ', '40NOR', '20GP', '45HQ'], true)}
-              {renderBaseSelect('车架', 'chassis', ['否', '是'], true)}
+            <h3 className="niuku-section-title">入库信息</h3>
+            <div className="niuku-base-grid">
+              {renderBaseSelect('渠道方式', 'channel', options.channels, true)}
               {renderBaseInput('Etd', 'etd', true, 'date')}
               {renderBaseInput('Eta', 'eta', true, 'date')}
-              {renderBaseSelect('需要提柜', 'needPickup', ['否', '是'], true)}
+              {renderBaseSelect('船公司', 'carrier', options.carriers, true)}
+              {renderBaseSelect('柜型', 'containerType', options.containerTypes, true)}
+              {renderBaseInput('柜号', 'containerNo', true)}
+              {renderBaseSelect('类型', 'type', options.types, true)}
+              {renderBaseSelect('派送类型', 'deliveryType', options.deliveryTypes, true)}
+              {renderBaseSelect('尾程类型', 'lastMile', options.lastMiles, true)}
+              {renderBaseSelect('出运港', 'departurePort', options.ports, true)}
+              {renderBaseSelect('目的港国家', 'destinationCountry', options.countries, true)}
+              {renderBaseSelect('目的港', 'destinationPort', options.ports, true)}
               {renderBaseInput('SO号/提单号', 'soBill', true)}
-              {renderBaseInput('船公司', 'carrier')}
-              {renderBaseInput('客户代码', 'customerCode')}
-              {renderBaseSelect('需要拆柜', 'needUnpack', ['是', '否'], true)}
+              {renderBaseInput('船名航次', 'vessel')}
+              {renderBaseInput('客户代码', 'customerCode', true)}
+              {renderBaseSelect('是否含税', 'tax', options.taxes, true)}
+              {renderBaseSelect('是否清关', 'customs', options.yesNo, true)}
+              {renderBaseSelect('车架', 'chassis', options.yesNo, true)}
+              {renderBaseSelect('需要提柜', 'needPickup', options.yesNo, true)}
+              {renderBaseSelect('需要拆柜', 'needUnpack', options.yesNo, true)}
+              {renderBaseSelect('是否多税号', 'multiTaxNo', options.yesNo, true)}
+              {renderBaseSelect('是否DG柜', 'dgContainer', options.noYes, true)}
               {renderBaseInput('场外免箱期', 'outsideFreeDays')}
-              {renderBaseSelect('是否多税号', 'multiTaxNo', ['否', '是'], true)}
-              {renderBaseSelect('是否DG柜', 'dgContainer', ['否', '是'])}
+              <label className="niuku-field niuku-note-field">
+                <span className={labelClass}>备注：</span>
+                <span className="niuku-note-control">
+                  <textarea aria-label="备注" value={note} onChange={(event) => setNote(event.target.value)} className="niuku-input" placeholder="请输入内容" maxLength={200} />
+                  <span className="niuku-note-count">{note.length}/200</span>
+                </span>
+              </label>
             </div>
-            <label className="flex items-start gap-2 pb-3">
-              <span className={labelClass + ' w-[74px] shrink-0 pt-1 text-right'}>备注</span>
-              <textarea value={note} onChange={(event) => setNote(event.target.value)} className="h-12 flex-1 resize-none rounded border border-slate-200 px-2 py-1 text-[11px] outline-none focus:border-[#168ff5] placeholder:text-slate-400" placeholder="请输入内容，最多200字" maxLength={200} />
-            </label>
           </section>
 
-          <section>
-            <h3 className="border-b border-slate-100 py-3 text-[14px] font-bold text-slate-800">发货人及进口商信息</h3>
-            <div className="grid grid-cols-2 gap-x-10 gap-y-2.5 py-3">
-              {renderBaseInput('发货人公司名称', 'shipperName')}
-              {renderBaseInput('进口商名称', 'importerName')}
-              {renderBaseInput('公司详细地址', 'shipperAddress')}
-              {renderBaseInput('进口商邮编', 'importerPostcode')}
-              {renderBaseInput('公司所在地邮编', 'shipperPostcode')}
-              {renderBaseInput('城市', 'importerCity')}
-              {renderBaseInput('公司所在地城市', 'shipperCity')}
-              {renderBaseInput('VAT注册国', 'vatCountry')}
-              {renderBaseInput('增值税号VAT', 'vatNo')}
-              {renderBaseInput('登记号EORI', 'eori')}
+          {showPartyInfo && <section>
+            <h3 className="niuku-section-title">发货人及进口商信息</h3>
+            <p className={partyRequired ? 'niuku-party-hint is-required' : 'niuku-party-hint'}>{partyRequired ? '当前为欧线自税订单，发货人信息和进口商信息必填。' : '仅欧线自税订单需填写；含税渠道及非欧线订单可不填写。'}</p>
+            <div className="niuku-party-stack">
+              <div className="niuku-party-block">
+                <div className="niuku-party-block-title">
+                  <span className="niuku-party-index">1</span>
+                  <div><h4>发货人信息</h4><p>请全拼填写，不能包含中文；美线订单可不填写</p></div>
+                </div>
+                <div className="niuku-party-fields">
+                  {partyFields.filter(([key]) => key.startsWith('shipper')).map(([key, label]) => <React.Fragment key={key}>{renderBaseInput(label, key, partyRequired)}</React.Fragment>)}
+                </div>
+              </div>
+              <div className="niuku-party-block">
+                <div className="niuku-party-block-title">
+                  <span className="niuku-party-index">2</span>
+                  <div><h4>进口商信息</h4><p>请与 VAT 证书保持一致；美线订单可不填写</p></div>
+                </div>
+                <div className="niuku-party-fields">
+                  {partyFields.filter(([key]) => !key.startsWith('shipper')).map(([key, label]) => <React.Fragment key={key}>{key === 'vatCountry' ? renderBaseSelect(label, key, options.countries, partyRequired) : renderBaseInput(label, key, partyRequired)}</React.Fragment>)}
+                </div>
+              </div>
             </div>
-          </section>
+          </section>}
 
           <section>
             <div className="flex items-end justify-between border-b border-slate-100 py-3">
               <div>
-                <h3 className="text-[14px] font-bold text-slate-800">尾程派送明细</h3>
-                <p className="mt-1 text-[11px] text-slate-400">欧盟和英国订单的产品申报字段按模板填写；美国订单可按业务要求补充。</p>
+                <h3 className="niuku-section-title">尾程派送明细</h3>
+                <p className="mt-1 text-[11px] text-slate-400">欧盟和英国订单需填写产品申报字段，其他国家可不填写。亚马逊/沃尔玛请填写FBA#及Reference ID；私人地址请填写完整地址、预约方式、邮编、货值及产品名称。</p>
               </div>
               <span className="text-[11px] text-slate-400">共 {rows.length} 条</span>
             </div>
-            <div className="mt-3 overflow-x-auto rounded border border-slate-200">
-              <table className="min-w-[4860px] border-collapse text-[11px] text-slate-600">
+            <div className="niuku-table-wrap mt-2 overflow-x-auto">
+              <table className="min-w-[4860px] border-collapse text-[11px] text-[#5f6974]">
                 <thead className="bg-slate-50">
                   <tr className="h-9">
                     <th className="sticky left-0 z-10 w-9 border border-slate-200 bg-slate-50">#</th>
@@ -296,10 +346,10 @@ export default function NiuKuOrderDrawer({ open, bill, container, onClose, addTo
                     <tr key={row.id} className="align-top">
                       <td className="sticky left-0 z-10 border border-slate-200 bg-white p-2 text-center">{row.id}</td>
                       <td className="border border-slate-200 p-1">{renderRowInput(row, 'waybill', '运单号')}</td>
-                      <td className="border border-slate-200 p-1">{renderRowSelect(row, 'deliveryMethod', ['卡派', 'fedex快递派', 'ups快递派', '自提', '留仓'])}</td>
-                      <td className="border border-slate-200 p-1">{renderRowSelect(row, 'deliveryType', ['中转', '私人地址', '整柜'])}</td>
+                      <td className="border border-slate-200 p-1">{renderRowSelect(row, 'deliveryMethod', options.deliveryMethods)}</td>
+                      <td className="border border-slate-200 p-1">{renderRowSelect(row, 'deliveryType', options.rowTypes)}</td>
                       <td className="border border-slate-200 p-1">{renderRowInput(row, 'code')}</td>
-                      <td className="border border-slate-200 p-1">{renderRowInput(row, 'warehouse', '目的仓')}</td>
+                      <td className="border border-slate-200 p-1">{renderRowSelect(row, 'warehouse', options.warehouses)}</td>
                       <td className="border border-slate-200 p-1">{renderRowInput(row, 'fba', 'FBA#')}</td>
                       <td className="border border-slate-200 p-1">{renderRowInput(row, 'reference', 'Reference ID')}</td>
                       <td className="border border-slate-200 p-1">{renderRowInput(row, 'pieces')}</td>
@@ -320,7 +370,7 @@ export default function NiuKuOrderDrawer({ open, bill, container, onClose, addTo
                       <td className="border border-slate-200 p-1">{renderRowInput(row, 'material')}</td>
                       <td className="border border-slate-200 p-1">{renderRowInput(row, 'hs')}</td>
                       <td className="border border-slate-200 p-1">{renderRowInput(row, 'productQty')}</td>
-                      <td className="border border-slate-200 p-1">{renderRowInput(row, 'unit')}</td>
+                      <td className="border border-slate-200 p-1">{renderRowSelect(row, 'unit', options.units)}</td>
                       <td className="border border-slate-200 p-1">{renderRowInput(row, 'unitPrice')}</td>
                       <td className="border border-slate-200 p-1">{renderRowInput(row, 'totalPrice')}</td>
                       <td className="border border-slate-200 p-1">{renderRowInput(row, 'link')}</td>
@@ -334,7 +384,7 @@ export default function NiuKuOrderDrawer({ open, bill, container, onClose, addTo
               </table>
             </div>
           </section>
-        </div>
+        </form>
       </aside>
     </div>
   );
