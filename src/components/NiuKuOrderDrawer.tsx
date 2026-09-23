@@ -236,27 +236,30 @@ export default function NiuKuOrderDrawer({ open, bill, container, onClose, addTo
             <h3 className="niuku-section-title">入库信息</h3>
             <div className="niuku-base-grid">
               {renderBaseSelect('渠道方式', 'channel', options.channels, true)}
-              {renderBaseInput('Etd', 'etd', true, 'date')}
-              {renderBaseInput('Eta', 'eta', true, 'date')}
-              {renderBaseSelect('船公司', 'carrier', options.carriers, true)}
-              {renderBaseSelect('柜型', 'containerType', options.containerTypes, true)}
-              {renderBaseInput('柜号', 'containerNo', true)}
               {renderBaseSelect('类型', 'type', options.types, true)}
               {renderBaseSelect('派送类型', 'deliveryType', options.deliveryTypes, true)}
-              {renderBaseSelect('尾程类型', 'lastMile', options.lastMiles, true)}
               {renderBaseSelect('出运港', 'departurePort', options.ports, true)}
-              {renderBaseSelect('目的港国家', 'destinationCountry', options.countries, true)}
-              {renderBaseSelect('目的港', 'destinationPort', options.ports, true)}
-              {renderBaseInput('SO号/提单号', 'soBill', true)}
-              {renderBaseInput('船名航次', 'vessel')}
-              {renderBaseInput('客户代码', 'customerCode', true)}
+
               {renderBaseSelect('是否含税', 'tax', options.taxes, true)}
-              {renderBaseSelect('是否清关', 'customs', options.yesNo, true)}
+              {renderBaseSelect('尾程类型', 'lastMile', options.lastMiles, true)}
+              {renderBaseInput('柜号', 'containerNo', true)}
+              {renderBaseInput('船名航次', 'vessel')}
+
+              {renderBaseSelect('目的港', 'destinationPort', options.ports, true)}
+              {renderBaseSelect('柜型', 'containerType', options.containerTypes, true)}
               {renderBaseSelect('车架', 'chassis', options.yesNo, true)}
+              {renderBaseSelect('是否清关', 'customs', options.yesNo, true)}
+
+              {renderBaseInput('Etd', 'etd', true, 'date')}
+              {renderBaseInput('Eta', 'eta', true, 'date')}
+              {renderBaseSelect('目的港国家', 'destinationCountry', options.countries, true)}
               {renderBaseSelect('需要提柜', 'needPickup', options.yesNo, true)}
+
+              {renderBaseInput('SO号/提单号', 'soBill', true)}
+              {renderBaseSelect('船公司', 'carrier', options.carriers, true)}
+              {renderBaseInput('客户代码', 'customerCode', true)}
               {renderBaseSelect('需要拆柜', 'needUnpack', options.yesNo, true)}
-              {renderBaseSelect('是否多税号', 'multiTaxNo', options.yesNo, true)}
-              {renderBaseSelect('是否DG柜', 'dgContainer', options.noYes, true)}
+
               {renderBaseInput('场外免箱期', 'outsideFreeDays')}
               <label className="niuku-field niuku-note-field">
                 <span className={labelClass}>备注：</span>
@@ -265,6 +268,9 @@ export default function NiuKuOrderDrawer({ open, bill, container, onClose, addTo
                   <span className="niuku-note-count">{note.length}/200</span>
                 </span>
               </label>
+              {renderBaseSelect('是否多税号', 'multiTaxNo', options.yesNo, true)}
+
+              {renderBaseSelect('是否DG柜', 'dgContainer', options.noYes, true)}
             </div>
           </section>
 

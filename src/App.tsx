@@ -17,6 +17,7 @@ import UserManagementPage from './components/UserManagementPage';
 import MarketingDashboardPage from './components/MarketingDashboardPage';
 import CustomerInstructionCreatePage from './components/CustomerInstructionCreatePage';
 import InstructionListPage from './components/InstructionListPage';
+import ReservedOrderPage from './components/ReservedOrderPage';
 import { Waybill, OrderType, WaybillChangeLog, OverseasInterceptRequest } from './types';
 import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from 'lucide-react';
 
@@ -575,6 +576,8 @@ export default function App() {
           />
         ) : currentTab === '贸易方式配置' || currentTab === '贸易方式校验规则查询' ? (
           <RuleConfigPage addToast={addToast} />
+        ) : currentTab === '预留单' ? (
+          <ReservedOrderPage addToast={addToast} />
         ) : currentTab === '海外中转单' ? (
           <OverseasTransitOrderPage addToast={addToast} />
         ) : currentTab === '海外暂存' ? (

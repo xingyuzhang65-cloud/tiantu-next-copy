@@ -217,13 +217,16 @@ export default function Sidebar({ currentSubView, onSubViewChange }: SidebarProp
               </div>
 
               <div className="space-y-1">
-                <div className="flex w-full items-center justify-between rounded px-3 py-2 text-sm font-medium text-slate-700 cursor-pointer hover:bg-slate-200/50">
+                <button type="button" onClick={() => onSubViewChange('预留单')} className="flex w-full items-center justify-between rounded px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200/50">
                   <div className="flex items-center gap-2">
                     <Warehouse className="h-4 w-4 text-slate-500" />
                     <span>预留仓</span>
                   </div>
-                  <ChevronRight className="h-3 w-3 text-slate-400" />
-                </div>
+                  {currentSubView === '预留单' ? <ChevronDown className="h-3 w-3 text-blue-500" /> : <ChevronRight className="h-3 w-3 text-slate-400" />}
+                </button>
+                {currentSubView === '预留单' && <div className="ml-4 border-l border-slate-200 pl-2">
+                  <button type="button" id="submenu-item-预留单" onClick={() => onSubViewChange('预留单')} className="flex w-full items-center rounded bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600">预留单</button>
+                </div>}
               </div>
 
               <div className="space-y-1">
