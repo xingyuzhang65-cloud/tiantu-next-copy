@@ -4,7 +4,7 @@ import {
   MessageSquareCode, BarChart3, Settings, Users,
   DownloadCloud, Cpu, Megaphone, ChevronDown, ChevronRight,
   TrendingUp, ArrowRightLeft, Layers, Wrench, Printer, Package,
-  PackageOpen, SlidersHorizontal, UserCog, KeyRound
+  PackageOpen, SlidersHorizontal, UserCog, KeyRound, Clock
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -15,6 +15,7 @@ interface SidebarProps {
 export default function Sidebar({ currentSubView, onSubViewChange }: SidebarProps) {
   const [activeRail, setActiveRail] = useState('单据');
   const [warningExpanded, setWarningExpanded] = useState(true);
+  const [timelinessExpanded, setTimelinessExpanded] = useState(true);
   const [waybillExpanded, setWaybillExpanded] = useState(true);
   const [printExpanded, setPrintExpanded] = useState(true);
   const [overseasTransitExpanded, setOverseasTransitExpanded] = useState(true);
@@ -235,7 +236,7 @@ export default function Sidebar({ currentSubView, onSubViewChange }: SidebarProp
                   {warningExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                 </button>
                 {warningExpanded && <div className="ml-4 space-y-0.5 border-l border-slate-200 pl-2">
-                  {['预警', '运单时效监控'].map(name => <button key={name} type="button" onClick={() => onSubViewChange(name)} className={`flex w-full items-center rounded px-3 py-1.5 text-xs ${currentSubView === name ? 'bg-blue-50 font-semibold text-blue-600' : 'text-slate-600 hover:bg-slate-200/50'}`}>{name}</button>)}
+                  {['预警'].map(name => <button key={name} type="button" onClick={() => onSubViewChange(name)} className={`flex w-full items-center rounded px-3 py-1.5 text-xs ${currentSubView === name ? 'bg-blue-50 font-semibold text-blue-600' : 'text-slate-600 hover:bg-slate-200/50'}`}>{name}</button>)}
                 </div>}
               </div>
               <div className="space-y-1">
@@ -283,6 +284,33 @@ export default function Sidebar({ currentSubView, onSubViewChange }: SidebarProp
                   </div>
                   <ChevronRight className="h-3 w-3 text-slate-400" />
                 </div>
+              </div>
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  id="btn-fold-timeliness"
+                  aria-expanded={timelinessExpanded}
+                  onClick={() => setTimelinessExpanded(!timelinessExpanded)}
+                  className="flex w-full items-center justify-between rounded px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200/50"
+                >
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-slate-500" />
+                    <span>时效管理</span>
+                  </div>
+                  {timelinessExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                </button>
+                {timelinessExpanded && (
+                  <div className="ml-4 space-y-0.5 border-l border-slate-200 pl-2">
+                    <button
+                      type="button"
+                      id="submenu-item-运单时效监控"
+                      onClick={() => onSubViewChange('运单时效监控')}
+                      className={`flex w-full items-center rounded px-3 py-1.5 text-xs transition-colors duration-150 ${currentSubView === '运单时效监控' ? 'bg-blue-50 font-semibold text-blue-600' : 'text-slate-600 hover:bg-slate-200/50 hover:text-slate-800'}`}
+                    >
+                      运单时效监控
+                    </button>
+                  </div>
+                )}
               </div>
             </>
           )}
