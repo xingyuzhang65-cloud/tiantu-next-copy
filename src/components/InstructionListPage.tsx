@@ -1,6 +1,7 @@
 import { CalendarDays, ChevronDown, Download, ImageIcon, RotateCcw, Search, Settings2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { readPickupInstructions } from './pickupInstructionStore';
 
 type Tab = '待确认' | '已确认' | '已推送海外仓' | '处理中' | '已完成' | '驳回' | '取消' | '全部';
 type Status = '已处理' | '待处理' | '已取消' | '已驳回';
@@ -9,6 +10,7 @@ type Row = {
   id: string; tab: Tab; waybill: string; instructionNo: string; names: string[]; created: string; updated: string;
   shipment: string; reference: string; status: Status; processingResult?: ProcessingResult; failureReason?: string; photo?: string; customer: string; warehouse: string; zip: string;
   orderType: string; instructionType: string; interceptReason?: string; destination: string; salesman: string; merchandiser: string; fee: string;
+  expectedPickupTime?: string; pickupContact?: string; pickupPhone?: string;
   packages: string; weight: string; volume: string; arrived: '是' | '否'; overseasTime: string;
 };
 type Filters = {
@@ -87,12 +89,38 @@ const rows: Row[] = rawRows.map((row) => {
   };
 });
 
+const pickupRows = (): Row[] => readPickupInstructions().map((pickup) => ({
+  id: pickup.id,
+  tab: '待确认',
+  waybill: pickup.waybill,
+  instructionNo: pickup.instructionNo,
+  names: ['自提'],
+  created: pickup.createdAt,
+  updated: pickup.createdAt,
+  shipment: '-',
+  reference: '-',
+  status: '待处理',
+  customer: pickup.customer,
+  warehouse: '-',
+  zip: '-',
+  orderType: '-',
+  instructionType: '自提',
+  expectedPickupTime: pickup.expectedPickupTime.replace('T', ' '),
+  pickupContact: pickup.pickupContact,
+  pickupPhone: pickup.pickupPhone,
+  destination: '-',
+  salesman: '-',
+  merchandiser: '-',
+  fee: '-',
+  packages: String(pickup.boxes),
+  weight: '-',
+  volume: '-',
+  arrived: '是',
+  overseasTime: '-',
+}));
+
 // 计数直接由数据算出，避免写死的数字与列表实际条数不一致。
 const tabKeys: Tab[] = ['待确认', '已确认', '已推送海外仓', '处理中', '已完成', '驳回', '取消', '全部'];
-const tabs: Array<{ key: Tab; count: number }> = tabKeys.map((key) => ({
-  key,
-  count: key === '全部' ? rows.length : rows.filter((row) => row.tab === key).length,
-}));
 const inputClass = 'h-8 min-w-0 flex-1 rounded border border-[#dfe5ee] bg-white px-2 text-xs text-slate-700 outline-none placeholder:text-slate-300 focus:border-[#0759b6] focus:ring-1 focus:ring-[#0759b6]';
 
 const getProcessingResult = (row: Row): ProcessingResult | '' => {
@@ -154,7 +182,9 @@ export default function InstructionListPage({ addToast }: { addToast?: (text: st
   const [tab, setTab] = useState<Tab>('待确认');
   const [selected, setSelected] = useState<string[]>([]);
   const [expanded, setExpanded] = useState(true);
-  const [data, setData] = useState(rows);
+  const [data, setData] = useState(() => [...pickupRows(), ...rows]);
+  const [detailRow, setDetailRow] = useState<Row | null>(null);
+  const tabs = tabKeys.map((key) => ({ key, count: key === '全部' ? data.length : data.filter((row) => row.tab === key).length }));
   const showFailureReason = tab === '已完成' || tab === '全部';
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const visible = useMemo(() => data.filter((row) => {
@@ -200,8 +230,30 @@ export default function InstructionListPage({ addToast }: { addToast?: (text: st
     <section className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-[#e7ebf1] bg-white shadow-sm">
       <div className="flex shrink-0 items-end gap-6 border-b border-[#dfe5ee] px-3 pt-2">{tabs.map((item) => <button key={item.key} type="button" onClick={() => { setTab(item.key); setSelected([]); }} className={`relative h-8 whitespace-nowrap text-xs font-medium ${tab === item.key ? 'text-[#0759b6]' : 'text-slate-600'}`}>{item.key}({item.count}){tab === item.key && <span className="absolute inset-x-0 -bottom-px h-0.5 bg-[#0759b6]" />}</button>)}</div>
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#edf0f4] px-3"><div className="flex items-center gap-3"><button type="button" onClick={() => updateStatus('已取消', '已取消 {count} 条待确认指令')} className="h-7 rounded bg-[#0759b6] px-4 text-xs font-semibold text-white">取消下单</button><button type="button" onClick={() => updateStatus('已处理', '已确认 {count} 条指令')} className="h-7 rounded bg-[#0759b6] px-4 text-xs font-semibold text-white">已确认</button><button type="button" onClick={exportRows} className="inline-flex h-7 items-center gap-1 rounded border border-[#dfe5ee] bg-white px-4 text-xs font-semibold text-slate-600"><Download className="h-3.5 w-3.5" />导出</button><button type="button" onClick={() => addToast?.('当前列表暂无新的操作日志', 'info')} className="h-7 rounded border border-[#dfe5ee] bg-white px-4 text-xs font-semibold text-slate-600">查看日志</button></div><button type="button" aria-label="列表设置" onClick={() => addToast?.('列表支持横向滚动查看全部字段', 'info')} className="flex h-7 w-7 items-center justify-center rounded bg-[#0759b6] text-white"><Settings2 className="h-3.5 w-3.5" /></button></div>
-      <div className="min-h-0 flex-1 overflow-auto"><table className={(showFailureReason ? 'min-w-[3140px]' : 'min-w-[2920px]') + ' table-fixed border-collapse text-[11px] text-slate-600'}><thead className="sticky top-0 z-20 bg-[#f7f9fc]"><tr className="h-8"><th className="sticky left-0 z-30 w-10 border border-[#e5e9ef] bg-[#f7f9fc] text-center"><input aria-label="全选" type="checkbox" checked={allSelected} onChange={toggleAll} className="h-3.5 w-3.5 accent-[#0759b6]" /></th><th className="sticky left-10 z-30 w-40 border border-[#e5e9ef] bg-[#f7f9fc] text-center">运单号</th><th className="sticky left-[200px] z-30 w-40 border border-[#e5e9ef] bg-[#f7f9fc] text-center shadow-[5px_0_8px_-7px_rgba(15,23,42,0.55)]">指令单号</th>{['指令名称', '创建时间', '修改时间', 'Shipment ID', 'Reference ID', '指令处理状态', ...(showFailureReason ? ['失败原因'] : []), '指令操作图片', '客户简称', '仓库代码', '邮编', '下单类型', '指令单类型', '拦截原因', '目的地', '业务员', '跟单员', '指令费用(CNY)', '发货件数', '重量', '方数', '是否到达海外仓', '入仓时间（海外仓）'].map((head) => <th key={head} className="w-32 border border-[#e5e9ef] px-2 text-center font-semibold">{head}</th>)}</tr></thead><tbody>{visible.map((row) => { const checked = selected.includes(row.id); const statusText = getStatusText(row); const processingResult = getProcessingResult(row); const interceptFailed = isInterceptFailed(row, statusText); return <tr key={row.id} className={`h-[80px] ${getRowBackground(checked, interceptFailed)}`}><td className="sticky left-0 z-10 border border-[#eef1f5] bg-inherit text-center"><input aria-label={`选择${row.instructionNo}`} type="checkbox" checked={checked} onChange={() => setSelected((current) => current.includes(row.id) ? current.filter((id) => id !== row.id) : [...current, row.id])} className="h-3.5 w-3.5 accent-[#0759b6]" /></td><td className="sticky left-10 z-10 border border-[#eef1f5] bg-inherit px-2 text-center whitespace-nowrap">{row.waybill}</td><td className="sticky left-[200px] z-10 border border-[#eef1f5] bg-inherit px-2 text-center text-[#3885d6] shadow-[5px_0_8px_-7px_rgba(15,23,42,0.55)]"><button type="button" onClick={() => addToast?.(`已打开指令单 ${row.instructionNo}`, 'info')} className="whitespace-nowrap hover:underline">{row.instructionNo}</button></td><td className="border border-[#eef1f5] px-2 text-center leading-5">{row.names.map((name) => <div key={name}>{name}</div>)}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.created}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.updated}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.shipment}</td><td className="border border-[#eef1f5] px-2 text-center">{row.reference}</td><td className={`border border-[#eef1f5] px-2 text-center ${getStatusColor(row, statusText)}`}><div className="whitespace-nowrap">{statusText}</div>{processingResult && processingResult !== statusText && <div className="mt-1 whitespace-nowrap text-[10px] text-slate-500">处理结果：{processingResult}</div>}</td>{showFailureReason && <td className={"border border-[#eef1f5] px-3 py-2 text-left " + (interceptFailed ? "text-rose-600" : "text-slate-400")}><div className="min-w-[200px] max-w-[260px] whitespace-pre-wrap break-words leading-5">{getFailureReason(row) || "—"}</div></td>}<td className="border border-[#eef1f5] px-2 text-center"><Photo label={row.photo} /></td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.customer}</td><td className="border border-[#eef1f5] px-2 text-center">{row.warehouse}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.zip}</td><td className="border border-[#eef1f5] px-2 text-center">{row.orderType}</td><td className="border border-[#eef1f5] px-2 text-center">{row.instructionType}</td><td className="border border-[#eef1f5] px-2 py-2 text-center"><div className="min-w-[180px] max-w-[240px] whitespace-pre-wrap break-words">{row.instructionType === '拦截' ? (row.interceptReason || '-') : '-'}</div></td><td className="border border-[#eef1f5] px-2 text-center">{row.destination}</td><td className="border border-[#eef1f5] px-2 text-center">{row.salesman}</td><td className="border border-[#eef1f5] px-2 text-center">{row.merchandiser}</td><td className="border border-[#eef1f5] px-2 text-center">{row.fee}</td><td className="border border-[#eef1f5] px-2 text-center">{row.packages}</td><td className="border border-[#eef1f5] px-2 text-center">{row.weight}</td><td className="border border-[#eef1f5] px-2 text-center">{row.volume}</td><td className="border border-[#eef1f5] px-2 text-center">{row.arrived}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.overseasTime}</td></tr>; })}{visible.length === 0 && <tr><td colSpan={showFailureReason ? 26 : 25} className="h-48 border border-[#eef1f5] text-center text-slate-400">暂无符合筛选条件的指令数据</td></tr>}</tbody></table></div>
+      <div className="min-h-0 flex-1 overflow-auto"><table className={(showFailureReason ? 'min-w-[3270px]' : 'min-w-[3050px]') + ' table-fixed border-collapse text-[11px] text-slate-600'}><thead className="sticky top-0 z-20 bg-[#f7f9fc]"><tr className="h-8"><th className="sticky left-0 z-30 w-10 border border-[#e5e9ef] bg-[#f7f9fc] text-center"><input aria-label="全选" type="checkbox" checked={allSelected} onChange={toggleAll} className="h-3.5 w-3.5 accent-[#0759b6]" /></th><th className="sticky left-10 z-30 w-40 border border-[#e5e9ef] bg-[#f7f9fc] text-center">运单号</th><th className="sticky left-[200px] z-30 w-40 border border-[#e5e9ef] bg-[#f7f9fc] text-center shadow-[5px_0_8px_-7px_rgba(15,23,42,0.55)]">指令单号</th>{['指令名称', '创建时间', '修改时间', 'Shipment ID', 'Reference ID', '指令处理状态', ...(showFailureReason ? ['失败原因'] : []), '指令操作图片', '客户简称', '仓库代码', '邮编', '下单类型', '指令单类型', '预计提货时间', '拦截原因', '目的地', '业务员', '跟单员', '指令费用(CNY)', '发货件数', '重量', '方数', '是否到达海外仓', '入仓时间（海外仓）'].map((head) => <th key={head} className="w-32 border border-[#e5e9ef] px-2 text-center font-semibold">{head}</th>)}</tr></thead><tbody>{visible.map((row) => { const checked = selected.includes(row.id); const statusText = getStatusText(row); const processingResult = getProcessingResult(row); const interceptFailed = isInterceptFailed(row, statusText); return <tr key={row.id} className={`h-[80px] ${getRowBackground(checked, interceptFailed)}`}><td className="sticky left-0 z-10 border border-[#eef1f5] bg-inherit text-center"><input aria-label={`选择${row.instructionNo}`} type="checkbox" checked={checked} onChange={() => setSelected((current) => current.includes(row.id) ? current.filter((id) => id !== row.id) : [...current, row.id])} className="h-3.5 w-3.5 accent-[#0759b6]" /></td><td className="sticky left-10 z-10 border border-[#eef1f5] bg-inherit px-2 text-center whitespace-nowrap">{row.waybill}</td><td className="sticky left-[200px] z-10 border border-[#eef1f5] bg-inherit px-2 text-center text-[#3885d6] shadow-[5px_0_8px_-7px_rgba(15,23,42,0.55)]"><button type="button" onClick={() => row.instructionType === '自提' ? setDetailRow(row) : addToast?.(`已打开指令单 ${row.instructionNo}`, 'info')} className="whitespace-nowrap hover:underline">{row.instructionNo}</button></td><td className="border border-[#eef1f5] px-2 text-center leading-5">{row.names.map((name) => <div key={name}>{name}</div>)}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.created}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.updated}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.shipment}</td><td className="border border-[#eef1f5] px-2 text-center">{row.reference}</td><td className={`border border-[#eef1f5] px-2 text-center ${getStatusColor(row, statusText)}`}><div className="whitespace-nowrap">{statusText}</div>{processingResult && processingResult !== statusText && <div className="mt-1 whitespace-nowrap text-[10px] text-slate-500">处理结果：{processingResult}</div>}</td>{showFailureReason && <td className={"border border-[#eef1f5] px-3 py-2 text-left " + (interceptFailed ? "text-rose-600" : "text-slate-400")}><div className="min-w-[200px] max-w-[260px] whitespace-pre-wrap break-words leading-5">{getFailureReason(row) || "—"}</div></td>}<td className="border border-[#eef1f5] px-2 text-center"><Photo label={row.photo} /></td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.customer}</td><td className="border border-[#eef1f5] px-2 text-center">{row.warehouse}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.zip}</td><td className="border border-[#eef1f5] px-2 text-center">{row.orderType}</td><td className="border border-[#eef1f5] px-2 text-center">{row.instructionType}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.instructionType === '自提' ? row.expectedPickupTime || '' : ''}</td><td className="border border-[#eef1f5] px-2 py-2 text-center"><div className="min-w-[180px] max-w-[240px] whitespace-pre-wrap break-words">{row.instructionType === '拦截' ? (row.interceptReason || '-') : '-'}</div></td><td className="border border-[#eef1f5] px-2 text-center">{row.destination}</td><td className="border border-[#eef1f5] px-2 text-center">{row.salesman}</td><td className="border border-[#eef1f5] px-2 text-center">{row.merchandiser}</td><td className="border border-[#eef1f5] px-2 text-center">{row.fee}</td><td className="border border-[#eef1f5] px-2 text-center">{row.packages}</td><td className="border border-[#eef1f5] px-2 text-center">{row.weight}</td><td className="border border-[#eef1f5] px-2 text-center">{row.volume}</td><td className="border border-[#eef1f5] px-2 text-center">{row.arrived}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.overseasTime}</td></tr>; })}{visible.length === 0 && <tr><td colSpan={showFailureReason ? 27 : 26} className="h-48 border border-[#eef1f5] text-center text-slate-400">暂无符合筛选条件的指令数据</td></tr>}</tbody></table></div>
       <footer className="flex h-10 shrink-0 items-center justify-end gap-4 border-t border-[#edf0f4] px-4 text-xs text-slate-500"><span>共 {visible.length} 条</span><select aria-label="每页条数" className="h-6 rounded border border-slate-200 bg-white px-2 text-xs"><option>100条/页</option></select><button type="button">‹</button><span className="text-[#0759b6]">1</span><button type="button">›</button><span>前往</span><input aria-label="页码" className="h-6 w-9 rounded border border-slate-200 text-center text-xs" value="1" readOnly /><span>页</span></footer>
     </section>
+    {detailRow?.instructionType === '自提' && (
+      <div className="fixed inset-0 z-50 flex justify-end bg-black/35" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailRow(null); }}>
+        <aside role="dialog" aria-modal="true" aria-label="自提指令详情" className="flex h-full w-[420px] max-w-full flex-col bg-white shadow-xl">
+          <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <h2 className="text-base font-semibold text-slate-900">自提指令详情</h2>
+            <button type="button" aria-label="关闭详情" className="text-xl text-slate-500" onClick={() => setDetailRow(null)}>×</button>
+          </header>
+          <dl className="flex-1 space-y-4 overflow-auto p-5 text-sm">
+            {[
+              ['指令单号', detailRow.instructionNo],
+              ['运单号', detailRow.waybill],
+              ['预计提货时间', detailRow.expectedPickupTime || ''],
+              ['提货联系人', detailRow.pickupContact || '—'],
+              ['联系电话', detailRow.pickupPhone || '—'],
+            ].map(([label, value]) => (
+              <div key={label} className="border-b border-slate-100 pb-3"><dt className="mb-1 text-xs text-slate-400">{label}</dt><dd className="text-slate-700">{value}</dd></div>
+            ))}
+          </dl>
+          <footer className="border-t border-slate-200 p-4 text-right"><button type="button" onClick={() => setDetailRow(null)} className="rounded border border-slate-200 px-5 py-2 text-xs">关闭</button></footer>
+        </aside>
+      </div>
+    )}
   </main>;
 }

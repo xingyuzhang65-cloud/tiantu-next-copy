@@ -58,6 +58,8 @@ interface InterceptTask {
   handler: string;
   handleAt: string;
   failReason: string;
+  rejectReason?: string;
+  cancelReason?: string;
   actualBoxes: string;
   storageNo: string;
   resultRemark: string;
@@ -105,7 +107,13 @@ const emptyFilters: FilterState = {
 
 const canceledOrRejectedStatuses: InterceptStatus[] = ['已驳回', '已取消'];
 const statusTabs: InterceptWorkbenchTab[] = ['待处理', '已确认', '拦截中', '已完成', '取消/驳回', '全部'];
-const tableHeaders = ['客户名称', '拦截单号', '运单号', '客户单号', '最新运踪', '拦截原因', '拦截箱数', '指令费用', '核销状态', '客户备注', '内部备注', '申请人', '申请时间', '处理人', '处理时间', '操作'];
+const tableHeaders = ['客户名称', '拦截单号', '运单号', '客户单号', '最新运踪', '拦截原因', '拦截箱数', '指令费用', '核销状态', '客户备注', '内部备注', '申请人', '申请时间', '操作'];
+const terminationReason = (task: InterceptTask) => task.status === '已取消'
+  ? task.cancelReason || task.resultRemark || '-'
+  : task.status === '已驳回'
+    ? task.rejectReason || task.failReason || task.resultRemark || '-'
+    : '-';
+const completedResult = (task: InterceptTask) => task.failReason ? '拦截失败' : '拦截成功';
 
 const initialTasks: InterceptTask[] = [
   {
@@ -417,6 +425,7 @@ export function cancelInterceptsByWaybill(ids: string[], requests: OverseasInter
       status: '已取消',
       handler: '客服-张敏',
       handleAt: stamp,
+      cancelReason: '运单批量取消拦截',
       resultRemark: '运单批量取消拦截',
       logs: [...task.logs, { time: stamp, user: '客服-张敏', action: '取消申请', change: '待处理 → 已取消', note: '运单批量取消拦截' }],
     };
@@ -479,11 +488,11 @@ function statusClass(status: InterceptStatus) {
 }
 
 function tabLabel(status: InterceptWorkbenchTab) {
-  return status;
+  return status === '待处理' ? '待审批' : status;
 }
 
 function displayInterceptStatus(status: InterceptStatus) {
-  return canceledOrRejectedStatuses.includes(status) ? '取消/驳回' : status;
+  return status;
 }
 
 function makeDownloadHref(task: InterceptTask) {
@@ -650,6 +659,7 @@ const unreconciledInstructionFeePrompt = '所选运单包含未核销或部分�
 
 type CancelReasonContext = {
   mode: 'single' | 'batch';
+  action: 'reject' | 'cancel' | 'customer-cancel';
   taskIds: number[];
 };
 
@@ -679,13 +689,15 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   const [editingRemarkField, setEditingRemarkField] = useState<EditableDetailField>('internal');
   const [editRemarkValue, setEditRemarkValue] = useState('');
   const [cancelReasonOpen, setCancelReasonOpen] = useState(false);
-  const [cancelReasonContext, setCancelReasonContext] = useState<CancelReasonContext>({ mode: 'single', taskIds: [] });
+  const [cancelReasonContext, setCancelReasonContext] = useState<CancelReasonContext>({ mode: 'single', action: 'reject', taskIds: [] });
   const [cancelReason, setCancelReason] = useState('');
   const [batchSuccessOpen, setBatchSuccessOpen] = useState(false);
   const [batchSuccessNote, setBatchSuccessNote] = useState('');
   const [batchFailureOpen, setBatchFailureOpen] = useState(false);
   const [batchFailureReason, setBatchFailureReason] = useState('');
   const [batchFailureNote, setBatchFailureNote] = useState('');
+  const [batchNoteOpen, setBatchNoteOpen] = useState(false);
+  const [batchNote, setBatchNote] = useState('');
   const selectAllRef = useRef<HTMLInputElement>(null);
   const [showFeeModal, setShowFeeModal] = useState(false);
   const [feeDraftRows, setFeeDraftRows] = useState<InterceptFeeDraft[]>([]);
@@ -798,12 +810,14 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   const isProcessingView = activeTab === '拦截中';
   const isCompletedView = activeTab === '已完成';
   const isCanceledOrRejectedView = activeTab === '取消/驳回';
-  const showFailureReasonColumn = isCanceledOrRejectedView;
-  const visibleTableHeaders = isCompletedView
-    ? [...tableHeaders.slice(0, -1), '完成结果', '操作']
-    : showFailureReasonColumn
-      ? [...tableHeaders.slice(0, -1), '取消/驳回原因', '操作']
-      : tableHeaders;
+  const showResultColumns = isCompletedView || activeTab === '全部';
+  const showTerminationColumns = isCanceledOrRejectedView || activeTab === '全部';
+  const visibleTableHeaders = [
+    ...tableHeaders.slice(0, -1),
+    ...(showResultColumns ? ['拦截结果', '失败原因'] : []),
+    ...(showTerminationColumns ? ['拦截状态', '取消/驳回原因'] : []),
+    '操作',
+  ];
 
   const updateDraftFilter = (key: keyof FilterState, value: string) => {
     setDraftFilters((prev) => ({ ...prev, [key]: value }));
@@ -944,7 +958,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     if (task.cargoStatus === '已出库') {
       return {
         ...pushLog(task, '已驳回', '状态校验', '货物已完成出库，无法执行拦截', '系统'),
-        failReason: '货物已完成出库',
+        rejectReason: '货物已完成出库',
         resultRemark: '系统校验货物已完成出库，无法执行拦截',
       };
     }
@@ -956,14 +970,30 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     return pushLog(task, '拦截中', '开始拦截', task.cargoStatus === '未拆柜' ? '已创建预报拦截任务' : '已创建仓库拦截任务');
   };
 
-  const applyCancel = (task: InterceptTask, reason: string): InterceptTask => {
+  const applyReject = (task: InterceptTask, reason: string): InterceptTask => {
     if (task.status !== '待处理') return task;
-    const nextRemark = task.remark ? `${task.remark}；取消原因：${reason}` : `取消原因：${reason}`;
     return {
-      ...pushLog(task, '已取消', '取消申请', reason || '取消拦截申请', '客服-张敏'),
-      remark: nextRemark,
-      internalRemark: task.internalRemark || nextRemark,
-      resultRemark: reason || '取消拦截申请',
+      ...pushLog(task, '已驳回', '审批驳回', reason, '客服-张敏'),
+      rejectReason: reason,
+      resultRemark: reason,
+    };
+  };
+
+  const applyCancel = (task: InterceptTask, reason: string): InterceptTask => {
+    if (task.status !== '已确认') return task;
+    return {
+      ...pushLog(task, '已取消', '取消拦截', reason, '客服-张敏'),
+      cancelReason: reason,
+      resultRemark: reason,
+    };
+  };
+
+  const applyCustomerCancel = (task: InterceptTask, reason: string): InterceptTask => {
+    if (task.status !== '待处理' && task.status !== '已确认') return task;
+    return {
+      ...pushLog(task, '已取消', '客户取消', reason, '客服-张敏'),
+      cancelReason: reason,
+      resultRemark: reason,
     };
   };
 
@@ -987,7 +1017,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     if (task.cargoStatus === '已出库') {
       updateTask(taskId, applyConfirm);
       window.alert('货物已出库，无法执行拦截');
-      addToast?.('货物已出库，拦截失败', 'warning');
+      addToast?.('货物已出库，申请已驳回', 'warning');
       return;
     }
     const prompt = hasUnreconciledInstructionFee(task)
@@ -997,7 +1027,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
         : '当前货物已入库，确认执行拦截？';
     if (!window.confirm(prompt)) return;
     updateTask(taskId, applyConfirm);
-    addToast?.('拦截任务已确认', 'success');
+    addToast?.('拦截申请已审批通过', 'success');
   };
 
   const startInterceptTask = (taskId: number) => {
@@ -1017,7 +1047,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   const cancelTask = (taskId: number) => {
     const task = tasks.find((item) => item.id === taskId);
     if (!task || task.status !== '待处理') return;
-    openCancelReason({ mode: 'single', taskIds: [taskId] });
+    openCancelReason({ mode: 'single', action: 'reject', taskIds: [taskId] });
   };
 
   const notifySelectionMissing = () => {
@@ -1040,12 +1070,12 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     const message = containsUnreconciledInstructionFee
       ? unreconciledInstructionFeePrompt
       : outboundCount
-        ? `确认批量确认选中的 ${taskIds.length} 条拦截申请吗？其中 ${outboundCount} 条货物已出库，将自动标记为拦截失败。`
-        : `确认批量确认选中的 ${taskIds.length} 条拦截申请吗？`;
+        ? `确认通过选中的 ${taskIds.length} 条拦截申请吗？其中 ${outboundCount} 条货物已出库，将自动归入驳回。`
+        : `确认通过选中的 ${taskIds.length} 条拦截申请吗？`;
     if (!window.confirm(message)) return;
     setTasks((prev) => prev.map((task) => taskIds.includes(task.id) ? applyConfirm(task) : task));
     setSelectedIds([]);
-    addToast?.('已批量确认拦截申请', 'success');
+    addToast?.('已批量审批通过拦截申请', 'success');
   };
 
   const handleBatchStartIntercept = () => {
@@ -1068,7 +1098,15 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       notifySelectionMissing();
       return;
     }
-    openCancelReason({ mode: 'batch', taskIds });
+    openCancelReason({ mode: 'batch', action: 'reject', taskIds });
+  };
+
+  const openProcessingCancel = (taskIds: number[], mode: CancelReasonContext['mode']) => {
+    if (!taskIds.length) {
+      notifySelectionMissing();
+      return;
+    }
+    openCancelReason({ mode, action: 'cancel', taskIds });
   };
 
   const openBatchSuccess = () => {
@@ -1088,6 +1126,23 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     setBatchFailureReason('');
     setBatchFailureNote('');
     setBatchFailureOpen(true);
+  };
+
+  const submitBatchNote = (event: React.FormEvent) => {
+    event.preventDefault();
+    const note = batchNote.trim();
+    if (!note) return;
+    const taskIds = selectedVisible.filter((task) => ['待处理', '已确认', '拦截中'].includes(task.status)).map((task) => task.id);
+    setTasks((prev) => prev.map((task) => {
+      if (!taskIds.includes(task.id)) return task;
+      const previous = task.internalRemark || task.remark;
+      const next = previous ? `${previous}；${note}` : note;
+      return appendLog({ ...task, internalRemark: next, remark: next }, '批量内部备注', note);
+    }));
+    setSelectedIds([]);
+    setBatchNote('');
+    setBatchNoteOpen(false);
+    addToast?.(`已为 ${taskIds.length} 条拦截任务追加内部备注`, 'success');
   };
 
   const startEditRemark = (task: InterceptTask, field: EditableDetailField = 'internal') => {
@@ -1162,7 +1217,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       }
       const note = feedbackNote.trim();
       updateTask(detailTask.id, (task) => ({
-        ...pushLog(task, '已驳回', '拦截失败', `${reason}${note ? `；${note}` : ''}`),
+        ...pushLog(task, '已完成', '拦截失败', `${reason}${note ? `；${note}` : ''}`),
         failReason: reason,
         resultRemark: note || reason,
       }));
@@ -1177,16 +1232,22 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   const submitCancelReason = () => {
     const reason = cancelReason.trim();
     if (!reason) {
-      window.alert('请输入取消原因');
+      window.alert(cancelReasonContext.action === 'reject' ? '请输入驳回原因' : '请输入取消原因');
       return;
     }
     const taskIds = cancelReasonContext.taskIds;
-    setTasks((prev) => prev.map((task) => taskIds.includes(task.id) ? applyCancel(task, reason) : task));
+    setTasks((prev) => prev.map((task) => taskIds.includes(task.id)
+      ? cancelReasonContext.action === 'reject' ? applyReject(task, reason)
+        : cancelReasonContext.action === 'customer-cancel' ? applyCustomerCancel(task, reason)
+          : applyCancel(task, reason)
+      : task));
     setCancelReasonOpen(false);
     setCancelReason('');
-    setCancelReasonContext({ mode: 'single', taskIds: [] });
+    setCancelReasonContext({ mode: 'single', action: 'reject', taskIds: [] });
     setSelectedIds((ids) => cancelReasonContext.mode === 'batch' ? ids.filter((id) => !taskIds.includes(id)) : ids.filter((id) => !taskIds.includes(id)));
-    addToast?.(cancelReasonContext.mode === 'batch' ? '已批量取消拦截申请' : '拦截申请已取消', 'info');
+    addToast?.(cancelReasonContext.action === 'reject'
+      ? cancelReasonContext.mode === 'batch' ? '已批量驳回拦截申请' : '拦截申请已驳回'
+      : cancelReasonContext.mode === 'batch' ? '已批量取消拦截' : '拦截已取消', 'info');
   };
 
   const submitBatchSuccess = () => {
@@ -1211,7 +1272,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     const note = batchFailureNote.trim();
     setTasks((prev) => prev.map((task) => taskIds.includes(task.id)
       ? {
-          ...pushLog(task, '已驳回', '拦截失败', `${reason}${note ? `；${note}` : ''}`),
+          ...pushLog(task, '已完成', '拦截失败', `${reason}${note ? `；${note}` : ''}`),
           failReason: reason,
           resultRemark: note || reason,
         }
@@ -1228,11 +1289,13 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       notifySelectionMissing();
       return;
     }
-    const headers = ['客户名称', '拦截单号', '运单号', '客户单号', '最新运踪', '拦截原因', '拦截箱数', '指令费用', '核销状态', '客户备注', '内部备注', '申请人', '申请时间', '处理人', '处理时间'];
+    const headers = visibleTableHeaders.filter((header) => header !== '操作');
     const rows = selectedVisible.map((task) => [
       task.customer, task.no, task.waybillNo, task.customerOrderNo, task.latestTracking,
       task.reason, task.actualBoxes || task.boxes, (task.instructionFees || []).map(formatInstructionFee).join('；'), getReconciliationStatus(task), task.customerNote || '', task.internalRemark || task.remark || '', task.applicant,
-      task.appliedAt, task.handler || '', task.handleAt || '',
+      task.appliedAt,
+      ...(showResultColumns ? [task.status === '已完成' ? completedResult(task) : '', task.status === '已完成' ? task.failReason || '' : ''] : []),
+      ...(showTerminationColumns ? [task.status, terminationReason(task) === '-' ? '' : terminationReason(task)] : []),
     ]);
     const csv = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }));
@@ -1262,6 +1325,46 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       return;
     }
     addToast?.(task.storageNo ? `正在打开暂存单 ${task.storageNo}` : '暂存详情已生成', 'info');
+  };
+
+  const retryAfterUnpack = (task: InterceptTask) => {
+    if (!task.failReason || task.cargoStatus !== '未拆柜') {
+      addToast?.('仅支持对拆柜前拦截失败任务发起重试', 'warning');
+      return;
+    }
+    const existing = tasks.find((candidate) => candidate.no.startsWith(`${task.no}-`) && ['待处理', '已确认', '拦截中'].includes(candidate.status));
+    if (existing) {
+      addToast?.(`该任务已有未完成的拆柜后拦截：${existing.no}`, 'warning');
+      return;
+    }
+    if (!window.confirm('原拆柜前拦截未成功，确认在货物拆柜后重新发起拦截吗？')) return;
+    const now = nowText();
+    const id = Math.max(...tasks.map((item) => item.id), 0) + 1;
+    const next: InterceptTask = {
+      ...task,
+      id,
+      no: `${task.no}-01`,
+      status: '待处理',
+      cargoStatus: '已拆柜',
+      inventoryStatus: '已入库',
+      outboundStatus: '未出库',
+      latestTracking: '由拆柜前拦截失败任务重新发起',
+      handler: '',
+      handleAt: '',
+      failReason: '',
+      rejectReason: '',
+      cancelReason: '',
+      resultRemark: '',
+      storageNo: '',
+      fees: [],
+      instructionFees: [],
+      logs: [{ time: now, user: '客服-张敏', action: '重新发起拆柜后拦截', change: '- → 待处理', note: `由失败任务 ${task.no} 重新发起，费用需重新录入` }],
+    };
+    setTasks((prev) => [...prev, next]);
+    setActiveTab('待处理');
+    setSelectedIds([]);
+    setDetailTaskId(null);
+    addToast?.('已发起拆柜后拦截，任务进入待审批', 'success');
   };
 
   const allVisibleSelected = filteredTasks.length > 0 && filteredTasks.every((task) => selectedIds.includes(task.id));
@@ -1296,7 +1399,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       addToast?.('已筛选可取消的申请，其余运单无待处理拦截申请', 'info');
     }
     setSelectedIds(eligible.map((task) => task.id));
-    openCancelReason({ mode: 'batch', taskIds: eligible.map((task) => task.id) });
+    openCancelReason({ mode: 'batch', action: 'customer-cancel', taskIds: eligible.map((task) => task.id) });
   }, [cancelWaybillIds, tasks]);
 
   useEffect(() => {
@@ -1318,6 +1421,8 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
         closeFeeModal();
       } else if (cancelReasonOpen) {
         setCancelReasonOpen(false);
+      } else if (batchNoteOpen) {
+        setBatchNoteOpen(false);
       } else if (feedbackMode) {
         setFeedbackMode('');
       } else if (batchSuccessOpen) {
@@ -1334,7 +1439,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [batchFailureOpen, batchSuccessOpen, cancelReasonOpen, deletingAttachment, detailTaskId, editingRemarkId, feedbackMode, logTaskId, showAttachmentModal, showFeeModal]);
+  }, [batchFailureOpen, batchNoteOpen, batchSuccessOpen, cancelReasonOpen, deletingAttachment, detailTaskId, editingRemarkId, feedbackMode, logTaskId, showAttachmentModal, showFeeModal]);
 
   return (
     <div className="mc-intercept-page">
@@ -1371,28 +1476,32 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
             })}
           </div>
           <div className="mc-status-actions">
-            {isPendingView && <button className="mc-btn" type="button" onClick={handleBatchCancel}>取消拦截</button>}
-            {isPendingView && <button className="mc-btn primary" type="button" onClick={handleBatchConfirm}>确认拦截</button>}
+            {isPendingView && <button className="mc-btn" type="button" onClick={handleBatchCancel}>审批驳回</button>}
+            {isPendingView && <button className="mc-btn primary" type="button" onClick={handleBatchConfirm}>审批通过</button>}
             {isConfirmedView && <button className="mc-btn primary" type="button" onClick={handleBatchStartIntercept}>开始拦截</button>}
             {isProcessingView && <button className="mc-btn primary" type="button" onClick={openBatchSuccess}>拦截成功</button>}
             {isProcessingView && <button className="mc-btn danger" type="button" onClick={openBatchFailure}>拦截失败</button>}
-            {isCompletedView && <button className="mc-btn primary" type="button" onClick={openSelectedCompletionReport}>查看处理报告</button>}
-            <button className="mc-btn" type="button" onClick={exportTasks}>{isCompletedView ? '导出完成记录' : '导出'}</button>
+            {(isPendingView || isConfirmedView || isProcessingView) && <button className="mc-btn" type="button" onClick={() => {
+              if (!selectedVisible.length) { notifySelectionMissing(); return; }
+              setBatchNote(''); setBatchNoteOpen(true);
+            }}>批量内部备注</button>}
+            {isConfirmedView && <button className="mc-btn danger" type="button" onClick={() => openProcessingCancel(selectedVisible.filter((task) => task.status === '已确认').map((task) => task.id), 'batch')}>取消拦截</button>}
+            <button className="mc-btn" type="button" onClick={exportTasks}>导出</button>
           </div>
         </div>
         <div className="mc-intercept-list-summary">
           <span>共 {filteredTasks.length} 条拦截任务</span>
-          <span>{isCanceledOrRejectedView ? '包含已取消和已驳回记录' : isCompletedView ? '已完成的拦截任务将生成暂存单' : '拦截成功后将自动生成暂存单'}</span>
+          <span>{isCanceledOrRejectedView ? '包含已取消和已驳回记录' : isCompletedView ? '拦截成功的任务将生成暂存单' : '拦截成功后将自动生成暂存单'}</span>
         </div>
         <div className="mc-table-scroll">
-          <table className={`mc-intercept-table ${showFailureReasonColumn || isCompletedView ? 'has-result-column' : ''}`}>
+          <table className={`mc-intercept-table ${showResultColumns || showTerminationColumns ? 'has-result-column' : ''}`}>
             <thead>
               <tr>
                 <th className="mc-intercept-check"><input ref={selectAllRef} type="checkbox" aria-label="全选拦截单" disabled={!filteredTasks.length} checked={allVisibleSelected} onChange={(e) => setSelectedIds(e.target.checked ? filteredTasks.map((task) => task.id) : [])} /></th>
                 {visibleTableHeaders.map((head) => (
                   <th
                     key={head}
-                    className={head === '操作' ? 'mc-intercept-actions-cell' : head === '取消/驳回原因' || head === '完成结果' ? 'mc-intercept-result-cell' : undefined}
+                    className={head === '操作' ? 'mc-intercept-actions-cell' : ['取消/驳回原因', '拦截结果', '失败原因', '拦截状态'].includes(head) ? 'mc-intercept-result-cell' : undefined}
                   >
                     {head}
                   </th>
@@ -1426,16 +1535,17 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   </td>
                   <td>{task.applicant}</td>
                   <td>{task.appliedAt}</td>
-                  <td>{task.handler || '-'}</td>
-                  <td>{task.handleAt || '-'}</td>
-                  {showFailureReasonColumn && <td className="mc-intercept-result-cell mc-intercept-failure-reason-cell" title={task.failReason || task.resultRemark || '-'}>{task.failReason || task.resultRemark || '-'}</td>}
-                  {isCompletedView && <td className="mc-intercept-result-cell"><span className={`mc-intercept-status ${statusClass(task.status)}`}>{displayInterceptStatus(task.status)}</span></td>}
+                  {showResultColumns && <>
+                    <td className="mc-intercept-result-cell">{task.status === '已完成' ? completedResult(task) : '-'}</td>
+                    <td className="mc-intercept-result-cell mc-intercept-failure-reason-cell" title={task.status === '已完成' ? task.failReason || '-' : '-'}>{task.status === '已完成' ? task.failReason || '-' : '-'}</td>
+                  </>}
+                  {showTerminationColumns && <>
+                    <td className="mc-intercept-result-cell"><span className={`mc-intercept-status ${statusClass(task.status)}`}>{task.status}</span></td>
+                    <td className="mc-intercept-result-cell mc-intercept-failure-reason-cell" title={terminationReason(task)}>{terminationReason(task)}</td>
+                  </>}
                   <td className="mc-intercept-actions-cell">
                     <div className="mc-intercept-actions">
                       <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('view'); setDetailContentTab('货箱信息'); setDetailTaskId(task.id); }}>详情</button>
-                      {(task.status === '待处理' || task.status === '已确认' || task.status === '拦截中') && <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('process'); setDetailContentTab('货箱信息'); setDetailTaskId(task.id); }}>处理</button>}
-                      {isCompletedView && task.status === '已完成' && <button className="mc-intercept-action" type="button" onClick={() => openStorageDetails(task)}>查看暂存</button>}
-                      {isCanceledOrRejectedView && <button className="mc-intercept-action" type="button" onClick={() => { setDetailMode('view'); setDetailContentTab('其它信息'); setDetailTaskId(task.id); }}>查看结果</button>}
                       <button className="mc-intercept-action" type="button" onClick={() => setLogTaskId(task.id)}>日志</button>
                     </div>
                   </td>
@@ -1473,7 +1583,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   <DetailField label="拦截单号" value={detailTask.no} highlight />
                   <DetailField label="入仓号" value={detailTask.waybillNo || '-'} />
                   <DetailField label="拦截原因" value={detailTask.reason} />
-                  {detailTask.status === '已驳回' && (
+                  {detailTask.status === '已完成' && detailTask.failReason && (
                     <DetailField
                       label="失败原因"
                       value={(
@@ -1484,6 +1594,10 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                       )}
                     />
                   )}
+                  {canceledOrRejectedStatuses.includes(detailTask.status) && (
+                    <DetailField label={detailTask.status === '已取消' ? '取消原因' : '驳回原因'} value={terminationReason(detailTask)} />
+                  )}
+                  {detailTask.status === '已完成' && !detailTask.failReason && <DetailField label="完成结果" value={detailTask.resultRemark || '拦截成功'} />}
                   <DetailField label="拦截箱数" value={`${detailTask.actualBoxes || detailTask.boxes} 箱`} />
                   <DetailField label="核销状态" value={<span className={`mc-reconciliation-status mc-reconciliation-${getReconciliationStatus(detailTask)}`}>{getReconciliationStatus(detailTask)}</span>} />
                   <DetailField label="申请人" value={detailTask.applicant} />
@@ -1682,23 +1796,11 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
             </div>
             <footer className="mc-intercept-drawer-footer">
               <button className="mc-btn" type="button" onClick={() => { setDetailTaskId(null); setDetailMode('view'); setDetailContentTab('货箱信息'); }}>关闭</button>
-              {detailMode === 'process' && detailTask.status === '待处理' && (
-                <>
-                  <button className="mc-btn" type="button" onClick={() => cancelTask(detailTask.id)}>取消申请</button>
-                  <button className="mc-btn primary" type="button" onClick={() => { confirmTask(detailTask.id); }}>确认拦截</button>
-                </>
-              )}
-              {detailMode === 'process' && detailTask.status === '已确认' && (
-                <button className="mc-btn primary" type="button" onClick={() => startInterceptTask(detailTask.id)}>开始拦截</button>
-              )}
-              {detailMode === 'process' && detailTask.status === '拦截中' && (
-                <>
-                  <button className="mc-btn" type="button" onClick={() => openFeedback('failure', detailTask)}>拦截失败</button>
-                  <button className="mc-btn primary" type="button" onClick={() => openFeedback('success', detailTask)}>拦截成功</button>
-                </>
-              )}
-              {detailMode === 'process' && detailTask.status === '已完成' && (
+              {detailTask.status === '已完成' && !detailTask.failReason && (
                 <button className="mc-btn primary" type="button" onClick={() => openStorageDetails(detailTask)}>查看暂存详情</button>
+              )}
+              {detailTask.status === '已完成' && detailTask.failReason && (
+                <button className="mc-btn primary" type="button" onClick={() => retryAfterUnpack(detailTask)}>发起拆柜后拦截</button>
               )}
             </footer>
           </aside>
@@ -1851,15 +1953,28 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
         </div>
       )}
 
+      {batchNoteOpen && (
+        <div className="mc-intercept-overlay mc-intercept-feedback-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setBatchNoteOpen(false); }}>
+          <section className="mc-intercept-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="interceptBatchNoteTitle">
+            <header><h2 id="interceptBatchNoteTitle">内部备注</h2><button className="mc-intercept-close" type="button" aria-label="关闭内部备注" onClick={() => setBatchNoteOpen(false)}>×</button></header>
+            <form onSubmit={submitBatchNote}>
+              <div className="mc-intercept-feedback-content"><label><span className="mc-required">内部备注内容</span><textarea value={batchNote} onChange={(event) => setBatchNote(event.target.value)} maxLength={200} placeholder="请输入内部备注内容" required autoFocus /></label></div>
+              <footer><button className="mc-btn" type="button" onClick={() => setBatchNoteOpen(false)}>取消</button><button className="mc-btn primary" type="submit">确认提交</button></footer>
+            </form>
+          </section>
+        </div>
+      )}
+
       {cancelReasonOpen && (
-        <div className="mc-intercept-overlay mc-intercept-feedback-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) { setCancelReasonOpen(false); setCancelReasonContext({ mode: 'single', taskIds: [] }); } }}>
+        <div className="mc-intercept-overlay mc-intercept-feedback-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) { setCancelReasonOpen(false); setCancelReasonContext({ mode: 'single', action: 'reject', taskIds: [] }); } }}>
           <section className="mc-intercept-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="interceptCancelReasonTitle">
-            <header><h2 id="interceptCancelReasonTitle">{cancelReasonContext.mode === 'batch' ? `批量取消拦截（${cancelReasonContext.taskIds.length} 条）` : '取消拦截'}</h2><button className="mc-intercept-close" type="button" aria-label="关闭取消拦截" onClick={() => { setCancelReasonOpen(false); setCancelReasonContext({ mode: 'single', taskIds: [] }); }}>×</button></header>
+            <header><h2 id="interceptCancelReasonTitle">{cancelReasonContext.mode === 'batch' ? `批量${cancelReasonContext.action === 'reject' ? '审批驳回' : '取消拦截'}（${cancelReasonContext.taskIds.length} 条）` : cancelReasonContext.action === 'reject' ? '审批驳回' : '取消拦截'}</h2><button className="mc-intercept-close" type="button" aria-label="关闭处理弹窗" onClick={() => { setCancelReasonOpen(false); setCancelReasonContext({ mode: 'single', action: 'reject', taskIds: [] }); }}>×</button></header>
             <form onSubmit={(event) => { event.preventDefault(); submitCancelReason(); }}>
               <div className="mc-intercept-feedback-content">
-                <label><span className="mc-required">取消原因</span><textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} maxLength={200} placeholder="请输入取消拦截的原因" required autoFocus /></label>
+                <p>{cancelReasonContext.action === 'reject' ? '该申请将进入驳回状态，请填写驳回原因。' : '该任务将进入取消状态，请填写取消原因。'}</p>
+                <label><span className="mc-required">{cancelReasonContext.action === 'reject' ? '驳回原因' : '取消原因'}</span><textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} maxLength={200} placeholder={cancelReasonContext.action === 'reject' ? '请填写驳回原因' : '请填写取消原因'} required autoFocus /></label>
               </div>
-              <footer><button className="mc-btn" type="button" onClick={() => { setCancelReasonOpen(false); setCancelReasonContext({ mode: 'single', taskIds: [] }); }}>取消</button><button className="mc-btn primary" type="submit">确认取消拦截</button></footer>
+              <footer><button className="mc-btn" type="button" onClick={() => { setCancelReasonOpen(false); setCancelReasonContext({ mode: 'single', action: 'reject', taskIds: [] }); }}>返回</button><button className="mc-btn primary" type="submit">{cancelReasonContext.action === 'reject' ? '提交处理结果' : '确认提交'}</button></footer>
             </form>
           </section>
         </div>

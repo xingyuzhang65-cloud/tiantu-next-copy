@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Calendar, ChevronDown, CirclePlus, Minus, Plus } from 'lucide-react';
 import { operationInstructionOptions } from './customerInstructionData';
 import CustomerInstructionBoxSelection from './CustomerInstructionBoxSelection';
+import { savePickupInstructions } from './pickupInstructionStore';
+import type { PickupSelectedShipment } from './pickupInstructionStore';
 
 const inputClass = 'h-8 rounded border border-[#d8e0ec] bg-white px-3 text-xs text-slate-700 outline-none placeholder:text-[#b8c3d4] focus:border-[#409eff] focus:ring-1 focus:ring-[#409eff]';
 const textareaClass = 'h-10 resize-none rounded border border-[#d8e0ec] bg-white px-3 py-2 text-xs text-slate-700 outline-none placeholder:text-[#b8c3d4] focus:border-[#409eff] focus:ring-1 focus:ring-[#409eff]';
@@ -80,8 +82,13 @@ const instructionTypes = [
   { title: '发货', desc: '需要填写收件地址' },
   { title: '增值服务', desc: '无需填写收件地址' },
   { title: '销毁', desc: '无需填写收件地址' },
+  { title: '自提', desc: '无需填写收件地址' },
   { title: '拦截', desc: '无需填写收件地址' },
 ] as const;
+// 暂时隐藏创建入口；恢复时改为 true，拦截指令的表单与后续流程仍保留。
+const showInterceptInstructionType = false;
+// 自提联系人信息暂不在创建页采集；保留字段供后续恢复和详情查看。
+const showPickupContactFields = false;
 
 function FieldRow({
   label,
@@ -140,6 +147,9 @@ export default function CustomerInstructionCreatePage() {
   const [requirement, setRequirement] = useState('');
   const [selectedInstructionType, setSelectedInstructionType] = useState<(typeof instructionTypes)[number]['title']>('发货');
   const [selectedOperationInstruction, setSelectedOperationInstruction] = useState(operationInstructionOptions[0].name);
+  const [expectedPickupTime, setExpectedPickupTime] = useState('');
+  const [pickupContact, setPickupContact] = useState('');
+  const [pickupPhone, setPickupPhone] = useState('');
   const needsAddress = selectedInstructionType === '发货';
   const operationInstruction = operationInstructionOptions.find((item) => item.name === selectedOperationInstruction) || operationInstructionOptions[0];
 
@@ -156,8 +166,8 @@ export default function CustomerInstructionCreatePage() {
         <section className="rounded-md bg-white px-5 py-4 shadow-[0_2px_10px_rgba(15,23,42,0.08)]">
           <h2 className="text-base font-bold text-slate-950">创建客户指令</h2>
           <p className="mt-2 text-xs text-[#7d8797]">先选择指令类型，再为指令管理配置中选择操作指令</p>
-          <div className="mt-4 grid grid-cols-4 gap-3">
-            {instructionTypes.map((item) => (
+          <div className={`mt-4 grid gap-3 ${showInterceptInstructionType ? 'grid-cols-5' : 'grid-cols-4'}`}>
+            {instructionTypes.filter((item) => showInterceptInstructionType || item.title !== '拦截').map((item) => (
               <InstructionTypeCard
                 key={item.title}
                 title={item.title}
@@ -230,6 +240,21 @@ export default function CustomerInstructionCreatePage() {
 
         {!needsAddress && <section className="rounded-md bg-white px-5 py-4 shadow-[0_2px_10px_rgba(15,23,42,0.08)]">
           <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+            {selectedInstructionType === '自提' && (
+              <>
+                <FieldRow label="预计提货时间" required>
+                  <input className={`${inputClass} w-[220px] max-w-full`} type="datetime-local" name="expectedPickupTime" aria-label="预计提货时间" value={expectedPickupTime} onChange={(event) => setExpectedPickupTime(event.target.value)} required />
+                </FieldRow>
+                {showPickupContactFields && <>
+                  <FieldRow label="提货联系人">
+                    <input className={`${inputClass} w-full`} type="text" name="pickupContact" aria-label="提货联系人" placeholder="请输入提货联系人" value={pickupContact} onChange={(event) => setPickupContact(event.target.value)} />
+                  </FieldRow>
+                  <FieldRow label="联系电话">
+                    <input className={`${inputClass} w-full`} type="tel" name="pickupPhone" aria-label="联系电话" placeholder="请输入联系电话" value={pickupPhone} onChange={(event) => setPickupPhone(event.target.value)} />
+                  </FieldRow>
+                </>}
+              </>
+            )}
             {selectedInstructionType === '拦截' && (
               <FieldRow label="拦截原因" required>
                 <div className="relative">
@@ -325,7 +350,10 @@ export default function CustomerInstructionCreatePage() {
         </div>
         <div hidden={currentStep === 1}>
           <CustomerInstructionBoxSelection instructionType={selectedInstructionType} requirement={requirement}
-            completed={currentStep === 3} onBack={() => setCurrentStep(1)} onComplete={() => setCurrentStep(3)} />
+            completed={currentStep === 3} onBack={() => setCurrentStep(1)} onComplete={(shipments: PickupSelectedShipment[]) => {
+              if (selectedInstructionType === '自提') savePickupInstructions(shipments, { expectedPickupTime, pickupContact, pickupPhone });
+              setCurrentStep(3);
+            }} />
         </div>
       </div>
     </form>

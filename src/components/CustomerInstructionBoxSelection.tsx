@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronRight, Search } from 'lucide-react';
+import type { PickupSelectedShipment } from './pickupInstructionStore';
 
 const inputClass = 'h-8 rounded border border-[#d8e0ec] bg-white px-3 text-xs outline-none placeholder:text-[#b8c3d4] focus:border-[#409eff]';
 const buttonClass = 'h-8 rounded border border-[#d8e0ec] bg-white px-4 text-xs hover:border-[#409eff] hover:text-[#409eff]';
@@ -35,7 +36,7 @@ interface Props {
   requirement: string;
   completed: boolean;
   onBack: () => void;
-  onComplete: () => void;
+  onComplete: (shipments: PickupSelectedShipment[]) => void;
 }
 
 export default function CustomerInstructionBoxSelection({ instructionType, requirement, completed, onBack, onComplete }: Props) {
@@ -214,7 +215,7 @@ export default function CustomerInstructionBoxSelection({ instructionType, requi
         </span>
         <div className="flex gap-3">
           <button type="button" className={buttonClass} onClick={onBack}>上一步</button>
-          <button type="button" className={primaryClass} disabled={!selectedCount} onClick={onComplete}>下一步：提交完成</button>
+          <button type="button" className={primaryClass} disabled={!selectedCount} onClick={() => onComplete(selectedShipments.map((item) => ({ id: item.id, customer: item.customer, shipment: item.shipment, reference: item.reference, warehouse: item.warehouse, boxes: item.boxes.filter((box) => selected.includes(box.id)).length })))}>下一步：提交完成</button>
         </div>
       </footer>
     </section>
