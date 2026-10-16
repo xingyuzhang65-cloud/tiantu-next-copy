@@ -17,15 +17,26 @@ import UserManagementPage from './components/UserManagementPage';
 import MarketingDashboardPage from './components/MarketingDashboardPage';
 import CustomerInstructionCreatePage from './components/CustomerInstructionCreatePage';
 import InstructionListPage from './components/InstructionListPage';
+import InstructionManagementPage from './components/InstructionManagementPage';
+import StorageManagementPage from './components/StorageManagementPage';
+import OverseasStorageInventoryPage from './components/OverseasStagingInventoryPage';
 import ReservedOrderPage from './components/ReservedOrderPage';
 import { Waybill, OrderType, WaybillChangeLog, OverseasInterceptRequest } from './types';
 import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from 'lucide-react';
 
+const workspaceHashByTab: Record<string, string> = {
+  指令管理: '#instruction-management',
+  暂存管理: '#storage-management',
+  海外暂存: '#overseas-storage',
+  运单时效监控: '#overtime-waybills',
+};
+const initialWorkspaceTab = Object.keys(workspaceHashByTab).find(tab => workspaceHashByTab[tab] === location.hash) || '运单';
+
 export default function App() {
   // Tabs management
-  const [openTabs, setOpenTabs] = useState<string[]>(location.hash === '#overtime-waybills' ? ['运单', '运单时效监控'] : ['运单', '常量管理']);
-  const [currentTab, setCurrentTab] = useState<string>(location.hash === '#overtime-waybills' ? '运单时效监控' : '运单');
-  const [currentSubView, setCurrentSubView] = useState<string>(location.hash === '#overtime-waybills' ? '运单时效监控' : '运单');
+  const [openTabs, setOpenTabs] = useState<string[]>(initialWorkspaceTab === '运单' ? ['运单', '常量管理'] : ['运单', '常量管理', initialWorkspaceTab]);
+  const [currentTab, setCurrentTab] = useState<string>(initialWorkspaceTab);
+  const [currentSubView, setCurrentSubView] = useState<string>(initialWorkspaceTab);
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>('塘厦仓');
 
   // Keep the waybill list as the default landing view after refresh.
@@ -431,6 +442,8 @@ export default function App() {
   // Tab operators
   const handleTabChange = (tabName: string) => {
     setCurrentTab(tabName);
+    setCurrentSubView(tabName);
+    history.replaceState(null, '', `${location.pathname}${location.search}${workspaceHashByTab[tabName] || ''}`);
     addToast(`导航至 [${tabName}] 工作窗口`, 'info');
   };
 
@@ -454,7 +467,10 @@ export default function App() {
     
     // Auto shift active tab
     if (currentTab === tabName) {
-      setCurrentTab(updatedTabs[updatedTabs.length - 1] || '运单');
+      const nextTab = updatedTabs[updatedTabs.length - 1] || '运单';
+      setCurrentTab(nextTab);
+      setCurrentSubView(nextTab);
+      history.replaceState(null, '', `${location.pathname}${location.search}${workspaceHashByTab[nextTab] || ''}`);
     }
     addToast(`已关闭 [${tabName}] 标签页`, 'info');
   };
@@ -523,26 +539,24 @@ export default function App() {
     }));
   };
 
+  const navigateToView = (view: string) => {
+    setCurrentSubView(view);
+    setOpenTabs(tabs => tabs.includes(view) ? tabs : [...tabs, view]);
+    handleTabChange(view);
+  };
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-100">
       
       {/* Sidebar subsystem (Multi-level custom panel) */}
-      <Sidebar 
+      <Sidebar
         currentSubView={currentSubView}
-        onSubViewChange={(view) => {
-          setCurrentSubView(view);
-          if (!openTabs.includes(view)) {
-            setOpenTabs(prev => [...prev, view]);
-          }
-          setCurrentTab(view);
-          addToast(`已切换子视图: ${view}`, 'info');
-        }}
+        onSubViewChange={navigateToView}
       />
 
       {/* Primary Workspace Panel */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Header toolbar component */}
-        <Header 
+        <Header
           currentTab={currentTab}
           onTabChange={handleTabChange}
           selectedWarehouse={selectedWarehouse}
@@ -581,7 +595,7 @@ export default function App() {
         ) : currentTab === '海外中转单' ? (
           <OverseasTransitOrderPage addToast={addToast} />
         ) : currentTab === '海外暂存' ? (
-          <OverseasTransitPage addToast={addToast} initialView="list" mode="storage" />
+          <OverseasStorageInventoryPage addToast={addToast} />
         ) : currentTab === '海外拦截' ? (
           <OverseasWarehouseInterceptPage
             addToast={addToast}
@@ -589,13 +603,15 @@ export default function App() {
             cancelWaybillIds={cancelInterceptWaybillIds}
             onCancelWaybillsHandled={() => setCancelInterceptWaybillIds([])}
             onOpenStorage={(storageNo) => {
-              setCurrentTab('海外暂存');
-              setCurrentSubView('海外暂存');
-              if (!openTabs.includes('海外暂存')) setOpenTabs(prev => [...prev, '海外暂存']);
+              navigateToView('海外暂存');
               addToast(storageNo ? `已打开暂存单 ${storageNo}` : '已打开海外暂存', 'info');
             }}
           />
-        ) : currentTab === '指令列表' || currentTab === '指令管理' ? (
+        ) : currentTab === '指令管理' ? (
+          <InstructionManagementPage addToast={addToast} />
+        ) : currentTab === '暂存管理' ? (
+          <StorageManagementPage addToast={addToast} />
+        ) : currentTab === '指令列表' ? (
           <InstructionListPage addToast={addToast} />
         ) : currentTab === '创建客户指令' ? (
           <CustomerInstructionCreatePage />
@@ -693,6 +709,7 @@ export default function App() {
           </div>
         </div>}
       </div>
+
 
       {/* Floating active Create Waybill Modal Overlay */}
       {isCreateOpen && (
