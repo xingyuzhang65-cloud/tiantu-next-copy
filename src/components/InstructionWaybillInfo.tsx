@@ -10,6 +10,7 @@ export type InstructionWaybillSummary = {
   waybillType: string;
   destination: string;
   boxCount: string;
+  customerNote: string;
 };
 
 type InstructionWaybillInfoProps = {
@@ -49,7 +50,8 @@ export default function InstructionWaybillInfo({
         ['托盘标签', summary.palletLabel],
         ['指令单类型', summary.instructionType],
         ['发货件数', summary.boxCount],
-      ] as const).map(([label, content]) => <div key={label}><dt>{label}：</dt><dd>{display(content)}</dd></div>)}
+        ['客户备注', summary.customerNote],
+      ] as const).map(([label, content]) => <div key={label} className={label === '客户备注' ? 'instruction-waybill-customer-note' : undefined}><dt>{label}：</dt><dd>{display(content)}</dd></div>)}
     </dl>
 
     <div className="instruction-waybill-info-form">

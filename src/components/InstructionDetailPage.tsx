@@ -252,7 +252,7 @@ export default function InstructionDetailPage({ row, onClose, onUpdate }: {
           <button className="mc-intercept-close" type="button" aria-label="关闭指令详情" onClick={onClose}>×</button>
         </header>
         <div className="mc-intercept-detail-content">
-          <InstructionWaybillInfo summary={waybillContext.summary} value={canEdit ? waybillDraft : savedWaybill} required={requiredWaybill} readOnly={!canEdit}
+          <InstructionWaybillInfo summary={{ ...waybillContext.summary, customerNote: state.customerNote }} value={canEdit ? waybillDraft : savedWaybill} required={requiredWaybill} readOnly={!canEdit}
             onChange={(patch) => { if (!canEdit) return; setWaybillDraft((current) => ({ ...current, ...patch })); setWaybillError(''); setWaybillSaved(false); }}
             onCancel={cancelWaybill} onSave={saveWaybill} error={waybillError} saved={waybillSaved} dirty={waybillDirty} />
           {row.instructionType === '自提' && <section className="mc-intercept-detail-card"><div className="mc-intercept-basic-grid"><DetailField label="预计提货时间" value={show(row.expectedPickupTime)} /><DetailField label="提货联系人" value={show(row.pickupContact)} /><DetailField label="联系电话" value={show(row.pickupPhone)} /></div></section>}

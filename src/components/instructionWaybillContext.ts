@@ -30,6 +30,7 @@ export function getInstructionWaybillContext(row: InstructionListRow, inventory:
       waybillType,
       destination: agreed(orders.map((order) => order.destination)) || join(records.map((record) => record.destination)) || clean(row.warehouse) || clean(row.destination),
       boxCount: clean(row.packages),
+      customerNote: row.customerNote || '',
     },
     fields: {
       shipmentId: clean(row.shipment) || agreed(orders.map((order) => order.shipmentId)) || agreed(records.map((record) => record.shipmentId)),

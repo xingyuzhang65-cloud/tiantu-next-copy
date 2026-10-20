@@ -59,6 +59,10 @@
   overflow-wrap: anywhere;
 }
 
+.instruction-waybill-customer-note dd {
+  white-space: pre-wrap;
+}
+
 .instruction-waybill-info-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -142,6 +146,10 @@
 
 @media (max-width: 420px) {
   .instruction-waybill-info-summary {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .instruction-waybill-info-summary > div:nth-child(-n + 4) {
+    grid-column: 1 / -1;
   }
 }
