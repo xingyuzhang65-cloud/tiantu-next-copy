@@ -1,15 +1,19 @@
 import { instructionManagementCatalog, type InstructionCatalogRow } from './instructionManagementCatalog';
+import { getOverseasInventoryExample } from './overseasStorageInventoryExamples';
 
 export type InventoryStatus = '暂存' | '待出库' | '已出库';
+export type InventoryType = '拦截' | '暂存';
 export type ReleaseKind = '发货' | '增值服务' | '销毁' | '自提';
 export type WaybillType = 'FBA' | 'Walmart' | 'Tiktok' | '私人地址';
 export interface CargoBox { id: string; recordId: string; boxNo: string; weight: number; dimensions: string; systemWeight: number; status: '待处理' | '处理中' | '已出库' }
 export interface InventoryRecord {
-  id: string; customer: string; container: string; system: string; inbound: string; blocked: string; transfer: string;
+  id: string; customer: string; container: string; system: string; inbound: string; blocked: InventoryType; transfer: string;
   destination: string; dispatch: string; pallet: string; time: string; weight: number; volume: number; boxes: number;
   pending: number; unsent: number; sent: number; status: InventoryStatus; location: string; remark: string; cargoBoxes: CargoBox[];
   applicationNo?: string; waybillType?: string; releaseType?: ReleaseKind; shipmentId?: string; referenceId?: string;
   financialAudit?: string; chargedPallets?: number;
+  waybillNo?: string; fbaNo?: string; warehouseCode?: string; service?: string;
+  instructions?: StorageFeeLine[];
 }
 export interface StorageAttachment { id: string; name: string; size: number; type: string; dataUrl?: string }
 export interface StorageFeeLine {
@@ -32,6 +36,16 @@ const kinds: ReleaseKind[] = ['发货','增值服务','销毁','自提'];
 const waybillTypes: WaybillType[] = ['FBA','Walmart','Tiktok','私人地址'];
 const nowText = () => new Date().toLocaleString('sv-SE').replace('T', ' ');
 const uniqueId = (prefix: string) => prefix + '-' + Date.now() + '-' + Math.random().toString(36).slice(2,9);
+function normalizeInventoryType(value: string): InventoryType {
+  return value.trim()==='是'||value.includes('拦截')?'拦截':'暂存';
+}
+function normalizeInventoryRecord(row: InventoryRecord): InventoryRecord {
+  const normalized={...row,blocked:normalizeInventoryType(row.blocked)};
+  const example=getOverseasInventoryExample(normalized);
+  return {...normalized,waybillNo:row.waybillNo?.trim()?row.waybillNo:example?.waybillNo??'',fbaNo:row.fbaNo?.trim()?row.fbaNo:example?.fbaNo??'',
+    warehouseCode:row.warehouseCode?.trim()?row.warehouseCode:example?.warehouseCode??'',service:row.service?.trim()?row.service:example?.service??'',
+    remark:row.remark===example?.remark?'':row.remark||'',instructions:row.instructions??example?.instructions??[]};
+}
 
 type SourceInventoryRow = [string,string,string,string,string,string,string,string,string,string,number,number,number,number,number,number,string];
 const sourceInventoryRows: SourceInventoryRow[] = [
@@ -615,11 +629,11 @@ function withCargoBoxes(row: Omit<InventoryRecord, 'cargoBoxes'>): InventoryReco
     dimensions: '—', systemWeight: count ? Number((row.weight/count).toFixed(3)) : 0,
     status: index < unsent ? '待处理' : index < unsent+pending ? '处理中' : '已出库',
   }));
-  return {...row, boxes: count, unsent, sent, pending, cargoBoxes};
+  return normalizeInventoryRecord({...row, boxes: count, unsent, sent, pending, cargoBoxes});
 }
 export function createInitialOverseasInventory(): InventoryState {
   const records = sourceInventoryRows.map((r,index) => withCargoBoxes({
-    id:'staging-'+(index+1),customer:r[0],container:r[1],system:r[2],inbound:r[3],blocked:r[4],transfer:r[5],
+    id:'staging-'+(index+1),customer:r[0],container:r[1],system:r[2],inbound:r[3],blocked:normalizeInventoryType(r[4]),transfer:r[5],
     destination:r[6],dispatch:r[7],pallet:r[8],time:r[9],weight:r[10],volume:r[11],boxes:r[12],pending:r[13],
     unsent:r[14],sent:r[15],status:'暂存',location:'A-01-'+String(index+1).padStart(2,'0'),remark:'',
   }));
@@ -630,7 +644,7 @@ export function createInitialOverseasInventory(): InventoryState {
       const r=sourceOutboundRows[index % sourceOutboundRows.length];
       records.push(withCargoBoxes({
         id:(status==='待出库'?'ready-':'shipped-')+(index+1),customer:r.customer,container:r.container,system:r.system,
-        inbound:r.inbound,blocked:r.blocked ? '拦截' : '暂存',transfer:r.transfer,destination:r.applicationType==='FBA仓库'?'ABE8':'其他地址',
+        inbound:r.inbound,blocked:normalizeInventoryType(r.blocked),transfer:r.transfer,destination:r.applicationType==='FBA仓库'?'ABE8':'其他地址',
         dispatch:r.dispatch,pallet:r.pallet,time:r.inboundTime,weight:0,volume:r.appliedVolume,boxes:r.appliedBoxes,pending:0,
         unsent:status==='待出库'?r.appliedBoxes:0,sent:status==='已出库'?r.appliedBoxes:0,status,
         location:'B-01-'+String(index+1).padStart(2,'0'),remark:'',
@@ -659,8 +673,9 @@ function validRecord(row: InventoryRecord) {
     || !['boxes','pending','unsent','sent','weight','volume'].every(key=>finiteNonnegative(row[key as keyof InventoryRecord]))
     || ![row.boxes,row.pending,row.unsent,row.sent].every(Number.isInteger)
     || row.pending+row.unsent+row.sent!==row.boxes || !Array.isArray(row.cargoBoxes) || row.cargoBoxes.length!==row.boxes) return false;
-  if(['applicationNo','waybillType','shipmentId','referenceId','financialAudit'].some(key=>row[key as keyof InventoryRecord]!==undefined&&typeof row[key as keyof InventoryRecord]!=='string')
-    || row.releaseType!==undefined&&!kinds.includes(row.releaseType) || row.chargedPallets!==undefined&&!finiteNonnegative(row.chargedPallets))return false;
+  if(['applicationNo','waybillType','shipmentId','referenceId','financialAudit','waybillNo','fbaNo','warehouseCode','service'].some(key=>row[key as keyof InventoryRecord]!==undefined&&typeof row[key as keyof InventoryRecord]!=='string')
+    || row.releaseType!==undefined&&!kinds.includes(row.releaseType) || row.chargedPallets!==undefined&&!finiteNonnegative(row.chargedPallets)
+    || row.instructions!==undefined&&(!Array.isArray(row.instructions)||!row.instructions.every(validFee)))return false;
   const ids=new Set<string>();
   for(const box of row.cargoBoxes) {
     if(!box || typeof box.id!=='string' || ids.has(box.id) || box.recordId!==row.id || typeof box.boxNo!=='string' || typeof box.dimensions!=='string'
@@ -701,7 +716,7 @@ export function loadOverseasInventory(): InventoryState {
     }
     const logs=raw.logs.filter(log=>log && recordIds.has(log.recordId) && ['id','at','action'].every(key=>typeof log[key as keyof InventoryLog]==='string')
       && Array.isArray(log.details) && log.details.every(d=>typeof d==='string'));
-    return {...raw, logs};
+    return {...raw, records:raw.records.map(normalizeInventoryRecord), logs};
   } catch { return createInitialOverseasInventory(); }
 }
 export function persistOverseasInventory(state: InventoryState): void {
@@ -813,10 +828,11 @@ export function getInventoryFeeCatalog(): StorageFeeLine[] {
 }
 export function exportInventoryCsv(rows: InventoryRecord[]): string {
   const columns: [keyof InventoryRecord,string][]=[
+    ['waybillNo','运单号'],['fbaNo','FBA号'],['warehouseCode','仓库代码'],['service','服务'],
     ['customer','客户名称'],['container','柜号'],['system','系统柜号'],['inbound','入仓号'],['blocked','库存类型'],['transfer','转运方式'],
     ['destination','目的地'],['dispatch','派送方式'],['pallet','托盘标签'],['time','入库时间'],['weight','重量'],['volume','体积'],
-    ['boxes','总箱数'],['pending','待审核箱数'],['unsent','未发货箱数'],['sent','已发货箱数'],['location','库位'],['remark','备注'],
+    ['boxes','总箱数'],['pending','待审核箱数'],['unsent','未发货箱数'],['sent','已发货箱数'],['location','库位'],['remark','备注'],['instructions','指令内容'],
   ];
   const escape=(v:unknown)=>{const s=String(v??'');return '"'+(/^[=+@-]/.test(s)?"'"+s:s).replaceAll('"','""')+'"';};
-  return '\uFEFF'+[columns.map(([,label])=>escape(label)).join(','),...rows.map(row=>columns.map(([key])=>escape(row[key])).join(','))].join('\r\n');
+  return '\uFEFF'+[columns.map(([,label])=>escape(label)).join(','),...rows.map(row=>columns.map(([key])=>escape(key==='blocked'?normalizeInventoryType(row.blocked):key==='instructions'?(row.instructions||[]).map(f=>`${f.name} × ${f.quantity}${f.unit}：${f.instructionRemark}`).join('；'):row[key])).join(','))].join('\r\n');
 }

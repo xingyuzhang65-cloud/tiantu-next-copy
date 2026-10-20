@@ -18,7 +18,6 @@ import MarketingDashboardPage from './components/MarketingDashboardPage';
 import CustomerInstructionCreatePage from './components/CustomerInstructionCreatePage';
 import InstructionListPage from './components/InstructionListPage';
 import InstructionManagementPage from './components/InstructionManagementPage';
-import StorageManagementPage from './components/StorageManagementPage';
 import OverseasStorageInventoryPage from './components/OverseasStagingInventoryPage';
 import ReservedOrderPage from './components/ReservedOrderPage';
 import { Waybill, OrderType, WaybillChangeLog, OverseasInterceptRequest } from './types';
@@ -26,7 +25,7 @@ import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from
 
 const workspaceHashByTab: Record<string, string> = {
   指令管理: '#instruction-management',
-  暂存管理: '#storage-management',
+  指令列表: '#instruction-list',
   海外暂存: '#overseas-storage',
   运单时效监控: '#overtime-waybills',
 };
@@ -609,8 +608,6 @@ export default function App() {
           />
         ) : currentTab === '指令管理' ? (
           <InstructionManagementPage addToast={addToast} />
-        ) : currentTab === '暂存管理' ? (
-          <StorageManagementPage addToast={addToast} />
         ) : currentTab === '指令列表' ? (
           <InstructionListPage addToast={addToast} />
         ) : currentTab === '创建客户指令' ? (

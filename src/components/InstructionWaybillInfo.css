@@ -1,0 +1,147 @@
+.instruction-waybill-info {
+  color: #354052;
+  font-size: 12px;
+}
+
+.instruction-waybill-info .instruction-waybill-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.instruction-waybill-info .instruction-waybill-info-header h3 {
+  margin: 0;
+}
+
+.instruction-waybill-info-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.instruction-waybill-info .instruction-waybill-info-actions .mc-btn {
+  min-height: 28px;
+  padding: 4px 14px;
+}
+
+.instruction-waybill-info-saved {
+  color: #31a264;
+}
+
+.instruction-waybill-info-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 18px;
+  margin: 0;
+  padding: 20px 0;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.instruction-waybill-info-summary > div {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.instruction-waybill-info-summary dt {
+  flex-shrink: 0;
+  margin: 0;
+  color: #68788b;
+}
+
+.instruction-waybill-info-summary dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.instruction-waybill-info-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 28px;
+  padding-top: 20px;
+}
+
+.instruction-waybill-info-form > label {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.instruction-waybill-info-form > label > span {
+  width: 100px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.instruction-waybill-info-form input,
+.instruction-waybill-info-form select {
+  display: block;
+  min-width: 0;
+  width: 100%;
+  height: 30px;
+  padding: 4px 8px;
+  border: 1px solid #dce2e9;
+  border-radius: 3px;
+  color: #354052;
+  background-color: #fff;
+  outline: none;
+}
+
+.instruction-waybill-info-form input::placeholder {
+  color: #bac1cc;
+}
+
+.instruction-waybill-info-form select:disabled {
+  opacity: 1;
+  color: #8d98a7;
+  background-color: #fff;
+  -webkit-text-fill-color: #8d98a7;
+  cursor: default;
+}
+
+.instruction-waybill-info-form input[readonly] {
+  background-color: #f3f5f8;
+  color: #7d8998;
+  cursor: default;
+}
+
+.instruction-waybill-info-form input:not([readonly]):focus {
+  border-color: #168ff5;
+  box-shadow: 0 0 0 1px #168ff5;
+}
+
+.instruction-waybill-info-required,
+.instruction-waybill-info-error {
+  color: #ed5658;
+}
+
+.instruction-waybill-info-error {
+  margin: 12px 0 0;
+}
+
+@media (max-width: 720px) {
+  .instruction-waybill-info-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .instruction-waybill-info-form {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 14px;
+  }
+
+  .instruction-waybill-info .instruction-waybill-info-header {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 420px) {
+  .instruction-waybill-info-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

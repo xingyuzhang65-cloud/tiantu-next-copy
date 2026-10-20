@@ -1,0 +1,73 @@
+.instruction-detail-portal {
+  color: #354052;
+  font: 12px/1.35 "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+}
+
+.instruction-detail-portal button,
+.instruction-detail-portal input,
+.instruction-detail-portal select,
+.instruction-detail-portal textarea {
+  font: inherit;
+}
+
+.instruction-detail-portal button {
+  cursor: pointer;
+}
+
+.instruction-detail-error {
+  position: fixed;
+  z-index: 1000;
+  right: 24px;
+  bottom: 24px;
+  max-width: calc(100vw - 48px);
+  padding: 10px 16px;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  color: #b91c1c;
+  background: #fff1f2;
+  box-shadow: 0 3px 12px #0001;
+  font-size: 12px;
+}
+
+.instruction-detail-portal button:focus-visible,
+.instruction-detail-portal textarea:focus-visible,
+.instruction-detail-portal select:focus-visible {
+  outline: 2px solid #168ff5;
+  outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .instruction-detail-drawer {
+    height: 100dvh;
+  }
+
+  .instruction-detail-drawer .mc-intercept-drawer-header {
+    min-height: 64px;
+    padding: 4px 16px;
+    gap: 12px;
+  }
+
+  .instruction-detail-drawer .mc-intercept-drawer-header > div {
+    min-width: 0;
+  }
+
+  .instruction-detail-drawer .mc-intercept-drawer-header h2 {
+    overflow-wrap: anywhere;
+  }
+
+  .instruction-detail-drawer .mc-intercept-close {
+    flex-shrink: 0;
+  }
+
+  .instruction-detail-portal .mc-intercept-attachment-modal,
+  .instruction-detail-portal .mc-storage-fee-modal {
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+
+  .instruction-detail-portal .mc-intercept-attachment-modal > .space-y-5 {
+    padding-right: 16px;
+    padding-left: 16px;
+    overflow: auto;
+  }
+}

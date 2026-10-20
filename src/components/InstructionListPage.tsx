@@ -2,23 +2,18 @@ import { CalendarDays, ChevronDown, Download, ImageIcon, RotateCcw, Search, Sett
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { readPickupInstructions } from './pickupInstructionStore';
+import InstructionDetailPage from './InstructionDetailPage';
+import { applyInstructionDetailOverrides } from './instructionDetailStore';
+import { loadOverseasInventory } from './overseasStorageInventoryData';
+import { getInstructionPalletLabel, withInstructionInventoryLink } from './instructionInventoryLinks';
+import type { InstructionListRow as Row, InstructionListTab as Tab, InstructionStatus as Status } from './instructionListTypes';
 
-type Tab = '待确认' | '已确认' | '已推送海外仓' | '处理中' | '已完成' | '驳回' | '取消' | '全部';
-type Status = '已处理' | '待处理' | '已取消' | '已驳回';
-type ProcessingResult = '拦截成功' | '拦截失败' | '已处理';
-type Row = {
-  id: string; tab: Tab; waybill: string; instructionNo: string; names: string[]; created: string; updated: string;
-  shipment: string; reference: string; status: Status; processingResult?: ProcessingResult; failureReason?: string; photo?: string; customer: string; warehouse: string; zip: string;
-  orderType: string; instructionType: string; interceptReason?: string; destination: string; salesman: string; merchandiser: string; fee: string;
-  expectedPickupTime?: string; pickupContact?: string; pickupPhone?: string;
-  packages: string; weight: string; volume: string; arrived: '是' | '否'; overseasTime: string;
-};
 type Filters = {
-  instructionNo: string; waybill: string; shipment: string; reference: string; customer: string; salesman: string;
-  merchandiser: string; warehouse: string; orderType: string; instructionType: string; arrived: string; dateFrom: string; dateTo: string;
+  instructionNo: string; waybill: string; palletLabel: string; shipment: string; reference: string; customer: string; salesman: string;
+  merchandiser: string; warehouse: string; orderType: string; instructionType: string; dateFrom: string; dateTo: string;
 };
 
-const emptyFilters: Filters = { instructionNo: '', waybill: '', shipment: '', reference: '', customer: '', salesman: '', merchandiser: '', warehouse: '', orderType: '', instructionType: '', arrived: '', dateFrom: '', dateTo: '' };
+const emptyFilters: Filters = { instructionNo: '', waybill: '', palletLabel: '', shipment: '', reference: '', customer: '', salesman: '', merchandiser: '', warehouse: '', orderType: '', instructionType: '', dateFrom: '', dateTo: '' };
 
 // Local fixtures mirror the two reference screenshots and keep the static GitHub Pages build usable without an API.
 const rawRows: Row[] = [
@@ -78,9 +73,10 @@ const rawRows: Row[] = [
 
 // 仅“放货”需要在创建页填写收件地址；其它指令类型不产生地址/货件标识字段。
 const rows: Row[] = rawRows.map((row) => {
-  if (row.instructionType === '放货') return row;
+  const linked = withInstructionInventoryLink(row);
+  if (row.instructionType === '放货') return linked;
   return {
-    ...row,
+    ...linked,
     shipment: '-',
     reference: '-',
     warehouse: '-',
@@ -94,6 +90,7 @@ const pickupRows = (): Row[] => readPickupInstructions().map((pickup) => ({
   tab: '待确认',
   waybill: pickup.waybill,
   instructionNo: pickup.instructionNo,
+  palletLabel: pickup.palletLabel,
   names: ['自提'],
   created: pickup.createdAt,
   updated: pickup.createdAt,
@@ -123,43 +120,11 @@ const pickupRows = (): Row[] => readPickupInstructions().map((pickup) => ({
 const tabKeys: Tab[] = ['待确认', '已确认', '已推送海外仓', '处理中', '已完成', '驳回', '取消', '全部'];
 const inputClass = 'h-8 min-w-0 flex-1 rounded border border-[#dfe5ee] bg-white px-2 text-xs text-slate-700 outline-none placeholder:text-slate-300 focus:border-[#0759b6] focus:ring-1 focus:ring-[#0759b6]';
 
-const getProcessingResult = (row: Row): ProcessingResult | '' => {
-  if (row.status !== '已处理') return '';
-  if (row.instructionType !== '拦截') return '已处理';
-  return row.processingResult === '拦截成功' || row.processingResult === '拦截失败'
-    ? row.processingResult
-    : '';
-};
+const getProcessingResult = (row: Row) => row.status === '已处理' ? '已处理' : '';
+const getStatusText = (row: Row): string => row.status === '已处理' ? '已完成' : row.status;
+const getRowBackground = (checked: boolean): string => checked ? 'bg-[#f0f6ff]' : 'bg-white';
 
-const isInterceptResult = (value: string): value is '拦截成功' | '拦截失败' =>
-  value === '拦截成功' || value === '拦截失败';
-
-// 拦截类指令的处理状态由海外仓回传，只有「拦截成功 / 拦截失败」，不写通用的「已完成」。
-const getStatusText = (row: Row): string => {
-  if (row.instructionType === '拦截' && row.status === '已处理') {
-    return isInterceptResult(row.processingResult ?? '') ? (row.processingResult as string) : '待海外仓回传';
-  }
-  return row.status === '已处理' ? '已完成' : row.status;
-};
-
-// 拦截失败的行整行标红，便于在列表中一眼定位异常单。
-const isInterceptFailed = (row: Row, statusText: string): boolean =>
-  row.instructionType === '拦截' && statusText === '拦截失败';
-
-const getFailureReason = (row: Row): string =>
-  row.tab === '已完成' && isInterceptFailed(row, getStatusText(row))
-    ? row.failureReason?.trim() || ''
-    : '';
-
-const getRowBackground = (checked: boolean, interceptFailed: boolean): string => {
-  if (interceptFailed) return checked ? 'bg-rose-100' : 'bg-rose-50';
-  return checked ? 'bg-[#f0f6ff]' : 'bg-white';
-};
-
-const getStatusColor = (row: Row, statusText: string): string => {
-  if (statusText === '拦截成功') return 'text-emerald-600';
-  if (statusText === '拦截失败') return 'text-rose-600';
-  if (statusText === '待海外仓回传') return 'text-[#b8c3d4]';
+const getStatusColor = (row: Row): string => {
   if (row.status === '待处理') return 'text-amber-600';
   if (row.status === '已取消') return 'text-slate-400';
   if (row.status === '已驳回') return 'text-rose-600';
@@ -182,36 +147,45 @@ export default function InstructionListPage({ addToast }: { addToast?: (text: st
   const [tab, setTab] = useState<Tab>('待确认');
   const [selected, setSelected] = useState<string[]>([]);
   const [expanded, setExpanded] = useState(true);
-  const [data, setData] = useState(() => [...pickupRows(), ...rows]);
-  const [detailRow, setDetailRow] = useState<Row | null>(null);
+  const [data, setData] = useState(() => {
+    const inventory = loadOverseasInventory().records;
+    return [...pickupRows(), ...rows].map((row) => applyInstructionDetailOverrides({ ...row,
+      palletLabel: getInstructionPalletLabel(row, inventory),
+    }));
+  });
+  const [detailRowId, setDetailRowId] = useState<string | null>(null);
+  const detailRow = data.find(row => row.id === detailRowId);
   const tabs = tabKeys.map((key) => ({ key, count: key === '全部' ? data.length : data.filter((row) => row.tab === key).length }));
-  const showFailureReason = tab === '已完成' || tab === '全部';
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const visible = useMemo(() => data.filter((row) => {
     const includes = (source: string, filter: string) => !filter || source.toLowerCase().includes(filter.trim().toLowerCase());
     const inDate = (!applied.dateFrom || row.created.slice(0, 10) >= applied.dateFrom) && (!applied.dateTo || row.created.slice(0, 10) <= applied.dateTo);
-    return (tab === '全部' || row.tab === tab) && includes(row.instructionNo, applied.instructionNo) && includes(row.waybill, applied.waybill) && includes(row.shipment, applied.shipment) && includes(row.reference, applied.reference) && includes(row.customer, applied.customer) && includes(row.salesman, applied.salesman) && includes(row.merchandiser, applied.merchandiser) && includes(row.warehouse, applied.warehouse) && (!applied.orderType || row.orderType === applied.orderType) && (!applied.instructionType || row.instructionType === applied.instructionType) && (!applied.arrived || row.arrived === applied.arrived) && inDate;
+    return (tab === '全部' || row.tab === tab) && includes(row.instructionNo, applied.instructionNo) && includes(row.waybill, applied.waybill) && includes(row.palletLabel || '', applied.palletLabel) && includes(row.shipment, applied.shipment) && includes(row.reference, applied.reference) && includes(row.customer, applied.customer) && includes(row.salesman, applied.salesman) && includes(row.merchandiser, applied.merchandiser) && includes(row.warehouse, applied.warehouse) && (!applied.orderType || row.orderType === applied.orderType) && (!applied.instructionType || row.instructionType === applied.instructionType) && inDate;
   }), [applied, data, tab]);
   const allSelected = visible.length > 0 && visible.every((row) => selected.includes(row.id));
   const applyQuery = () => { setApplied(draft); setSelected([]); addToast?.('已按筛选条件查询', 'success'); };
   const reset = () => { setDraft(emptyFilters); setApplied(emptyFilters); setSelected([]); addToast?.('筛选条件已重置', 'info'); };
   const toggleAll = () => setSelected((current) => allSelected ? current.filter((id) => !visible.some((row) => row.id === id)) : Array.from(new Set([...current, ...visible.map((row) => row.id)])));
-  const updateStatus = (status: Status, message: string) => {
-    if (!selected.length) { addToast?.('请先勾选需要处理的指令', 'warning'); return; }
-    setData((current) => current.map((row) => selected.includes(row.id) ? { ...row, status, updated: '2026-08-28 09:30:00' } : row));
-    addToast?.(message.replace('{count}', String(selected.length)), 'success'); setSelected([]);
+  const updateWorkflow = (from: Tab, target: Tab, message: string, status?: Status) => {
+    if (tab !== from) return;
+    const picked = new Set(visible.filter((row) => row.tab === from && selected.includes(row.id)).map((row) => row.id));
+    if (!picked.size) { addToast?.('请先勾选需要处理的指令', 'warning'); return; }
+    const updated = new Date().toLocaleString('sv-SE');
+    setData((current) => current.map((row) => picked.has(row.id) ? { ...row, tab: target, status: status || row.status, updated } : row));
+    addToast?.(message.replace('{count}', String(picked.size)), 'success'); setSelected([]);
   };
   const exportRows = () => {
     const picked = selected.length ? visible.filter((row) => selected.includes(row.id)) : visible;
-    const csv = [['运单号', '指令单号', '指令名称', '创建时间', '指令处理状态', '处理结果', '失败原因', '客户简称', '仓库代码', '下单类型', '指令单类型', '拦截原因'].join(','), ...picked.map((row) => [row.waybill, row.instructionNo, row.names.join(' / '), row.created, row.status, getProcessingResult(row), getFailureReason(row), row.customer, row.warehouse, row.orderType, row.instructionType, row.instructionType === '拦截' ? (row.interceptReason || '') : ''].map((value) => `"${value.replace(/"/g, '""')}"`).join(','))].join('\n');
+    const csv = [['运单号', '指令单号', '托盘标签', '指令名称', '创建时间', '指令处理状态', '处理结果', '客户简称', '仓库代码', '下单类型', '指令单类型'].join(','), ...picked.map((row) => [row.waybill, row.instructionNo, row.palletLabel || '', row.names.join(' / '), row.created, row.status, getProcessingResult(row), row.customer, row.warehouse, row.orderType, row.instructionType].map((value) => `"${value.replace(/"/g, '""')}"`).join(','))].join('\n');
     const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' })); link.download = '指令列表.csv'; link.click(); addToast?.(`已导出 ${picked.length} 条指令`, 'success');
   };
 
-  return <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f4f6fa] p-3 text-slate-700">
+  return <main aria-label="指令列表" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f4f6fa] p-3 text-slate-700">
     <section className="shrink-0 rounded border border-[#e7ebf1] bg-white px-3 py-3 shadow-sm">
       <div className="grid grid-cols-1 gap-x-4 gap-y-2 xl:grid-cols-4">
         <Filter label="指令单号"><input className={inputClass} value={draft.instructionNo} onChange={(event) => setFilter('instructionNo', event.target.value)} placeholder="支持批量搜索" /></Filter>
         <Filter label="运单号"><input className={inputClass} value={draft.waybill} onChange={(event) => setFilter('waybill', event.target.value)} placeholder="支持批量搜索" /></Filter>
+        <Filter label="托盘标签"><input aria-label="托盘标签" className={inputClass} value={draft.palletLabel} onChange={(event) => setFilter('palletLabel', event.target.value)} placeholder="输入托盘标签" /></Filter>
         <Filter label="Shipment ID"><input className={inputClass} value={draft.shipment} onChange={(event) => setFilter('shipment', event.target.value)} placeholder="支持批量搜索" /></Filter>
         <Filter label="Reference ID"><input className={inputClass} value={draft.reference} onChange={(event) => setFilter('reference', event.target.value)} placeholder="支持批量搜索" /></Filter>
         {expanded && <>
@@ -222,38 +196,17 @@ export default function InstructionListPage({ addToast }: { addToast?: (text: st
           <Filter label="下单类型"><Select value={draft.orderType} onChange={(value) => setFilter('orderType', value)} placeholder="下单类型" options={['亚马逊', '沃尔玛']} /></Filter>
           <Filter label="指令单类型"><Select value={draft.instructionType} onChange={(value) => setFilter('instructionType', value)} placeholder="指令单类型" options={['放货', '不放货', '拦截', '销毁']} /></Filter>
           <Filter label="入仓时间"><span className="flex h-8 min-w-0 flex-1 items-center gap-1 rounded border border-[#dfe5ee] px-2"><CalendarDays className="h-3.5 w-3.5 shrink-0 text-slate-300" /><input aria-label="开始日期" className="min-w-0 flex-1 text-center text-xs outline-none placeholder:text-slate-300" value={draft.dateFrom} onChange={(event) => setFilter('dateFrom', event.target.value)} placeholder="开始日期" /><span className="text-slate-400">-</span><input aria-label="结束日期" className="min-w-0 flex-1 text-center text-xs outline-none placeholder:text-slate-300" value={draft.dateTo} onChange={(event) => setFilter('dateTo', event.target.value)} placeholder="结束日期" /></span></Filter>
-          <Filter label="是否到达海外仓"><Select value={draft.arrived} onChange={(value) => setFilter('arrived', value)} placeholder="是否到达海外仓" options={['是', '否']} /></Filter>
+
         </>}
       </div>
       <div className="mt-3 flex items-center gap-3"><button type="button" onClick={applyQuery} className="inline-flex h-8 w-[138px] items-center justify-center gap-1.5 rounded bg-[#0759b6] text-xs font-semibold text-white hover:bg-[#00479a]"><Search className="h-3.5 w-3.5" />查询</button><button type="button" onClick={reset} className="inline-flex h-8 w-[138px] items-center justify-center gap-1.5 rounded border border-[#dfe5ee] bg-white text-xs font-semibold text-slate-600"><RotateCcw className="h-3.5 w-3.5" />重置</button><button type="button" onClick={() => setExpanded((value) => !value)} className="inline-flex h-8 w-[138px] items-center justify-center gap-1.5 rounded border border-[#dfe5ee] bg-white text-xs font-semibold text-slate-600"><ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />{expanded ? '收起' : '展开'}</button></div>
     </section>
     <section className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-[#e7ebf1] bg-white shadow-sm">
       <div className="flex shrink-0 items-end gap-6 border-b border-[#dfe5ee] px-3 pt-2">{tabs.map((item) => <button key={item.key} type="button" onClick={() => { setTab(item.key); setSelected([]); }} className={`relative h-8 whitespace-nowrap text-xs font-medium ${tab === item.key ? 'text-[#0759b6]' : 'text-slate-600'}`}>{item.key}({item.count}){tab === item.key && <span className="absolute inset-x-0 -bottom-px h-0.5 bg-[#0759b6]" />}</button>)}</div>
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#edf0f4] px-3"><div className="flex items-center gap-3"><button type="button" onClick={() => updateStatus('已取消', '已取消 {count} 条待确认指令')} className="h-7 rounded bg-[#0759b6] px-4 text-xs font-semibold text-white">取消下单</button><button type="button" onClick={() => updateStatus('已处理', '已确认 {count} 条指令')} className="h-7 rounded bg-[#0759b6] px-4 text-xs font-semibold text-white">已确认</button><button type="button" onClick={exportRows} className="inline-flex h-7 items-center gap-1 rounded border border-[#dfe5ee] bg-white px-4 text-xs font-semibold text-slate-600"><Download className="h-3.5 w-3.5" />导出</button><button type="button" onClick={() => addToast?.('当前列表暂无新的操作日志', 'info')} className="h-7 rounded border border-[#dfe5ee] bg-white px-4 text-xs font-semibold text-slate-600">查看日志</button></div><button type="button" aria-label="列表设置" onClick={() => addToast?.('列表支持横向滚动查看全部字段', 'info')} className="flex h-7 w-7 items-center justify-center rounded bg-[#0759b6] text-white"><Settings2 className="h-3.5 w-3.5" /></button></div>
-      <div className="min-h-0 flex-1 overflow-auto"><table className={(showFailureReason ? 'min-w-[3270px]' : 'min-w-[3050px]') + ' table-fixed border-collapse text-[11px] text-slate-600'}><thead className="sticky top-0 z-20 bg-[#f7f9fc]"><tr className="h-8"><th className="sticky left-0 z-30 w-10 border border-[#e5e9ef] bg-[#f7f9fc] text-center"><input aria-label="全选" type="checkbox" checked={allSelected} onChange={toggleAll} className="h-3.5 w-3.5 accent-[#0759b6]" /></th><th className="sticky left-10 z-30 w-40 border border-[#e5e9ef] bg-[#f7f9fc] text-center">运单号</th><th className="sticky left-[200px] z-30 w-40 border border-[#e5e9ef] bg-[#f7f9fc] text-center shadow-[5px_0_8px_-7px_rgba(15,23,42,0.55)]">指令单号</th>{['指令名称', '创建时间', '修改时间', 'Shipment ID', 'Reference ID', '指令处理状态', ...(showFailureReason ? ['失败原因'] : []), '指令操作图片', '客户简称', '仓库代码', '邮编', '下单类型', '指令单类型', '预计提货时间', '拦截原因', '目的地', '业务员', '跟单员', '指令费用(CNY)', '发货件数', '重量', '方数', '是否到达海外仓', '入仓时间（海外仓）'].map((head) => <th key={head} className="w-32 border border-[#e5e9ef] px-2 text-center font-semibold">{head}</th>)}</tr></thead><tbody>{visible.map((row) => { const checked = selected.includes(row.id); const statusText = getStatusText(row); const processingResult = getProcessingResult(row); const interceptFailed = isInterceptFailed(row, statusText); return <tr key={row.id} className={`h-[80px] ${getRowBackground(checked, interceptFailed)}`}><td className="sticky left-0 z-10 border border-[#eef1f5] bg-inherit text-center"><input aria-label={`选择${row.instructionNo}`} type="checkbox" checked={checked} onChange={() => setSelected((current) => current.includes(row.id) ? current.filter((id) => id !== row.id) : [...current, row.id])} className="h-3.5 w-3.5 accent-[#0759b6]" /></td><td className="sticky left-10 z-10 border border-[#eef1f5] bg-inherit px-2 text-center whitespace-nowrap">{row.waybill}</td><td className="sticky left-[200px] z-10 border border-[#eef1f5] bg-inherit px-2 text-center text-[#3885d6] shadow-[5px_0_8px_-7px_rgba(15,23,42,0.55)]"><button type="button" onClick={() => row.instructionType === '自提' ? setDetailRow(row) : addToast?.(`已打开指令单 ${row.instructionNo}`, 'info')} className="whitespace-nowrap hover:underline">{row.instructionNo}</button></td><td className="border border-[#eef1f5] px-2 text-center leading-5">{row.names.map((name) => <div key={name}>{name}</div>)}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.created}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.updated}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.shipment}</td><td className="border border-[#eef1f5] px-2 text-center">{row.reference}</td><td className={`border border-[#eef1f5] px-2 text-center ${getStatusColor(row, statusText)}`}><div className="whitespace-nowrap">{statusText}</div>{processingResult && processingResult !== statusText && <div className="mt-1 whitespace-nowrap text-[10px] text-slate-500">处理结果：{processingResult}</div>}</td>{showFailureReason && <td className={"border border-[#eef1f5] px-3 py-2 text-left " + (interceptFailed ? "text-rose-600" : "text-slate-400")}><div className="min-w-[200px] max-w-[260px] whitespace-pre-wrap break-words leading-5">{getFailureReason(row) || "—"}</div></td>}<td className="border border-[#eef1f5] px-2 text-center"><Photo label={row.photo} /></td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.customer}</td><td className="border border-[#eef1f5] px-2 text-center">{row.warehouse}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.zip}</td><td className="border border-[#eef1f5] px-2 text-center">{row.orderType}</td><td className="border border-[#eef1f5] px-2 text-center">{row.instructionType}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.instructionType === '自提' ? row.expectedPickupTime || '' : ''}</td><td className="border border-[#eef1f5] px-2 py-2 text-center"><div className="min-w-[180px] max-w-[240px] whitespace-pre-wrap break-words">{row.instructionType === '拦截' ? (row.interceptReason || '-') : '-'}</div></td><td className="border border-[#eef1f5] px-2 text-center">{row.destination}</td><td className="border border-[#eef1f5] px-2 text-center">{row.salesman}</td><td className="border border-[#eef1f5] px-2 text-center">{row.merchandiser}</td><td className="border border-[#eef1f5] px-2 text-center">{row.fee}</td><td className="border border-[#eef1f5] px-2 text-center">{row.packages}</td><td className="border border-[#eef1f5] px-2 text-center">{row.weight}</td><td className="border border-[#eef1f5] px-2 text-center">{row.volume}</td><td className="border border-[#eef1f5] px-2 text-center">{row.arrived}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.overseasTime}</td></tr>; })}{visible.length === 0 && <tr><td colSpan={showFailureReason ? 27 : 26} className="h-48 border border-[#eef1f5] text-center text-slate-400">暂无符合筛选条件的指令数据</td></tr>}</tbody></table></div>
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#edf0f4] px-3"><div className="flex items-center gap-3">{tab === '待确认' && <><button type="button" onClick={() => updateWorkflow('待确认', '驳回', '已驳回 {count} 条指令', '已驳回')} className="h-7 rounded bg-[#0759b6] px-4 text-xs font-semibold text-white">驳回</button><button type="button" onClick={() => updateWorkflow('待确认', '已确认', '已确认 {count} 条指令')} className="h-7 rounded bg-[#0759b6] px-4 text-xs font-semibold text-white">已确认</button></>}{tab === '已确认' && <><button type="button" onClick={() => updateWorkflow('已确认', '取消', '已取消 {count} 条下单指令', '已取消')} className="h-7 rounded bg-[#0759b6] px-4 text-xs font-semibold text-white">取消下单</button><button type="button" onClick={() => updateWorkflow('已确认', '已推送海外仓', '已确定下单 {count} 条指令', '待处理')} className="h-7 rounded bg-[#0759b6] px-4 text-xs font-semibold text-white">确定下单</button></>}<button type="button" onClick={exportRows} className="inline-flex h-7 items-center gap-1 rounded border border-[#dfe5ee] bg-white px-4 text-xs font-semibold text-slate-600"><Download className="h-3.5 w-3.5" />导出</button><button type="button" onClick={() => addToast?.('当前列表暂无新的操作日志', 'info')} className="h-7 rounded border border-[#dfe5ee] bg-white px-4 text-xs font-semibold text-slate-600">查看日志</button></div><button type="button" aria-label="列表设置" onClick={() => addToast?.('列表支持横向滚动查看全部字段', 'info')} className="flex h-7 w-7 items-center justify-center rounded bg-[#0759b6] text-white"><Settings2 className="h-3.5 w-3.5" /></button></div>
+      <div className="min-h-0 flex-1 overflow-auto"><table className={'min-w-[2922px]' + ' table-fixed border-collapse text-[11px] text-slate-600'}><thead className="sticky top-0 z-20 bg-[#f7f9fc]"><tr className="h-8"><th className="sticky left-0 z-30 w-10 border border-[#e5e9ef] bg-[#f7f9fc] text-center"><input aria-label="全选" type="checkbox" checked={allSelected} onChange={toggleAll} className="h-3.5 w-3.5 accent-[#0759b6]" /></th><th className="sticky left-10 z-30 w-40 border border-[#e5e9ef] bg-[#f7f9fc] text-center">运单号</th><th className="sticky left-[200px] z-30 w-40 border border-[#e5e9ef] bg-[#f7f9fc] text-center shadow-[5px_0_8px_-7px_rgba(15,23,42,0.55)]">指令单号</th>{['托盘标签', '指令名称', '创建时间', 'Shipment ID', 'Reference ID', '指令处理状态', '指令操作图片', '客户简称', '仓库代码', '邮编', '下单类型', '指令单类型', '预计提货时间', '目的地', '业务员', '跟单员', '指令费用(CNY)', '发货件数', '重量', '方数', '入仓时间（海外仓）'].map((head) => <th key={head} className={(head === '托盘标签' ? 'w-64' : 'w-32') + ' border border-[#e5e9ef] px-2 text-center font-semibold'}>{head}</th>)}</tr></thead><tbody>{visible.map((row) => { const checked = selected.includes(row.id); const statusText = getStatusText(row); const processingResult = getProcessingResult(row); return <tr key={row.id} className={`h-[80px] ${getRowBackground(checked)}`}><td className="sticky left-0 z-10 border border-[#eef1f5] bg-inherit text-center"><input aria-label={`选择${row.instructionNo}`} type="checkbox" checked={checked} onChange={() => setSelected((current) => current.includes(row.id) ? current.filter((id) => id !== row.id) : [...current, row.id])} className="h-3.5 w-3.5 accent-[#0759b6]" /></td><td className="sticky left-10 z-10 border border-[#eef1f5] bg-inherit px-2 text-center whitespace-nowrap">{row.waybill}</td><td className="sticky left-[200px] z-10 border border-[#eef1f5] bg-inherit px-2 text-center text-[#3885d6] shadow-[5px_0_8px_-7px_rgba(15,23,42,0.55)]"><button type="button" onClick={() => setDetailRowId(row.id)} aria-haspopup="dialog" className="whitespace-nowrap hover:underline">{row.instructionNo}</button></td><td title={row.palletLabel || '—'} className="border border-[#eef1f5] px-2 text-center"><div className="max-w-[240px] truncate">{row.palletLabel || '—'}</div></td><td className="border border-[#eef1f5] px-2 text-center leading-5">{row.names.map((name) => <div key={name}>{name}</div>)}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.created}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.shipment}</td><td className="border border-[#eef1f5] px-2 text-center">{row.reference}</td><td className={`border border-[#eef1f5] px-2 text-center ${getStatusColor(row)}`}><div className="whitespace-nowrap">{statusText}</div>{processingResult && processingResult !== statusText && <div className="mt-1 whitespace-nowrap text-[10px] text-slate-500">处理结果：{processingResult}</div>}</td><td className="border border-[#eef1f5] px-2 text-center"><Photo label={row.photo} /></td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.customer}</td><td className="border border-[#eef1f5] px-2 text-center">{row.warehouse}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.zip}</td><td className="border border-[#eef1f5] px-2 text-center">{row.orderType}</td><td className="border border-[#eef1f5] px-2 text-center">{row.instructionType}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.instructionType === '自提' ? row.expectedPickupTime || '' : ''}</td><td className="border border-[#eef1f5] px-2 text-center">{row.destination}</td><td className="border border-[#eef1f5] px-2 text-center">{row.salesman}</td><td className="border border-[#eef1f5] px-2 text-center">{row.merchandiser}</td><td className="border border-[#eef1f5] px-2 text-center">{row.fee}</td><td className="border border-[#eef1f5] px-2 text-center">{row.packages}</td><td className="border border-[#eef1f5] px-2 text-center">{row.weight}</td><td className="border border-[#eef1f5] px-2 text-center">{row.volume}</td><td className="border border-[#eef1f5] px-2 text-center whitespace-nowrap">{row.overseasTime}</td></tr>; })}{visible.length === 0 && <tr><td colSpan={24} className="h-48 border border-[#eef1f5] text-center text-slate-400">暂无符合筛选条件的指令数据</td></tr>}</tbody></table></div>
       <footer className="flex h-10 shrink-0 items-center justify-end gap-4 border-t border-[#edf0f4] px-4 text-xs text-slate-500"><span>共 {visible.length} 条</span><select aria-label="每页条数" className="h-6 rounded border border-slate-200 bg-white px-2 text-xs"><option>100条/页</option></select><button type="button">‹</button><span className="text-[#0759b6]">1</span><button type="button">›</button><span>前往</span><input aria-label="页码" className="h-6 w-9 rounded border border-slate-200 text-center text-xs" value="1" readOnly /><span>页</span></footer>
     </section>
-    {detailRow?.instructionType === '自提' && (
-      <div className="fixed inset-0 z-50 flex justify-end bg-black/35" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailRow(null); }}>
-        <aside role="dialog" aria-modal="true" aria-label="自提指令详情" className="flex h-full w-[420px] max-w-full flex-col bg-white shadow-xl">
-          <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <h2 className="text-base font-semibold text-slate-900">自提指令详情</h2>
-            <button type="button" aria-label="关闭详情" className="text-xl text-slate-500" onClick={() => setDetailRow(null)}>×</button>
-          </header>
-          <dl className="flex-1 space-y-4 overflow-auto p-5 text-sm">
-            {[
-              ['指令单号', detailRow.instructionNo],
-              ['运单号', detailRow.waybill],
-              ['预计提货时间', detailRow.expectedPickupTime || ''],
-              ['提货联系人', detailRow.pickupContact || '—'],
-              ['联系电话', detailRow.pickupPhone || '—'],
-            ].map(([label, value]) => (
-              <div key={label} className="border-b border-slate-100 pb-3"><dt className="mb-1 text-xs text-slate-400">{label}</dt><dd className="text-slate-700">{value}</dd></div>
-            ))}
-          </dl>
-          <footer className="border-t border-slate-200 p-4 text-right"><button type="button" onClick={() => setDetailRow(null)} className="rounded border border-slate-200 px-5 py-2 text-xs">关闭</button></footer>
-        </aside>
-      </div>
-    )}
+    {detailRow && <InstructionDetailPage row={detailRow} onClose={() => setDetailRowId(null)} onUpdate={patch => setData(current => current.map(row => row.id === detailRow.id ? {...row,...patch} : row))} />}
   </main>;
 }

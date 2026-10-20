@@ -5,6 +5,7 @@ export interface PickupSelectedShipment {
   reference: string;
   warehouse: string;
   boxes: number;
+  palletLabel?: string;
 }
 
 export interface PickupInstruction extends Omit<PickupSelectedShipment, 'id'> {

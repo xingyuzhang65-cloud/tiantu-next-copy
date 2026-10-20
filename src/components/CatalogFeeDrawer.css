@@ -1,0 +1,148 @@
+.catalog-fee-overlay {
+  position: fixed;
+  z-index: 300;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  background: #0006;
+  color: #606266;
+  font: 12px/1.5 "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+}
+
+.catalog-fee-drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(1080px, 53vw);
+  max-width: 100vw;
+  min-width: 0;
+  height: 100vh;
+  height: 100dvh;
+  background: #fff;
+  box-shadow: -8px 0 32px #162b4d22;
+  outline: none;
+}
+
+.catalog-fee-drawer button,
+.catalog-fee-drawer input,
+.catalog-fee-drawer select { font: inherit; }
+
+.catalog-fee-drawer button { cursor: pointer; }
+
+.catalog-fee-drawer button:focus-visible,
+.catalog-fee-drawer input:focus-visible,
+.catalog-fee-drawer select:focus-visible {
+  outline: 2px solid #409eff;
+  outline-offset: 2px;
+}
+
+.catalog-fee-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 56px;
+  gap: 16px;
+  padding: 0 20px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.catalog-fee-header h2 { margin: 0; color: #303133; font-size: 14px; font-weight: 600; }
+
+.catalog-fee-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #909399;
+}
+
+.catalog-fee-close:hover { background: #f2f6fc; color: #004cae; }
+
+.catalog-fee-body { min-height: 0; padding: 16px 12px 24px; overflow-y: auto; }
+.catalog-fee-toolbar { display: flex; margin-bottom: 10px; }
+
+.catalog-fee-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 52px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 3px;
+  background: #fff;
+  color: #606266;
+}
+
+.catalog-fee-button:hover { border-color: #a0c4eb; background: #ecf5ff; color: #004cae; }
+.catalog-fee-button.catalog-fee-primary { border-color: #004cae; background: #004cae; color: #fff; }
+.catalog-fee-button.catalog-fee-primary:hover { border-color: #286cc1; background: #286cc1; }
+
+.catalog-fee-table-scroll {
+  height: clamp(240px, 49vh, 540px);
+  overflow: auto;
+  border: 1px solid #ebeef5;
+}
+
+.catalog-fee-table { width: 100%; min-width: 940px; table-layout: fixed; border-spacing: 0; border-collapse: separate; font: inherit; }
+.catalog-fee-index-column { width: 34px; }
+.catalog-fee-name-column { width: 18%; }
+.catalog-fee-type-column { width: 15%; }
+.catalog-fee-unit-column { width: 9%; }
+.catalog-fee-price-column { width: 9%; }
+.catalog-fee-quantity-column { width: 10%; }
+.catalog-fee-currency-column { width: 10%; }
+.catalog-fee-remark-column { width: 18%; }
+.catalog-fee-action-column { width: 70px; }
+.catalog-fee-table th,
+.catalog-fee-table td {
+  height: 40px;
+  padding: 6px 8px;
+  border-right: 1px solid #ebeef5;
+  border-bottom: 1px solid #ebeef5;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.catalog-fee-table th { position: sticky; z-index: 1; top: 0; height: 30px; background: #f7f7f8; color: #606266; font-weight: 600; }
+.catalog-fee-table th:last-child,
+.catalog-fee-table td:last-child { border-right: 0; }
+.catalog-fee-table tr:hover td { background: #f8fafd; }
+.catalog-fee-table select,
+.catalog-fee-table input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid #dcdfe6;
+  border-radius: 3px;
+  background: #fff;
+  color: #606266;
+  box-sizing: border-box;
+}
+
+.catalog-fee-table select { text-overflow: ellipsis; }
+.catalog-fee-table input:hover,
+.catalog-fee-table select:hover { border-color: #c0c4cc; }
+.catalog-fee-remove { padding: 2px 4px; border: 0; background: transparent; color: #f56c6c; }
+.catalog-fee-remove:hover { color: #db4747; text-decoration: underline; }
+.catalog-fee-error { margin-top: 10px; color: #e5484d; }
+.catalog-fee-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+@media (max-width: 1280px) {
+  .catalog-fee-drawer { width: min(1080px, calc(100vw - 80px)); }
+}
+
+@media (max-width: 900px) {
+  .catalog-fee-drawer { width: 100vw; }
+  .catalog-fee-header { padding-right: 14px; padding-left: 14px; }
+  .catalog-fee-body { padding-right: 10px; padding-left: 10px; }
+}
