@@ -47,7 +47,6 @@ export default function InstructionWaybillInfo({
       {([
         ['客户简称', summary.customer],
         ['运单号', summary.waybill],
-        ['托盘标签', summary.palletLabel],
         ['指令单类型', summary.instructionType],
         ['发货件数', summary.boxCount],
         ['客户备注', summary.customerNote],

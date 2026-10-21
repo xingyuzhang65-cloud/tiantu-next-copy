@@ -14,6 +14,55 @@
   cursor: pointer;
 }
 
+.instruction-transfer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.instruction-detail-portal .instruction-transfer-table { min-width: 960px; }
+.instruction-detail-portal .instruction-transfer-table th:nth-child(1) { width: 72px; }
+.instruction-detail-portal .instruction-transfer-table th:nth-child(2) { width: 220px; }
+.instruction-detail-portal .instruction-transfer-table th:nth-child(3) { width: 200px; }
+.instruction-detail-portal .instruction-transfer-table th:nth-child(4) { width: 220px; }
+.instruction-detail-portal .instruction-transfer-table th:nth-child(5) { width: 240px; }
+.instruction-transfer-toolbar { flex-wrap: wrap; }
+.instruction-transfer-count { margin: 6px 0 0; color: #8492a6; }
+.instruction-transfer-selector { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.instruction-transfer-selector input { margin: 0; accent-color: #168ff5; }
+.instruction-transfer-batch { margin-bottom: 16px; padding: 14px; border: 1px solid #dce9fa; border-radius: 4px; background: #f7fbff; }
+.instruction-transfer-batch > label { font-weight: 600; color: #354052; }
+.instruction-transfer-batch > p { margin: 7px 0 10px; line-height: 1.6; }
+.instruction-transfer-batch textarea { display: block; width: 100%; min-height: 82px; padding: 8px 10px; border: 1px solid #dce2e9; border-radius: 3px; color: #354052; background: #fff; resize: vertical; }
+.instruction-transfer-batch-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 10px; color: #8492a6; }
+.instruction-transfer-batch-error { color: #e45656; }
+.instruction-transfer-batch-success { color: #43a047; }
+.instruction-transfer-input { width: 100%; min-width: 160px; height: 30px; padding: 4px 8px; border: 1px solid #dce2e9; border-radius: 3px; background: #fff; color: #354052; }
+.instruction-transfer-input:focus { outline: 2px solid #168ff5; outline-offset: 1px; }
+.instruction-transfer-number { overflow-wrap: anywhere; }
+
+.instruction-processing-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.instruction-processing-count { padding: 4px 8px; border: 1px solid #b3d8ff; border-radius: 3px; background: #ecf5ff; color: #168ff5; }
+.instruction-detail-portal .instruction-processing-modal { width: min(440px,calc(100vw - 24px)); }
+.instruction-processing-form { padding: 20px; }
+.instruction-processing-form > p { margin: 0 0 16px; line-height: 1.6; }
+.instruction-processing-form label { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.instruction-processing-form select { flex: 1; min-width: 0; height: 32px; padding: 4px 8px; border: 1px solid #dce2e9; border-radius: 3px; background: #fff; }
+.instruction-processing-hint { color: #8492a6; }
+
+.instruction-detail-portal .instruction-fee-edit-modal { width: min(480px,calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow: hidden; display: flex; flex-direction: column; }
+.instruction-fee-edit-modal > form { display: flex; flex-direction: column; min-height: 0; }
+.instruction-fee-edit-fields { padding: 22px 18px; display: grid; gap: 14px; overflow-y: auto; }
+.instruction-fee-edit-fields > label { display: flex; align-items: center; min-width: 0; gap: 8px; }
+.instruction-fee-edit-fields > label > span { width: 86px; flex-shrink: 0; text-align: right; }
+.instruction-fee-edit-fields b { color: #f56c6c; font-weight: normal; }
+.instruction-fee-edit-fields input,.instruction-fee-edit-fields select,.instruction-fee-edit-fields textarea { min-width: 0; flex: 1; width: 100%; padding: 5px 9px; border: 1px solid #dce2e9; border-radius: 3px; color: #354052; background: #fff; }
+.instruction-fee-edit-fields input,.instruction-fee-edit-fields select { height: 30px; }
+.instruction-fee-edit-fields input[readonly],.instruction-fee-edit-fields select:disabled { color: #929daf; background: #f5f7fa; opacity: 1; }
+.instruction-fee-counter { display: flex; align-items: center; flex: 1; min-width: 0; }
+.instruction-fee-counter button { flex-shrink: 0; width: 26px; height: 30px; border: 1px solid #dce2e9; background: #f5f7fa; color: #68788b; }
+.instruction-fee-counter input { text-align: center; border-radius: 0; }
+.instruction-fee-description { align-items: flex-start!important; }
+.instruction-fee-edit-fields textarea { resize: vertical; }
+.instruction-fee-edit-error { margin: 0; color: #e45656; line-height: 1.6; }
+.instruction-fee-edit-modal footer { display: flex; justify-content: flex-end; flex-shrink: 0; gap: 8px; padding: 14px 18px; border-top: 1px solid #e8edf1; }
+
+
 .instruction-detail-error {
   position: fixed;
   z-index: 1000;

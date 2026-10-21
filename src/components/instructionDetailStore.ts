@@ -1,6 +1,7 @@
 import { buildInstructionDetail } from './instructionDetailData';
 import type { InstructionFeeRow } from './instructionDetailData';
 import type { InstructionListRow } from './instructionListTypes';
+import { isInstructionTrackingEvent, type InstructionTrackingEvent } from './instructionTracking';
 
 export interface InstructionAttachment {
   id: string; name: string; type: string; customerVisible: '可见' | '不可见';
@@ -13,6 +14,10 @@ export interface InstructionDetailState {
   fees: InstructionFeeRow[]; feesEdited: boolean; attachments: InstructionAttachment[];
   customerNote: string; internalRemark: string; failureReason: string; updatedAt?: string;
   waybillInfo?: InstructionWaybillFields;
+  boxSelectionMode?: '指定' | '随机';
+  cargoTransferNumbers?: Record<string, string>;
+  cargoTransferOrder?: string[];
+  trackingEvents?: InstructionTrackingEvent[];
 }
 type StoredDetail = InstructionDetailState & { instructionNo: string; waybill: string };
 export const INSTRUCTION_DETAIL_STORAGE_KEY = 'tiantu-instruction-details-v1';
@@ -62,20 +67,35 @@ function validState(value: InstructionDetailState): boolean {
     && new Set(value.attachments.map(file => file.id)).size === value.attachments.length
     && ['customerNote','internalRemark','failureReason'].every(key => typeof value[key as keyof InstructionDetailState] === 'string')
     && (value.updatedAt === undefined || typeof value.updatedAt === 'string')
-    && (value.waybillInfo === undefined || validWaybillFields(value.waybillInfo));
+    && (value.waybillInfo === undefined || validWaybillFields(value.waybillInfo))
+    && (value.boxSelectionMode === undefined || ['指定','随机'].includes(value.boxSelectionMode))
+    && (value.cargoTransferNumbers === undefined || !!value.cargoTransferNumbers && typeof value.cargoTransferNumbers === 'object'
+      && !Array.isArray(value.cargoTransferNumbers) && Object.entries(value.cargoTransferNumbers).every(([id,number]) => !!id.trim() && typeof number === 'string' && number.length <= 200))
+    && (value.cargoTransferOrder === undefined || Array.isArray(value.cargoTransferOrder)
+      && value.cargoTransferOrder.every(id=>typeof id==='string'&&!!value.cargoTransferNumbers?.[id]?.trim())
+      && new Set(value.cargoTransferOrder).size===value.cargoTransferOrder.length)
+    && (value.trackingEvents === undefined || Array.isArray(value.trackingEvents) && value.trackingEvents.every(isInstructionTrackingEvent)
+      && new Set(value.trackingEvents.map(event => event.id)).size === value.trackingEvents.length);
 }
 function readStored(row: InstructionListRow): StoredDetail | null {
   try {
     const entries = JSON.parse(localStorage.getItem(INSTRUCTION_DETAIL_STORAGE_KEY) || '{}') as Record<string,StoredDetail>;
-    const value = entries?.[row.instructionNo];
-    return validState(value) && value.instructionNo === row.instructionNo && value.waybill === row.waybill ? value : null;
+    for(const key of [row.instructionNo,row.legacyInstructionNo].filter((key):key is string=>!!key)){
+      const value=entries?.[key];
+      if(validState(value)&&value.instructionNo===key&&value.waybill===row.waybill)return value;
+    }
+    return null;
   } catch { return null; }
 }
 export function loadInstructionDetail(row: InstructionListRow): InstructionDetailState {
   const saved = readStored(row);
   if (saved) return {fees:saved.fees.map(normalizedFee),feesEdited:saved.feesEdited,attachments:saved.attachments.map(file => ({...file})),
     customerNote:saved.customerNote,internalRemark:saved.internalRemark,failureReason:saved.failureReason,updatedAt:saved.updatedAt,
-    ...(saved.waybillInfo === undefined ? {} : {waybillInfo:normalizedWaybillFields(saved.waybillInfo)})};
+    ...(saved.waybillInfo === undefined ? {} : {waybillInfo:normalizedWaybillFields(saved.waybillInfo)}),
+    ...(saved.boxSelectionMode === undefined ? {} : {boxSelectionMode:saved.boxSelectionMode}),
+    ...(saved.cargoTransferNumbers === undefined ? {} : {cargoTransferNumbers:{...saved.cargoTransferNumbers}}),
+    ...(saved.cargoTransferOrder === undefined ? {} : {cargoTransferOrder:[...saved.cargoTransferOrder]}),
+    ...(saved.trackingEvents === undefined ? {} : {trackingEvents:saved.trackingEvents.map(event => ({...event}))})};
   return {fees:buildInstructionDetail(row).feeRows.map(normalizedFee),feesEdited:false,attachments:[],
     customerNote:row.customerNote || '',internalRemark:row.internalRemark || '',failureReason:row.failureReason || ''};
 }
@@ -93,6 +113,10 @@ export function saveInstructionDetail(row: InstructionListRow, state: Instructio
     fees:state.fees.map(normalizedFee),attachments:state.attachments.map(file => ({...file})),
     feesEdited:state.feesEdited,customerNote:state.customerNote,internalRemark:state.internalRemark,failureReason:state.failureReason,
     ...(state.waybillInfo === undefined ? {} : {waybillInfo:normalizedWaybillFields(state.waybillInfo)}),
+    ...(state.boxSelectionMode === undefined ? {} : {boxSelectionMode:state.boxSelectionMode}),
+    ...(state.cargoTransferNumbers === undefined ? {} : {cargoTransferNumbers:{...state.cargoTransferNumbers}}),
+    ...(state.cargoTransferOrder === undefined ? {} : {cargoTransferOrder:[...state.cargoTransferOrder]}),
+    ...(state.trackingEvents === undefined ? {} : {trackingEvents:state.trackingEvents.map(event => ({...event}))}),
     updatedAt:state.updatedAt || new Date().toLocaleString('sv-SE')};
   localStorage.setItem(INSTRUCTION_DETAIL_STORAGE_KEY,JSON.stringify({...entries,[row.instructionNo]:next}));
 }
@@ -100,8 +124,24 @@ export function applyInstructionDetailOverrides(row: InstructionListRow): Instru
   const saved = readStored(row);
   if (!saved) return row;
   return {...row,...(saved.feesEdited ? {fee:String(getInstructionFeeTotal(saved.fees))} : {}),
+    boxSelectionMode:saved.boxSelectionMode||row.boxSelectionMode||'随机',
+    ...(saved.cargoTransferNumbers === undefined ? {} : {transferNumbers:getCargoTransferNumbers(saved.cargoTransferNumbers,saved.cargoTransferOrder)}),
     ...(saved.waybillInfo === undefined ? {} : {shipment:saved.waybillInfo.shipmentId || '-',reference:saved.waybillInfo.referenceId || '-',
       scheduledAt:saved.waybillInfo.scheduledAt,waybillRemark:saved.waybillInfo.remark}),
     customerNote:saved.customerNote,internalRemark:saved.internalRemark,failureReason:saved.failureReason,
     updated:saved.updatedAt || row.updated};
+}
+
+export function getCargoTransferNumbers(numbers: Record<string,string>, order?: string[]): string[] {
+  const latest=[...(order||Object.keys(numbers))].reverse().map(id=>numbers[id]?.trim()).find(Boolean);
+  return latest?[latest]:[];
+}
+
+export function updateCargoTransferNumbers(state: InstructionDetailState, numbers: Record<string,string>, editedIds: string[]): InstructionDetailState {
+  const normalized=Object.fromEntries(Object.entries(numbers).map(([id,number])=>[id,number.trim()]));
+  const changed=Object.keys(normalized).filter(id=>normalized[id]&&(state.cargoTransferNumbers?.[id]||'').trim()!==normalized[id]);
+  const previous=state.cargoTransferOrder||Object.keys(state.cargoTransferNumbers||{});
+  const edits=[...new Set([...editedIds,...changed])].filter(id=>changed.includes(id));
+  const order=[...previous.filter(id=>normalized[id]&&!changed.includes(id)),...edits];
+  return {...state,cargoTransferNumbers:normalized,cargoTransferOrder:order};
 }

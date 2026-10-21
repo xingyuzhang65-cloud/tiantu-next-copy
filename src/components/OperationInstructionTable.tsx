@@ -23,6 +23,8 @@ type OperationInstructionTableProps = {
   onEdit?: (id: string) => void;
   onRemove?: (id: string) => void;
   emptyText?: string;
+  selectedIds?: string[];
+  onSelectionChange?: (ids: string[]) => void;
 };
 
 type PreviewImage = { name: string; dataUrl: string };
@@ -39,11 +41,13 @@ function statusClass(status?: string) {
   return 'operation-instruction-status-neutral';
 }
 
-export default function OperationInstructionTable({ rows, onEdit, onRemove, emptyText = '暂无数据' }: OperationInstructionTableProps) {
+export default function OperationInstructionTable({ rows, onEdit, onRemove, emptyText = '暂无数据', selectedIds = [], onSelectionChange }: OperationInstructionTableProps) {
   const [preview, setPreview] = useState<PreviewImage | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const previewOrigin = useRef<HTMLElement | null>(null);
   const hasActions = Boolean(onEdit || onRemove);
+  const selectable = Boolean(onSelectionChange);
+  const allSelected = !!rows.length && rows.every(row=>selectedIds.includes(row.id));
 
   useEffect(() => {
     if (!preview) return;
@@ -63,6 +67,7 @@ export default function OperationInstructionTable({ rows, onEdit, onRemove, empt
       <table className={`operation-instruction-table${hasActions ? ' operation-instruction-table-with-actions' : ''}`}>
         <colgroup>
           <col className="operation-instruction-column-index" />
+          {selectable&&<col style={{width:40}}/>}
           <col className="operation-instruction-column-name" />
           <col className="operation-instruction-column-type" />
           <col className="operation-instruction-column-unit" />
@@ -77,12 +82,13 @@ export default function OperationInstructionTable({ rows, onEdit, onRemove, empt
           <col className="operation-instruction-column-status" />
           {hasActions && <col className="operation-instruction-column-actions" />}
         </colgroup>
-        <thead><tr>{columns.map(label => <th key={label} scope="col">{label}</th>)}{hasActions && <th scope="col">操作</th>}</tr></thead>
+        <thead><tr><th scope="col">#</th>{selectable&&<th scope="col"><input type="checkbox" aria-label="全选操作指令" checked={allSelected} disabled={!rows.length} onChange={event=>onSelectionChange?.(event.target.checked?rows.map(row=>row.id):[])}/></th>}{columns.slice(1).map(label => <th key={label} scope="col">{label}</th>)}{hasActions && <th scope="col">操作</th>}</tr></thead>
         <tbody>{rows.length ? rows.map((row, index) => {
           const images = (row.images ?? []).filter((image): image is typeof image & { dataUrl: string } => Boolean(image.dataUrl));
           const currency = currencies[row.currency.toUpperCase()] ?? display(row.currency);
           return <tr key={row.id}>
             <td className="operation-instruction-index">{index + 1}</td>
+            {selectable&&<td><input type="checkbox" aria-label={`选择操作指令${index+1}`} checked={selectedIds.includes(row.id)} onChange={event=>onSelectionChange?.(event.target.checked?[...selectedIds,row.id]:selectedIds.filter(id=>id!==row.id))}/></td>}
             <td title={display(row.name)}>{display(row.name)}</td>
             <td title={display(row.type)}>{display(row.type)}</td>
             <td title={display(row.unit)}>{display(row.unit)}</td>
@@ -106,7 +112,7 @@ export default function OperationInstructionTable({ rows, onEdit, onRemove, empt
               {onRemove && <button type="button" className="operation-instruction-remove" onClick={() => onRemove(row.id)} aria-label={`删除操作指令${index + 1}`}>删除</button>}
             </div></td>}
           </tr>;
-        }) : <tr className="operation-instruction-empty"><td colSpan={columns.length + Number(hasActions)}>{emptyText}</td></tr>}</tbody>
+        }) : <tr className="operation-instruction-empty"><td colSpan={columns.length + Number(hasActions) + Number(selectable)}>{emptyText}</td></tr>}</tbody>
       </table>
     </div>
     {preview && <div ref={previewRef} className="operation-instruction-preview" role="dialog" aria-modal="true" aria-label="图片预览" onMouseDown={event => {

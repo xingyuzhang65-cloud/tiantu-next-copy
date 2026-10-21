@@ -1,0 +1,281 @@
+.instruction-tracking {
+  padding: 36px 12px 4px;
+  color: #263548;
+  font-size: 12px;
+}
+
+.instruction-tracking-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.instruction-tracking-event,
+.instruction-tracking-add {
+  display: grid;
+  grid-template-columns: minmax(90px, 160px) 184px 22px minmax(0, 1fr);
+  column-gap: 8px;
+}
+
+.instruction-tracking-event {
+  min-height: 60px;
+}
+
+.instruction-tracking-operator,
+.instruction-tracking-date,
+.instruction-tracking-status {
+  padding-top: 2px;
+  font-weight: 600;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.instruction-tracking-date {
+  text-align: right;
+}
+
+.instruction-tracking-axis {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.instruction-tracking-axis::before {
+  position: absolute;
+  top: 10px;
+  bottom: -10px;
+  left: calc(50% - 1px);
+  width: 2px;
+  background: #5b92c8;
+  content: '';
+}
+
+.instruction-tracking-dot {
+  z-index: 1;
+  width: 13px;
+  height: 13px;
+  margin-top: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #4f89c6;
+}
+
+.instruction-tracking-event.is-latest {
+  color: #f5222d;
+}
+
+.instruction-tracking-event.is-exception {
+  color: #f5222d;
+}
+
+.instruction-tracking-event.is-exception .instruction-tracking-dot {
+  background: #f5222d;
+}
+
+.instruction-tracking-country {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.instruction-tracking-exception {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 4px;
+  border: 1px solid #ffccc7;
+  border-radius: 2px;
+  background: #fff1f0;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.instruction-tracking-event.is-latest .instruction-tracking-dot {
+  background: #f5222d;
+}
+
+.instruction-tracking-add {
+  min-height: 24px;
+}
+
+.instruction-tracking-add > .instruction-tracking-axis {
+  grid-column: 3;
+  align-items: flex-start;
+}
+
+.instruction-tracking-add .instruction-tracking-axis::before {
+  top: 0;
+  bottom: auto;
+  height: 10px;
+}
+
+.instruction-tracking-add button {
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #17212e;
+  color: #fff;
+}
+
+.instruction-tracking-add button:hover {
+  background: #0759b6;
+}
+
+.instruction-tracking-empty {
+  margin: 0 0 20px;
+  color: #8a96a7;
+}
+
+.instruction-detail-portal .instruction-tracking-overlay {
+  align-items: flex-start;
+  padding: 15vh 12px 24px;
+  overflow-y: auto;
+}
+
+.instruction-detail-portal .instruction-tracking-modal {
+  width: 440px;
+  max-height: calc(85vh - 24px);
+  flex-shrink: 0;
+  overflow: auto;
+}
+
+.instruction-detail-portal .instruction-tracking-modal > header {
+  padding: 12px 16px;
+}
+
+.instruction-detail-portal .instruction-tracking-modal > footer {
+  gap: 8px;
+  padding: 0 16px 20px;
+  border-top: 0;
+}
+
+.instruction-tracking-form {
+  display: grid;
+  gap: 12px;
+  padding: 22px 16px 18px;
+}
+
+.instruction-tracking-form > label {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 12px;
+}
+
+.instruction-tracking-form > label > span,
+.instruction-tracking-type > span {
+  flex-shrink: 0;
+  width: 72px;
+  text-align: right;
+}
+
+.instruction-tracking-form b {
+  color: #ed5658;
+}
+
+.instruction-tracking-form input:not([type="radio"]),
+.instruction-tracking-form select {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 4px 8px;
+  border: 1px solid #dce2e9;
+  border-radius: 3px;
+  background: #fff;
+  color: #354052;
+}
+
+.instruction-tracking-type {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  gap: 12px;
+}
+
+.instruction-tracking-type-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.instruction-tracking-type-choices label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.instruction-tracking-type-choices label.is-selected {
+  color: #409eff;
+}
+
+.instruction-tracking-type-choices input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #409eff;
+}
+
+.instruction-tracking-form-error {
+  margin: 0;
+  color: #ed5658;
+}
+
+@media (max-width: 640px) {
+  .instruction-tracking {
+    padding: 28px 0 4px;
+  }
+
+  .instruction-tracking-event,
+  .instruction-tracking-add {
+    grid-template-columns: minmax(52px, 1fr) 146px 16px minmax(64px, 1fr);
+    column-gap: 6px;
+  }
+
+  .instruction-tracking-form {
+    padding: 24px 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  .instruction-tracking-event,
+  .instruction-tracking-add {
+    grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr);
+  }
+
+  .instruction-tracking-operator {
+    grid-column: 1;
+    grid-row: 1;
+    text-align: right;
+  }
+
+  .instruction-tracking-date {
+    grid-column: 1;
+    grid-row: 2;
+    padding-top: 0;
+    padding-bottom: 20px;
+    font-size: 10px;
+    font-weight: 400;
+    white-space: nowrap;
+  }
+
+  .instruction-tracking-event > .instruction-tracking-axis {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+
+  .instruction-tracking-status {
+    grid-column: 3;
+    grid-row: 1 / 3;
+  }
+
+  .instruction-tracking-add > .instruction-tracking-axis {
+    grid-column: 2;
+  }
+}

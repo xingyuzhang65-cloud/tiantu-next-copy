@@ -9,5 +9,9 @@ export interface InstructionListRow {
   destination: string; salesman: string; merchandiser: string; fee: string; expectedPickupTime?: string; pickupContact?: string; pickupPhone?: string;
   packages: string; weight: string; volume: string; arrived: '是' | '否'; overseasTime: string;
   customerNote?: string; internalRemark?: string; palletLabel?: string; scheduledAt?: string; waybillRemark?: string;
+  estimatedDeliveryAt?: string;
+  transferNumbers?: string[];
+  boxSelectionMode?: '指定' | '随机';
+  legacyInstructionNo?: string;
   inventoryRecordIds?: string[]; inventoryLinkSource?: 'example';
 }

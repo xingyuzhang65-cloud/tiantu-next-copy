@@ -3,22 +3,29 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { InstructionListRow } from './instructionListTypes';
-import buildInstructionDetail from './instructionDetailData';
 import type { InstructionFeeRow } from './instructionDetailData';
-import { getInstructionFeeTotal, loadInstructionDetail, saveInstructionDetail } from './instructionDetailStore';
+import { getCargoTransferNumbers, getInstructionFeeTotal, loadInstructionDetail, saveInstructionDetail, updateCargoTransferNumbers } from './instructionDetailStore';
 import type { InstructionAttachment, InstructionDetailState, InstructionWaybillFields } from './instructionDetailStore';
 import CatalogFeeDrawer from './CatalogFeeDrawer';
 import type { CatalogFeeDrawerRow } from './CatalogFeeDrawer';
 import OperationInstructionTable from './OperationInstructionTable';
 import { getInventoryFeeCatalog, loadOverseasInventory } from './overseasStorageInventoryData';
 import InstructionWaybillInfo from './InstructionWaybillInfo';
+import InstructionCargoTransfers from './InstructionCargoTransfers';
+import InstructionFeeEditDialog from './InstructionFeeEditDialog';
+import { instructionManagementCatalog } from './instructionManagementCatalog';
 import { getInstructionWaybillContext } from './instructionWaybillContext';
+import { getInstructionCargoRows } from './instructionCargoRows';
+import InstructionTrackingTimeline from './InstructionTrackingTimeline';
+import { getInstructionTrackingEvents, isInstructionTrackingEvent, type InstructionTrackingType } from './instructionTracking';
+import countryOptions from './niuKuTemplateOptions.json';
 import './InstructionDetailPage.css';
 
-const tabs = ['货箱信息', '费用信息', '其它信息'] as const;
+const tabs = ['货箱信息', '运踪信息', '费用信息', '其它信息'] as const;
 const attachmentTypes = ['POD', 'ISA', '报关资料', '底单', '其他', '其它', '税金单', '递延资料', '提单'];
 type DetailTab = typeof tabs[number];
-type NestedModal = 'fee' | 'attachment' | 'deleteAttachment' | null;
+type NestedModal = 'fee' | 'feeEdit' | 'attachment' | 'deleteAttachment' | 'tracking' | 'processing' | null;
+const trackingTypes: InstructionTrackingType[] = ['正常运踪', '异常运踪'];
 const nowText = () => new Date().toLocaleString('sv-SE', { hour12: false });
 const uniqueId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const show = (value: unknown) => value == null || !String(value).trim() || String(value).trim() === '-' ? '—' : String(value);
@@ -48,11 +55,11 @@ function feeDraft(fee: InstructionFeeRow): FeeDraft {
 export default function InstructionDetailPage({ row, onClose, onUpdate }: {
   row: InstructionListRow; onClose: () => void; onUpdate?: (patch: Partial<InstructionListRow>) => void;
 }) {
-  const model = useMemo(() => buildInstructionDetail(row), [row]);
   const canEdit = row.tab === '待确认';
   const displayStatus = row.status === '已处理' ? '已完成' : row.status;
   const [state, setState] = useState<InstructionDetailState>(() => loadInstructionDetail(row));
   const inventory = useMemo(loadOverseasInventory, []);
+  const cargoRows = useMemo(()=>getInstructionCargoRows(row,inventory),[row,inventory]);
   const waybillContext = useMemo(() => getInstructionWaybillContext(row, inventory), [row, inventory]);
   const [waybillDraft, setWaybillDraft] = useState<InstructionWaybillFields>(() => ({ ...(state.waybillInfo || waybillContext.fields) }));
   const [waybillError, setWaybillError] = useState('');
@@ -65,7 +72,18 @@ export default function InstructionDetailPage({ row, onClose, onUpdate }: {
   const [error, setError] = useState('');
   const [feeRows, setFeeRows] = useState<FeeDraft[]>([]);
   const feeCatalog = useMemo(getInventoryFeeCatalog, []);
+  const editedFeeCost=useMemo(()=>{
+    const fee=feeRows[0];if(!fee)return undefined;
+    const original=instructionManagementCatalog.find(item=>item.code===fee.code||item.name===fee.name);
+    try{const saved=JSON.parse(localStorage.getItem('tiantu-instruction-management-reference-v1')||'null');const item=saved?.rows?.find((item:{code:string;name:string})=>item.code===fee.code||item.name===fee.name);if(typeof item?.cost==='number'&&Number.isFinite(item.cost)&&item.cost>=0)return item.cost;}catch{/* Use the original cost when no saved dictionary is available. */}
+    return original?.cost;
+  },[feeRows]);
   const [feeFocusId, setFeeFocusId] = useState<string | null>(null);
+  const [selectedOperations,setSelectedOperations] = useState<string[]>([]);
+  const [processingStatus,setProcessingStatus] = useState<'待处理'|'已处理'>('已处理');
+  const doneOperations=state.fees.filter(fee=>['已处理','已完成'].includes(fee.status||row.status)).length;
+  const trackingEvents = useMemo(() => getInstructionTrackingEvents(row, state.trackingEvents), [row, state.trackingEvents]);
+  const [trackingForm, setTrackingForm] = useState<{ occurredAt: string; description: string; country: string; type: InstructionTrackingType }>({ occurredAt: '', description: '', country: '', type: '正常运踪' });
   const [editingAttachment, setEditingAttachment] = useState<InstructionAttachment | null>(null);
   const [deletingAttachment, setDeletingAttachment] = useState<InstructionAttachment | null>(null);
   const [attachmentForm, setAttachmentForm] = useState({ fileName: '', fileSize: '', type: '其他', customerVisible: '可见' as '可见' | '不可见', dataUrl: '' });
@@ -81,7 +99,7 @@ export default function InstructionDetailPage({ row, onClose, onUpdate }: {
 
   const closeNested = () => { fileReadId.current += 1; setReadingFile(false); setNested(null); setError(''); };
   useEffect(() => {
-    if (!canEdit && nested === 'fee') { setNested(null); setError(''); }
+    if (!canEdit && (nested === 'fee'||nested==='feeEdit')) { setNested(null); setError(''); }
   }, [canEdit, nested]);
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -119,6 +137,8 @@ export default function InstructionDetailPage({ row, onClose, onUpdate }: {
       saveInstructionDetail(row, saved);
       setState(saved);
       onUpdate?.({ updated, customerNote: saved.customerNote, internalRemark: saved.internalRemark, failureReason: saved.failureReason,
+        boxSelectionMode:saved.boxSelectionMode||row.boxSelectionMode||'随机',
+        ...(saved.cargoTransferNumbers === undefined ? {} : {transferNumbers:getCargoTransferNumbers(saved.cargoTransferNumbers,saved.cargoTransferOrder)}),
         ...(saved.waybillInfo ? { shipment: saved.waybillInfo.shipmentId || '-', reference: saved.waybillInfo.referenceId || '-',
           scheduledAt: saved.waybillInfo.scheduledAt, waybillRemark: saved.waybillInfo.remark } : {}),
         ...(saved.feesEdited ? { fee: String(getInstructionFeeTotal(saved.fees)) } : {}) });
@@ -141,6 +161,7 @@ export default function InstructionDetailPage({ row, onClose, onUpdate }: {
     }
   }
 
+
   function cancelWaybill() {
     setWaybillDraft({ ...(state.waybillInfo || waybillContext.fields) });
     setWaybillError(''); setWaybillSaved(false);
@@ -150,7 +171,14 @@ export default function InstructionDetailPage({ row, onClose, onUpdate }: {
     if (!canEdit) return;
     const editing = state.fees.find((fee) => fee.id === focusId);
     setFeeRows(editing ? [feeDraft(editing)] : [emptyFee()]);
-    setFeeFocusId(focusId); setError(''); setNested('fee');
+    setFeeFocusId(focusId); setError(''); setNested(focusId?'feeEdit':'fee');
+  }
+  function saveProcessing() {
+    const selected=new Set(selectedOperations);
+    if(!state.fees.some(fee=>selected.has(fee.id))){setError('请先勾选需要处理的操作指令');return;}
+    if(persist({...state,fees:state.fees.map(fee=>selected.has(fee.id)?{...fee,status:processingStatus}:fee)})){
+      setSelectedOperations([]);closeNested();
+    }
   }
   function selectFee(id: string, code: string) {
     if (!canEdit) return;
@@ -208,6 +236,17 @@ export default function InstructionDetailPage({ row, onClose, onUpdate }: {
       : { fileName: '', fileSize: '', type: '其他', customerVisible: '可见', dataUrl: '' });
     setError(''); setNested('attachment');
   }
+  function openTracking() {
+    setTrackingForm({ occurredAt: '', description: '', country: '', type: '正常运踪' });
+    setError(''); setNested('tracking');
+  }
+  function saveTracking() {
+    if (!trackingForm.description.trim()) { setError('请输入节点描述。'); return; }
+    const event = { id: uniqueId(), occurredAt: trackingForm.occurredAt.trim() || nowText().replace(' ', 'T'), operator: '当前用户',
+      status: trackingForm.description.trim(), type: trackingForm.type, country: trackingForm.country };
+    if (!isInstructionTrackingEvent(event)) { setError('请选择有效的运踪类型和时间。'); return; }
+    if (persist({ ...state, trackingEvents: [...(state.trackingEvents || []), event] })) closeNested();
+  }
   function readAttachment(file?: File) {
     if (!file) return;
     const readId = ++fileReadId.current;
@@ -260,14 +299,17 @@ export default function InstructionDetailPage({ row, onClose, onUpdate }: {
             {tabs.map((name) => <button key={name} id={labelId(name)} type="button" role="tab" aria-selected={tab === name} aria-controls={panelId(name)} tabIndex={tab === name ? 0 : -1} onKeyDown={(event) => tabKey(event, name)} onClick={() => setTab(name)} className={`mc-intercept-detail-tab ${tab === name ? 'active' : ''}`}>{name}{tab === name && <span className="mc-intercept-detail-tab-indicator" />}</button>)}
           </div>
           {tab === '货箱信息' && <section id={panelId('货箱信息')} role="tabpanel" aria-labelledby={labelId('货箱信息')} className="mc-intercept-detail-card">
-            <h3 className="mc-intercept-detail-card-title">货箱信息</h3>
-            <div className="mc-intercept-cargo-box-wrap"><table className="mc-intercept-cargo-box-table"><thead><tr><th>货箱号</th><th>客户数据</th><th>系统拣货（材重/实重）</th></tr></thead>
-              <tbody>{model.cargoRows.length ? model.cargoRows.map((box) => <tr key={box.id}><td className="font-mono">{show(box.boxNo)}</td><td>{box.customerLines.map((line, index) => <div key={index}>{line}</div>)}</td><td>{box.pickingLines.map((line, index) => <div key={index}>{line}</div>)}</td></tr>) : <tr><td colSpan={3} className="mc-intercept-fee-empty">暂无货箱信息</td></tr>}</tbody>
-            </table></div>
+            <InstructionCargoTransfers rows={cargoRows} numbers={state.cargoTransferNumbers} onSave={(numbers,editedIds)=>persist(updateCargoTransferNumbers(state,numbers,editedIds))}/>
+          </section>}
+          {tab === '运踪信息' && <section id={panelId('运踪信息')} role="tabpanel" aria-labelledby={labelId('运踪信息')} className="mc-intercept-detail-card">
+            <h3 className="mc-intercept-detail-card-title">运踪节点信息</h3>
+            <InstructionTrackingTimeline events={trackingEvents} onAdd={openTracking} />
           </section>}
           {tab === '费用信息' && <section id={panelId('费用信息')} role="tabpanel" aria-labelledby={labelId('费用信息')} className="mc-intercept-detail-card">
             <div className="mc-intercept-detail-toolbar"><h3 className="mc-intercept-detail-card-title">操作指令</h3>{canEdit && <button type="button" className="mc-btn primary" onClick={() => openFee()}>新增费用</button>}</div>
+            <div className="instruction-processing-toolbar"><span className="instruction-processing-count">待处理 {state.fees.length-doneOperations} 项，已处理 {doneOperations} 项</span><button type="button" className="mc-btn primary" disabled={!state.fees.some(fee=>selectedOperations.includes(fee.id))} onClick={()=>{setProcessingStatus('已处理');setError('');setNested('processing');}}>处理</button><span>已选 {state.fees.filter(fee=>selectedOperations.includes(fee.id)).length} 项</span></div>
             <OperationInstructionTable rows={state.fees.map((fee) => ({ ...fee, feeRemark: fee.remark, status: fee.status || row.status }))}
+              selectedIds={selectedOperations} onSelectionChange={setSelectedOperations}
               onEdit={canEdit ? openFee : undefined} onRemove={canEdit ? removeFee : undefined} />
             <div className="oi-fee-summary"><span>共 {state.fees.length} 条</span><strong>人民币合计 {amount(totalRmb)}</strong></div>
           </section>}
@@ -283,6 +325,7 @@ export default function InstructionDetailPage({ row, onClose, onUpdate }: {
     </div>
 
     {canEdit && nested === 'fee' && <CatalogFeeDrawer rows={feeRows} catalogRows={feeCatalog} focusedRowId={feeFocusId} error={error} onAdd={() => { if (!canEdit) return; setError(''); setFeeRows((current) => [...current, emptyFee()]); }} onSelect={selectFee} onUpdate={updateFee} onRemove={(feeId) => { if (!canEdit) return; setError(''); setFeeRows((current) => current.filter((fee) => fee.id !== feeId)); }} onCancel={closeNested} onConfirm={saveFees} />}
+    {canEdit&&nested==='feeEdit'&&feeRows[0]&&<InstructionFeeEditDialog row={feeRows[0]} cost={editedFeeCost} error={error} onUpdate={(field,value)=>updateFee(feeRows[0].id,field,value)} onCancel={closeNested} onConfirm={saveFees}/>}
 
     {nested === 'attachment' && <div className="mc-intercept-overlay mc-intercept-feedback-overlay mc-intercept-attachment-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeNested(); }}><section className="mc-intercept-attachment-modal" role="dialog" aria-modal="true" aria-labelledby={`instructionAttachmentTitle-${id}`} tabIndex={-1}>
       <header><h2 id={`instructionAttachmentTitle-${id}`}>{editingAttachment ? '编辑附件' : '上传附件'}</h2><button type="button" onClick={closeNested} className="mc-intercept-close" aria-label="关闭附件弹窗">×</button></header>
@@ -293,6 +336,18 @@ export default function InstructionDetailPage({ row, onClose, onUpdate }: {
     </section></div>}
 
     {nested === 'deleteAttachment' && deletingAttachment && <div className="mc-intercept-overlay mc-intercept-feedback-overlay mc-intercept-attachment-overlay"><section className="mc-intercept-attachment-modal mc-intercept-attachment-delete-modal" role="dialog" aria-modal="true" aria-labelledby={`instructionDeleteAttachmentTitle-${id}`} tabIndex={-1}><header><h2 id={`instructionDeleteAttachmentTitle-${id}`}>删除附件</h2><button type="button" onClick={closeNested} className="mc-intercept-close" aria-label="关闭删除附件弹窗">×</button></header><div className="px-10 py-8 text-center text-sm text-slate-800">确定删除附件“{deletingAttachment.name}”吗？</div><footer><button type="button" onClick={closeNested} className="rounded border border-slate-300 bg-white px-6 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">取消</button><button type="button" onClick={() => { if (persist({ ...state, attachments: state.attachments.filter((item) => item.id !== deletingAttachment.id) })) closeNested(); }} className="rounded bg-blue-600 px-6 py-1.5 text-xs font-bold text-white hover:bg-blue-700">确定</button></footer></section></div>}
-    {error && nested !== 'fee' && <div role="alert" className="instruction-detail-error">{error}</div>}
+    {nested === 'tracking' && <div className="mc-intercept-overlay mc-intercept-feedback-overlay mc-intercept-attachment-overlay instruction-tracking-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeNested(); }}><section className="mc-intercept-attachment-modal instruction-tracking-modal" role="dialog" aria-modal="true" aria-labelledby={`instructionTrackingTitle-${id}`} tabIndex={-1}>
+      <header><h2 id={`instructionTrackingTitle-${id}`}>添加运踪节点</h2><button type="button" onClick={closeNested} className="mc-intercept-close" aria-label="关闭添加运踪">×</button></header>
+      <div className="instruction-tracking-form">
+        <div className="instruction-tracking-type" role="group" aria-labelledby={`instructionTrackingType-${id}`}><span id={`instructionTrackingType-${id}`}><b>* </b>运踪类型：</span><div className="instruction-tracking-type-choices">{trackingTypes.map(type => <label key={type} className={trackingForm.type === type ? 'is-selected' : undefined}><input type="radio" name={`instructionTrackingType-${id}`} checked={trackingForm.type === type} onChange={() => { setTrackingForm(form => ({ ...form, type })); setError(''); }} />{type}</label>)}</div></div>
+        <label><span>国家：</span><select aria-label="国家" value={trackingForm.country} onChange={event => { setTrackingForm(form => ({ ...form, country: event.target.value })); setError(''); }}><option value="">请选择国家</option>{countryOptions.countries.map(country => <option key={country}>{country}</option>)}</select></label>
+        <label><span><b>* </b>节点描述：</span><input aria-label="节点描述" aria-required="true" maxLength={1000} placeholder="请输入节点描述" value={trackingForm.description} onChange={event => { setTrackingForm(form => ({ ...form, description: event.target.value })); setError(''); }} /></label>
+        <label><span>时间：</span><input aria-label="时间" type="datetime-local" placeholder="选择日期时间" value={trackingForm.occurredAt} onChange={event => { setTrackingForm(form => ({ ...form, occurredAt: event.target.value })); setError(''); }} /></label>
+        {error && <p className="instruction-tracking-form-error" role="alert">{error}</p>}
+      </div>
+      <footer><button className="mc-btn primary" type="button" onClick={saveTracking}>保存</button><button className="mc-btn" type="button" onClick={closeNested}>取消</button></footer>
+    </section></div>}
+    {nested==='processing'&&<div className="mc-intercept-overlay mc-intercept-feedback-overlay mc-intercept-attachment-overlay instruction-processing-overlay" onMouseDown={event=>{if(event.target===event.currentTarget)closeNested();}}><section className="mc-intercept-attachment-modal instruction-processing-modal" role="dialog" aria-modal="true" aria-labelledby={`instructionProcessingTitle-${id}`} tabIndex={-1}><header><h2 id={`instructionProcessingTitle-${id}`}>处理操作指令</h2><button type="button" className="mc-intercept-close" aria-label="关闭处理操作指令" onClick={closeNested}>×</button></header><div className="instruction-processing-form"><p>已选择 {state.fees.filter(fee=>selectedOperations.includes(fee.id)).length} 项操作指令</p><label><span>处理状态：</span><select aria-label="处理状态" value={processingStatus} onChange={event=>setProcessingStatus(event.target.value as '待处理'|'已处理')}><option>已处理</option><option>待处理</option></select></label><p className="instruction-processing-hint">仅修改所选操作指令的处理状态。</p>{error&&<p role="alert" className="instruction-transfer-batch-error">{error}</p>}</div><footer><button type="button" className="mc-btn primary" onClick={saveProcessing}>保存</button><button type="button" className="mc-btn" onClick={closeNested}>取消</button></footer></section></div>}
+    {error && nested !== 'fee' && nested !== 'feeEdit' && nested !== 'tracking' && nested !== 'processing' && <div role="alert" className="instruction-detail-error">{error}</div>}
   </div>, document.body);
 }
