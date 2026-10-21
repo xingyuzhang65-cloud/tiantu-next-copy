@@ -26,7 +26,7 @@ import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from
 const workspaceHashByTab: Record<string, string> = {
   指令管理: '#instruction-management',
   指令列表: '#instruction-list',
-  海外暂存: '#overseas-storage',
+  暂存管理: '#overseas-storage',
   运单时效监控: '#overtime-waybills',
 };
 const initialWorkspaceTab = Object.keys(workspaceHashByTab).find(tab => workspaceHashByTab[tab] === location.hash) || '运单';
@@ -593,7 +593,7 @@ export default function App() {
           <ReservedOrderPage addToast={addToast} />
         ) : currentTab === '海外中转单' ? (
           <OverseasTransitOrderPage addToast={addToast} />
-        ) : currentTab === '海外暂存' ? (
+        ) : currentTab === '暂存管理' ? (
           <OverseasStorageInventoryPage addToast={addToast} />
         ) : currentTab === '海外拦截' ? (
           <OverseasWarehouseInterceptPage
@@ -602,8 +602,8 @@ export default function App() {
             cancelWaybillIds={cancelInterceptWaybillIds}
             onCancelWaybillsHandled={() => setCancelInterceptWaybillIds([])}
             onOpenStorage={(storageNo) => {
-              navigateToView('海外暂存');
-              addToast(storageNo ? `已打开暂存单 ${storageNo}` : '已打开海外暂存', 'info');
+              navigateToView('暂存管理');
+              addToast(storageNo ? `已打开暂存单 ${storageNo}` : '已打开暂存管理', 'info');
             }}
           />
         ) : currentTab === '指令管理' ? (
