@@ -1,4 +1,9 @@
 .oi-page { gap: 12.5px; }
+.oi-page .sm-filter > span:first-child { flex: 0 0 82px; }
+.oi-page .sm-date-filter { grid-column: span 2; }
+@media (max-width: 600px) {
+  .oi-page .sm-date-filter { grid-column: span 1; }
+}
 .oi-required { margin-right: 3px; color: #f56c6c; font-weight: 400; }
 .oi-drawer .oi-required::before { content: none; }
 .oi-form-fieldset { min-width: 0; margin: 22px 0; padding: 0; border: 0; }
