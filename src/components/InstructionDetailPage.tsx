@@ -291,6 +291,7 @@ export default function InstructionDetailPage({ row, onClose, onUpdate }: {
           <button className="mc-intercept-close" type="button" aria-label="关闭指令详情" onClick={onClose}>×</button>
         </header>
         <div className="mc-intercept-detail-content">
+          {row.tab === '驳回' && <section className="mb-3 rounded border border-rose-200 bg-rose-50 p-4"><h3 className="mb-2 text-sm font-semibold text-rose-800">驳回原因</h3><p className="whitespace-pre-wrap break-words text-sm text-rose-700">{row.rejectionReason || '—'}</p></section>}
           <InstructionWaybillInfo summary={{ ...waybillContext.summary, customerNote: state.customerNote }} value={canEdit ? waybillDraft : savedWaybill} required={requiredWaybill} readOnly={!canEdit}
             onChange={(patch) => { if (!canEdit) return; setWaybillDraft((current) => ({ ...current, ...patch })); setWaybillError(''); setWaybillSaved(false); }}
             onCancel={cancelWaybill} onSave={saveWaybill} error={waybillError} saved={waybillSaved} dirty={waybillDirty} />

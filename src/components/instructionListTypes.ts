@@ -3,6 +3,7 @@ export type InstructionStatus = '已处理' | '待处理' | '已取消' | '已�
 export type InstructionProcessingResult = '拦截成功' | '拦截失败' | '已处理';
 
 export interface InstructionListRow {
+  rejectionReason?: string;
   id: string; tab: InstructionListTab; waybill: string; instructionNo: string; names: string[]; created: string; updated: string;
   shipment: string; reference: string; status: InstructionStatus; processingResult?: InstructionProcessingResult; failureReason?: string;
   photo?: string; customer: string; warehouse: string; zip: string; orderType: string; instructionType: string; interceptReason?: string;
