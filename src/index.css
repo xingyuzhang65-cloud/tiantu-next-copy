@@ -252,7 +252,7 @@
 
 .mc-intercept-table {
   width: 100%;
-  min-width: 2600px;
+  min-width: 2750px;
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
@@ -261,7 +261,7 @@
 }
 
 .mc-intercept-table.has-result-column {
-  min-width: 2800px;
+  min-width: 2950px;
 }
 
 .mc-intercept-table th,
@@ -315,14 +315,13 @@
 .mc-intercept-table th:nth-child(6) { width: 160px; }
 .mc-intercept-table th:nth-child(7) { width: 190px; }
 .mc-intercept-table th:nth-child(8) { width: 86px; }
-.mc-intercept-table th:nth-child(9) { width: 270px; }
-.mc-intercept-table th:nth-child(10) { width: 110px; }
-.mc-intercept-table th:nth-child(11) { width: 160px; }
-.mc-intercept-table th:nth-child(12) { width: 190px; }
-.mc-intercept-table th:nth-child(13) { width: 94px; }
-.mc-intercept-table th:nth-child(14),
+.mc-intercept-table th:nth-child(9) { width: 96px; }
+.mc-intercept-table th:nth-child(10) { width: 320px; }
+.mc-intercept-table th:nth-child(11) { width: 110px; }
+.mc-intercept-table th:nth-child(12) { width: 160px; }
+.mc-intercept-table th:nth-child(13) { width: 190px; }
+.mc-intercept-table th:nth-child(14) { width: 94px; }
 .mc-intercept-table th:nth-child(15) { width: 142px; }
-.mc-intercept-table th:nth-child(16) { width: 96px; }
 
 .mc-intercept-table .mc-intercept-actions-cell {
   position: sticky;
@@ -444,18 +443,26 @@
   white-space: nowrap;
 }
 
-.mc-intercept-instruction-fee-cell {
-  padding: 4px 10px !important;
-  color: #d29216;
+.mc-intercept-table .mc-intercept-instruction-cell {
+  padding: 8px 10px;
   text-align: left !important;
   line-height: 18px;
+  white-space: normal;
 }
 
-.mc-intercept-instruction-fee-cell div {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.mc-intercept-operation {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 4px 0;
+  overflow-wrap: anywhere;
 }
+.mc-intercept-operation.is-done { color: #67c23a; }
+.mc-intercept-operation.is-pending { color: #e6a23c; }
+.mc-intercept-operation-status { flex-shrink: 0; padding: 0 6px; border-radius: 10px; font-size: 10px; }
+.mc-intercept-operation.is-done .mc-intercept-operation-status { background: #f0f9eb; }
+.mc-intercept-operation.is-pending .mc-intercept-operation-status { background: #fdf6ec; }
+.mc-intercept-no-instructions { color: #94a3b8; }
 
 .mc-intercept-remark-text {
   display: inline-block;

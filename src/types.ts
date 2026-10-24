@@ -8,6 +8,7 @@ export interface WaybillAttachment {
 }
 
 export interface OverseasInterceptInstructionFee {
+  status?: '待处理' | '已处理' | '已完成';
   code: string;
   name: string;
   type: string;

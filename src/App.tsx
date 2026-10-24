@@ -11,7 +11,7 @@ import WarehouseShipmentPage from './components/WarehouseShipmentPage';
 import BillOfLadingPage from './components/BillOfLadingPage';
 import OvertimeWaybillsPage from './components/OvertimeWaybillsPage';
 import OverseasTransitOrderPage from './components/OverseasTransitOrderPage';
-import OverseasWarehouseInterceptPage, { cancelInterceptsByWaybill, getCancelableInterceptWaybillIds, getActiveInterceptWaybillIds, initializeMockCancelableIntercepts } from './components/OverseasWarehouseInterceptPage';
+import OverseasWarehouseInterceptPage, { cancelInterceptsByWaybill, getCancelableInterceptWaybillIds, getActiveInterceptWaybillIds, initializeMockCancelableIntercepts, getInterceptInstructionRows } from './components/OverseasWarehouseInterceptPage';
 import ExpressOrderPage from './components/ExpressOrderPage';
 import UserManagementPage from './components/UserManagementPage';
 import MarketingDashboardPage from './components/MarketingDashboardPage';
@@ -24,6 +24,7 @@ import { Waybill, OrderType, WaybillChangeLog, OverseasInterceptRequest } from '
 import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from 'lucide-react';
 
 const workspaceHashByTab: Record<string, string> = {
+  海外拦截: '#overseas-intercept',
   指令管理: '#instruction-management',
   指令列表: '#instruction-list',
   暂存管理: '#overseas-storage',
@@ -609,7 +610,7 @@ export default function App() {
         ) : currentTab === '指令管理' ? (
           <InstructionManagementPage addToast={addToast} />
         ) : currentTab === '指令列表' ? (
-          <InstructionListPage addToast={addToast} />
+          <InstructionListPage addToast={addToast} interceptRows={getInterceptInstructionRows(pendingOverseasIntercepts)} />
         ) : currentTab === '创建客户指令' ? (
           <CustomerInstructionCreatePage />
         ) : currentTab === '运单时效监控' ? (

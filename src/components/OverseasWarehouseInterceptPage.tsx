@@ -3,6 +3,10 @@ import { FileText } from 'lucide-react';
 import OverseasFeeModal from './OverseasFeeModal';
 import type { OverseasFeeEditableField } from './OverseasFeeModal';
 import type { OverseasInterceptInstructionFee, OverseasInterceptRequest } from '../types';
+import { toInterceptInstructionRow } from './overseasInterceptInstructions';
+import { getInstructionOperations } from './instructionOperationDisplay';
+import InstructionDetailPage from './InstructionDetailPage';
+import type { InstructionListRow } from './instructionListTypes';
 
 type InterceptStatus = '待处理' | '已确认' | '拦截中' | '已完成' | '已驳回' | '已取消';
 type InterceptWorkbenchTab = '待处理' | '已确认' | '拦截中' | '已完成' | '取消/驳回' | '全部';
@@ -107,7 +111,7 @@ const emptyFilters: FilterState = {
 
 const canceledOrRejectedStatuses: InterceptStatus[] = ['已驳回', '已取消'];
 const statusTabs: InterceptWorkbenchTab[] = ['待处理', '已确认', '拦截中', '已完成', '取消/驳回', '全部'];
-const tableHeaders = ['客户名称', '拦截单号', '运单号', '客户单号', '最新运踪', '拦截原因', '拦截箱数', '指令费用', '核销状态', '客户备注', '内部备注', '申请人', '申请时间', '操作'];
+const tableHeaders = ['客户名称', '拦截单号', '运单号', '客户单号', '最新运踪', '拦截原因', '拦截箱数', '指令数量', '指令', '核销状态', '客户备注', '内部备注', '申请人', '申请时间', '操作'];
 const terminationReason = (task: InterceptTask) => task.status === '已取消'
   ? task.cancelReason || task.resultRemark || '-'
   : task.status === '已驳回'
@@ -405,6 +409,10 @@ function getCurrentInterceptTasks(requests: OverseasInterceptRequest[]) {
   return tasks;
 }
 
+export function getInterceptInstructionRows(requests: OverseasInterceptRequest[] = []): InstructionListRow[] {
+  return getCurrentInterceptTasks(requests).filter(task => !defaultMockInterceptTaskIds.has(task.id) && task.instructionFees?.length).map(toInterceptInstructionRow);
+}
+
 export function getCancelableInterceptWaybillIds(requests: OverseasInterceptRequest[]) {
   return [...new Set(getCurrentInterceptTasks(requests).filter((task) => task.status === '待处理').map((task) => task.waybillNo))];
 }
@@ -639,19 +647,6 @@ const createEmptyInterceptFeeDraft = (): InterceptFeeDraft => ({
   remark: '',
 });
 
-const formatInstructionFeeAmount = (value: number) => Number(value.toFixed(2)).toString();
-const formatInstructionFeeCurrency = (currency: string) => {
-  const normalized = currency.trim().toUpperCase();
-  if (currency === '人民币' || normalized === 'RMB' || normalized === 'CNY') return 'CNY';
-  if (currency === '美元' || normalized === 'USD') return 'USD';
-  return normalized || 'CNY';
-};
-const formatInstructionFee = (row: InterceptInstructionFee) => {
-  const quantity = parseInterceptFeeNumber(row.quantity || '1') || 1;
-  const total = parseInterceptFeeNumber(row.price) * quantity;
-  return `${formatInstructionFeeAmount(total)} ${formatInstructionFeeCurrency(row.currency)} ${row.name} (${row.price}/${row.unit})`;
-};
-
 const hasUnreconciledInstructionFee = (task: InterceptTask) =>
   (task.instructionFees || []).length > 0 && getReconciliationStatus(task) !== '已核销';
 
@@ -678,6 +673,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   const [activeTab, setActiveTab] = useState<InterceptWorkbenchTab>('全部');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [detailTaskId, setDetailTaskId] = useState<number | null>(null);
+  const [instructionRow, setInstructionRow] = useState<InstructionListRow | null>(null);
   const [logTaskId, setLogTaskId] = useState<number | null>(null);
   const [detailMode, setDetailMode] = useState<'view' | 'process'>('view');
   const [detailContentTab, setDetailContentTab] = useState<InterceptDetailTab>('货箱信息');
@@ -1290,13 +1286,16 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       return;
     }
     const headers = visibleTableHeaders.filter((header) => header !== '操作');
-    const rows = selectedVisible.map((task) => [
+    const rows = selectedVisible.map((task) => {
+      const operations = getInstructionOperations(toInterceptInstructionRow(task));
+      return [
       task.customer, task.no, task.waybillNo, task.customerOrderNo, task.latestTracking,
-      task.reason, task.actualBoxes || task.boxes, (task.instructionFees || []).map(formatInstructionFee).join('；'), getReconciliationStatus(task), task.customerNote || '', task.internalRemark || task.remark || '', task.applicant,
+      task.reason, task.actualBoxes || task.boxes, `${operations.filter(operation => operation.done).length}/${operations.length}`, operations.map(operation => `${operation.done ? '已处理' : '待处理'} ${operation.description}`).join('；'), getReconciliationStatus(task), task.customerNote || '', task.internalRemark || task.remark || '', task.applicant,
       task.appliedAt,
       ...(showResultColumns ? [task.status === '已完成' ? completedResult(task) : '', task.status === '已完成' ? task.failReason || '' : ''] : []),
       ...(showTerminationColumns ? [task.status, terminationReason(task) === '-' ? '' : terminationReason(task)] : []),
-    ]);
+    ];
+    });
     const csv = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
@@ -1511,7 +1510,11 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
             <tbody>
               {!filteredTasks.length ? (
                 <tr className="mc-intercept-empty"><td colSpan={visibleTableHeaders.length + 1}>暂无匹配的拦截任务</td></tr>
-              ) : filteredTasks.map((task) => (
+              ) : filteredTasks.map((task) => {
+                const linkedRow = toInterceptInstructionRow(task);
+                const operations = getInstructionOperations(linkedRow);
+                const doneCount = operations.filter(operation => operation.done).length;
+                return (
                 <tr key={task.id}>
                   <td className="mc-intercept-check">
                     <input type="checkbox" checked={selectedIds.includes(task.id)} onChange={(e) => setSelectedIds((ids) => e.target.checked ? (ids.includes(task.id) ? ids : [...ids, task.id]) : ids.filter((id) => id !== task.id))} />
@@ -1523,8 +1526,12 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   <td title={task.latestTracking || '-'}>{task.latestTracking || '-'}</td>
                   <td title={task.reason}>{task.reason}</td>
                   <td>{task.actualBoxes || task.boxes}</td>
-                  <td className="mc-intercept-instruction-fee-cell">
-                    {(task.instructionFees || []).length > 0 ? (task.instructionFees || []).map((fee) => <div key={fee.code}>{formatInstructionFee(fee)}</div>) : '-'}
+                  <td aria-label={`指令数量 ${doneCount}/${operations.length}`}>
+                    {operations.length ? <button type="button" className="mc-intercept-action" aria-label={`查看指令 ${task.no}`} onClick={() => setInstructionRow(linkedRow)}>{doneCount}/{operations.length}</button> : '0/0'}
+                  </td>
+                  <td className="mc-intercept-instruction-cell">
+                    {operations.map(operation => <div key={operation.id} className={`instruction-operation-line mc-intercept-operation ${operation.done ? 'is-done' : 'is-pending'}`}><span className="mc-intercept-operation-status">{operation.done ? '已处理' : '待处理'}</span><span>{operation.description}</span></div>)}
+                    {!operations.length && <span className="mc-intercept-no-instructions">—</span>}
                   </td>
                   <td><span className={`mc-reconciliation-status mc-reconciliation-${getReconciliationStatus(task)}`}>{getReconciliationStatus(task)}</span></td>
                   <td className="mc-intercept-customer-note-cell" title={task.customerNote || '-'}>{task.customerNote || '-'}</td>
@@ -1550,13 +1557,14 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                     </div>
                   </td>
                 </tr>
-              ))}
+              ); })}
             </tbody>
           </table>
         </div>
         <div className="mc-table-footer"><span>共 {filteredTasks.length} 条</span><button type="button">‹</button><button className="active" type="button">1</button><button type="button">›</button><select defaultValue="50 条/页"><option>50 条/页</option></select></div>
       </section>
 
+      {instructionRow && <InstructionDetailPage row={instructionRow} onClose={() => setInstructionRow(null)} onUpdate={patch => setInstructionRow(row => row ? { ...row, ...patch } : null)} />}
       {detailTask && (
         <div className="mc-intercept-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) { setDetailTaskId(null); setDetailMode('view'); setDetailContentTab('货箱信息'); } }}>
           <aside className="mc-intercept-drawer" role="dialog" aria-modal="true" aria-labelledby="interceptDetailTitle">

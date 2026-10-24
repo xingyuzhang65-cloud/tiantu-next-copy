@@ -101,7 +101,7 @@ export function buildInstructionDetail(row: InstructionListRow): InstructionDeta
     : [];
 
   const feeTotal = readAmount(row.fee);
-  const feeRows: InstructionFeeRow[] = feeTotal === null ? [] : [{
+  const feeRows: InstructionFeeRow[] = row.operationFees ? row.operationFees.map(fee => ({ ...fee })) : feeTotal === null ? [] : [{
     id: `${row.id}:fee-summary`,
     name: row.names.join(' / ') || row.instructionType || '指令费用',
     type: '—',
