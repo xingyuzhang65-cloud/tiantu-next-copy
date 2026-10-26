@@ -24,7 +24,7 @@ import { Waybill, OrderType, WaybillChangeLog, OverseasInterceptRequest } from '
 import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from 'lucide-react';
 
 const workspaceHashByTab: Record<string, string> = {
-  海外拦截: '#overseas-intercept',
+  拦截管理: '#overseas-intercept',
   指令管理: '#instruction-management',
   指令列表: '#instruction-list',
   暂存管理: '#overseas-storage',
@@ -454,7 +454,7 @@ export default function App() {
       return [...currentRequests, ...requests.filter((request) => !existingIds.has(request.id))];
     });
 
-    const targetTab = '海外拦截';
+    const targetTab = '拦截管理';
     setCurrentSubView(targetTab);
     setOpenTabs((tabs) => tabs.includes(targetTab) ? tabs : [...tabs, targetTab]);
     setCurrentTab(targetTab);
@@ -596,7 +596,7 @@ export default function App() {
           <OverseasTransitOrderPage addToast={addToast} />
         ) : currentTab === '暂存管理' ? (
           <OverseasStorageInventoryPage addToast={addToast} />
-        ) : currentTab === '海外拦截' ? (
+        ) : currentTab === '拦截管理' ? (
           <OverseasWarehouseInterceptPage
             addToast={addToast}
             incomingRequests={pendingOverseasIntercepts}

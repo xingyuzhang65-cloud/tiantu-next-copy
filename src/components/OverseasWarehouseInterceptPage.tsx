@@ -660,6 +660,9 @@ type CancelReasonContext = {
 
 type EditableDetailField = 'customer' | 'internal' | 'failure';
 
+const canEditDetailField = (task: InterceptTask, field: EditableDetailField) =>
+  field === 'failure' || task.status === '待处理';
+
 const editableDetailFieldLabel = (field: EditableDetailField) => ({
   customer: '客户备注',
   internal: '内部备注',
@@ -1126,11 +1129,13 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
 
   const submitBatchNote = (event: React.FormEvent) => {
     event.preventDefault();
+    if (!isPendingView) return;
     const note = batchNote.trim();
     if (!note) return;
-    const taskIds = selectedVisible.filter((task) => ['待处理', '已确认', '拦截中'].includes(task.status)).map((task) => task.id);
+    const taskIds = selectedVisible.filter((task) => task.status === '待处理').map((task) => task.id);
+    if (!taskIds.length) { notifySelectionMissing(); return; }
     setTasks((prev) => prev.map((task) => {
-      if (!taskIds.includes(task.id)) return task;
+      if (!taskIds.includes(task.id) || task.status !== '待处理') return task;
       const previous = task.internalRemark || task.remark;
       const next = previous ? `${previous}；${note}` : note;
       return appendLog({ ...task, internalRemark: next, remark: next }, '批量内部备注', note);
@@ -1142,6 +1147,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   };
 
   const startEditRemark = (task: InterceptTask, field: EditableDetailField = 'internal') => {
+    if (!canEditDetailField(task, field)) return;
     setEditingRemarkId(task.id);
     setEditingRemarkField(field);
     setEditRemarkValue(
@@ -1154,12 +1160,15 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   };
 
   const saveEditRemark = (taskId: number) => {
+    const currentTask = tasks.find((task) => task.id === taskId);
+    if (!currentTask || !canEditDetailField(currentTask, editingRemarkField)) return;
     const remark = editRemarkValue.trim();
     if (editingRemarkField === 'failure' && !remark) {
       window.alert('请输入失败原因');
       return;
     }
     updateTask(taskId, (task) => {
+      if (!canEditDetailField(task, editingRemarkField)) return task;
       const previousRemark = editingRemarkField === 'customer'
         ? task.customerNote
         : editingRemarkField === 'failure'
@@ -1480,7 +1489,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
             {isConfirmedView && <button className="mc-btn primary" type="button" onClick={handleBatchStartIntercept}>开始拦截</button>}
             {isProcessingView && <button className="mc-btn primary" type="button" onClick={openBatchSuccess}>拦截成功</button>}
             {isProcessingView && <button className="mc-btn danger" type="button" onClick={openBatchFailure}>拦截失败</button>}
-            {(isPendingView || isConfirmedView || isProcessingView) && <button className="mc-btn" type="button" onClick={() => {
+            {isPendingView && <button className="mc-btn" type="button" onClick={() => {
               if (!selectedVisible.length) { notifySelectionMissing(); return; }
               setBatchNote(''); setBatchNoteOpen(true);
             }}>批量内部备注</button>}
@@ -1615,7 +1624,9 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                     value={(
                       <span className="mc-intercept-detail-editable-value">
                         <span>{detailTask.customerNote || '-'}</span>
-                        <button className="mc-intercept-detail-edit-button" type="button" onClick={() => startEditRemark(detailTask, 'customer')} aria-label="编辑客户备注" title="编辑客户备注">✎</button>
+                        {canEditDetailField(detailTask, 'customer') && (
+                          <button className="mc-intercept-detail-edit-button" type="button" onClick={() => startEditRemark(detailTask, 'customer')} aria-label="编辑客户备注" title="编辑客户备注">✎</button>
+                        )}
                       </span>
                     )}
                   />
@@ -1624,7 +1635,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                     value={(
                       <span className="mc-intercept-detail-editable-value">
                         <span>{detailTask.internalRemark || detailTask.remark || '-'}</span>
-                        {detailTask.status !== '已取消' && (
+                        {canEditDetailField(detailTask, 'internal') && (
                           <button className="mc-intercept-detail-edit-button" type="button" onClick={() => startEditRemark(detailTask, 'internal')} aria-label="编辑内部备注" title="编辑内部备注">✎</button>
                         )}
                       </span>
@@ -1946,7 +1957,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
         </div>
       )}
 
-      {editingRemarkTask && (
+      {editingRemarkTask && canEditDetailField(editingRemarkTask, editingRemarkField) && (
         <div className="mc-intercept-overlay mc-intercept-feedback-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) cancelEditRemark(); }}>
           <section className="mc-intercept-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="interceptRemarkTitle">
             <header><h2 id="interceptRemarkTitle">编辑{editableDetailFieldLabel(editingRemarkField)}</h2><button className="mc-intercept-close" type="button" aria-label="关闭字段编辑" onClick={cancelEditRemark}>×</button></header>
@@ -1961,7 +1972,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
         </div>
       )}
 
-      {batchNoteOpen && (
+      {batchNoteOpen && isPendingView && (
         <div className="mc-intercept-overlay mc-intercept-feedback-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setBatchNoteOpen(false); }}>
           <section className="mc-intercept-feedback-modal" role="dialog" aria-modal="true" aria-labelledby="interceptBatchNoteTitle">
             <header><h2 id="interceptBatchNoteTitle">内部备注</h2><button className="mc-intercept-close" type="button" aria-label="关闭内部备注" onClick={() => setBatchNoteOpen(false)}>×</button></header>
