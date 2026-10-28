@@ -25,6 +25,7 @@ import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from
 
 const workspaceHashByTab: Record<string, string> = {
   拦截管理: '#overseas-intercept',
+  预留单: '#reserved-orders',
   指令管理: '#instruction-management',
   指令列表: '#instruction-list',
   暂存管理: '#overseas-storage',
