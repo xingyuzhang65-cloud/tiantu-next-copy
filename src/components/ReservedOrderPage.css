@@ -98,7 +98,7 @@
 
 /* New reservations use the full-height drawer shown in the reference. */
 .reserved-create-backdrop { align-items: stretch; justify-content: flex-end; padding: 0; background: rgb(0 0 0 / 50%); }
-.reserved-create-drawer { display: flex; flex-direction: column; width: 420px; height: 100dvh; max-width: 100vw; max-height: 100dvh; overflow: hidden; border-radius: 0; box-shadow: -4px 0 18px #00000020; }
+.reserved-create-drawer { display: flex; flex-direction: column; width: 520px; height: 100dvh; max-width: 100vw; max-height: 100dvh; overflow: hidden; border-radius: 0; box-shadow: -4px 0 18px #00000020; }
 .reserved-create-drawer .reserved-dialog-header { flex: 0 0 36px; min-height: 36px; padding: 0 10px; border: 0; color: #252525; }
 .reserved-create-drawer .reserved-dialog-header h2 { display: flex; align-items: center; gap: 6px; font-size: 14px; }
 .reserved-create-drawer .reserved-dialog-header h2::before { content: ''; width: 4px; height: 16px; border-radius: 2px; background: #222; }
