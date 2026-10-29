@@ -6,6 +6,8 @@ import {
   Copy, Printer, ShieldAlert, Paperclip, ClipboardList
 } from 'lucide-react';
 import { Waybill, SearchParams, OrderType, WaybillAttachment, WaybillChangeLog, OverseasInterceptRequest } from '../types';
+import WaybillPickingEditor from './WaybillPickingEditor';
+import { getWaybillCustomerOrderNo } from './reservationWaybillLinks';
 
 interface TableSectionProps {
   waybills: Waybill[];
@@ -332,6 +334,7 @@ export default function TableSection({
   const [activeDetailWaybill, setActiveDetailWaybill] = useState<Waybill | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState('基础信息');
   const [pickingPanelOpen, setPickingPanelOpen] = useState(false);
+  const [pickingDataWaybill, setPickingDataWaybill] = useState<Waybill | null>(null);
   const [pickingDrafts, setPickingDrafts] = useState<Record<string, PickingTransferRow[]>>({});
   const [savedPickingRows, setSavedPickingRows] = useState<Record<string, PickingTransferRow[]>>({});
   const [importInfoWaybill, setImportInfoWaybill] = useState<Waybill | null>(null);
@@ -934,7 +937,7 @@ export default function TableSection({
     setPickingPanelOpen(false);
   };
 
-  const getCustomerOrderNo = (waybill: Waybill) => waybill.customerOrderNo || `YP${waybill.id.replace(/^HD/, '')}000301`;
+  const getCustomerOrderNo = getWaybillCustomerOrderNo;
 
   const getConsignee = (waybill: Waybill) => waybill.consignee || (waybill.country === '美国' ? 'Fernando Ocana' : 'International Consignee');
   const getCity = (waybill: Waybill) => waybill.city || (waybill.country === '美国' ? 'Whitestone' : 'London');
@@ -2164,6 +2167,7 @@ export default function TableSection({
 
       </div>
 
+      {pickingDataWaybill && <WaybillPickingEditor waybill={pickingDataWaybill} onClose={() => setPickingDataWaybill(null)} notify={addToast} />}
       {activeDetailWaybill && (
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/45">
           <div className="relative h-full w-[calc(100vw-520px)] min-w-[840px] max-w-[1400px] overflow-y-auto bg-[#edf3fb] shadow-2xl">
@@ -2429,6 +2433,10 @@ export default function TableSection({
                             type="button"
                             onClick={() => {
                               if (label === '拣货') {
+                                setPickingDataWaybill(activeDetailWaybill);
+                                return;
+                              }
+                              if (label === '转单号') {
                                 openPickingPanel(activeDetailWaybill);
                                 return;
                               }

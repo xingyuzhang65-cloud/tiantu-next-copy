@@ -46,7 +46,7 @@
 .reserved-table-wrap tbody tr.is-selected { background: #ecf5ff; }
 .reserved-table-wrap .check-col { padding: 0; }
 .reserved-table-wrap .operation-col { position: sticky; right: 0; z-index: 3; }
-.reserved-table-wrap .operation-cell { position: sticky; right: 0; z-index: 1; padding: 0 3px; background: inherit; }
+.reserved-table-wrap .operation-cell { position: sticky; right: 0; z-index: 1; padding: 0 3px; background: inherit; overflow: visible; }
 .reserved-table-wrap .operation-cell button { padding: 0 5px; border: 0; background: transparent; color: #409eff; font-size: 10px; }
 .reserved-table-wrap .operation-cell button:disabled { color: #bbc4ce; }
 .reserved-empty { height: 180px !important; color: #9ba8b8; }
@@ -98,7 +98,7 @@
 
 /* New reservations use the full-height drawer shown in the reference. */
 .reserved-create-backdrop { align-items: stretch; justify-content: flex-end; padding: 0; background: rgb(0 0 0 / 50%); }
-.reserved-create-drawer { display: flex; flex-direction: column; width: 420px; height: 100dvh; max-width: 100vw; max-height: 100dvh; overflow: hidden; border-radius: 0; box-shadow: -4px 0 18px #00000020; }
+.reserved-create-drawer { display: flex; flex-direction: column; width: 520px; height: 100dvh; max-width: 100vw; max-height: 100dvh; overflow: hidden; border-radius: 0; box-shadow: -4px 0 18px #00000020; }
 .reserved-create-drawer .reserved-dialog-header { flex: 0 0 36px; min-height: 36px; padding: 0 10px; border: 0; color: #252525; }
 .reserved-create-drawer .reserved-dialog-header h2 { display: flex; align-items: center; gap: 6px; font-size: 14px; }
 .reserved-create-drawer .reserved-dialog-header h2::before { content: ''; width: 4px; height: 16px; border-radius: 2px; background: #222; }
@@ -132,6 +132,7 @@
 .reserved-create-datetime.is-empty input::-webkit-calendar-picker-indicator { opacity: 0; }
 .reserved-create-datetime > span { position: absolute; top: 4px; left: 25px; color: #c0c4cc; pointer-events: none; }
 .reserved-create-remark-field { align-items: start; margin-bottom: 0; }
+.reserved-create-remark-field + .rwl-field { margin-top: 14px; }
 .reserved-create-remark-field > label { padding-top: 4px; }
 .reserved-create-remark { position: relative; min-width: 0; }
 .reserved-create-remark textarea { display: block; height: 78px; min-height: 78px; padding: 5px 10px 21px; resize: vertical; }
