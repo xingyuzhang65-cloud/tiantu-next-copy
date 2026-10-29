@@ -13,7 +13,7 @@ export const getWaybillIdentity = (waybill: Waybill): WaybillIdentity => ({
   id: waybill.id, systemNo: waybill.id, customerNo: getWaybillCustomerOrderNo(waybill), fbaNo: waybill.fbaCode || '',
   customer: waybill.customerName || '塘厦测试客户', expectedPieces: waybill.packagesCount,
 });
-export const parseReservationNumbers = (text: string): string[] => text.split(/[\n\r,，;；]+/).map(value => value.trim()).filter(Boolean);
+export const parseReservationNumbers = (text: string): string[] => text.split(/[\s,，;；]+/).map(value => value.trim()).filter(Boolean);
 
 export function resolveReservationNumbers(customer: string, numbers: string[], catalog: WaybillIdentity[], previous: ReservationIdentifier[] = []): ReservationIdentifier[] {
   const uniqueNumbers = [...new Map(numbers.map(number => [normalized(number), number.trim()])).values()];

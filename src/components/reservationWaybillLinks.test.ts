@@ -12,6 +12,10 @@ const storage = () => {
   return { getItem: (key: string) => data.get(key) || null, setItem: (key: string, value: string) => { data.set(key, value); } };
 };
 
+test('批量编号支持逗号、空格、制表符及换行混合分隔', () => {
+  assert.deepEqual(parseReservationNumbers(' YD001, KH001\tFBA001\nYD002，KH002 '), ['YD001', 'KH001', 'FBA001', 'YD002', 'KH002']);
+});
+
 test('三种编号在客户范围内按内部运单ID关联和去重，不重复计算方数', () => {
   const bindings = resolveReservationNumbers(a.customer, parseReservationNumbers('YD001,KH001\nFBA001'), [a, b, other]);
   const links = buildReservationLinks(a.customer, bindings, [a, b, other]);

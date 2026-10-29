@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Waybill } from '../types';
-import { buildReservationLinks, getWaybillIdentity, resolveReservationNumbers, type ReservationIdentifier, type ReservationLinks } from './reservationWaybillLinks';
+import { buildReservationLinks, getWaybillIdentity, parseReservationNumbers, resolveReservationNumbers, type ReservationIdentifier, type ReservationLinks } from './reservationWaybillLinks';
 import { ReservationPickingDetails, ReservationWaybillFields } from './ReservationWaybillFields';
 import { reservationPickingStore } from './reservationPickingStore';
 import './ReservedOrderPage.css';
@@ -212,9 +212,11 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
     const value = { ...form, scheduledTime: form.scheduledTime.replace('T', ' ') };
     const problem = validate(value);
     if (problem) { setError(problem); return; }
-    if (numberDraft.trim()) { setError('请先点击“识别并关联”，确认所有输入编号后再保存'); return; }
+    const resolvedBindings = resolveReservationNumbers(value.customer, [...bindings.map(binding => binding.number), ...parseReservationNumbers(numberDraft)], catalog, bindings);
+    setBindings(resolvedBindings);
+    setNumberDraft('');
     let links: ReservationLinks;
-    try { links = buildReservationLinks(value.customer, bindings, catalog); }
+    try { links = buildReservationLinks(value.customer, resolvedBindings, catalog); }
     catch (caught) { setError(caught instanceof Error ? caught.message : '运单关联校验失败'); return; }
     if (panel?.kind === 'edit') {
       setData(current => current.map(row => row.id === panel.row.id ? { ...row, ...value, links, untransferredVolume: String(Number((Number(value.volume) - Number(row.transferredVolume) - Number(row.returnedVolume)).toFixed(3))), latestUpdated: now() } : row));
