@@ -592,7 +592,7 @@ export default function App() {
         ) : currentTab === '贸易方式配置' || currentTab === '贸易方式校验规则查询' ? (
           <RuleConfigPage addToast={addToast} />
         ) : currentTab === '预留单' ? (
-          <ReservedOrderPage addToast={addToast} />
+          <ReservedOrderPage addToast={addToast} waybills={waybills} />
         ) : currentTab === '海外中转单' ? (
           <OverseasTransitOrderPage addToast={addToast} />
         ) : currentTab === '暂存管理' ? (

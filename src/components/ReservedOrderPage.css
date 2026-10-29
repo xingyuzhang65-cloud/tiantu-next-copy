@@ -46,7 +46,7 @@
 .reserved-table-wrap tbody tr.is-selected { background: #ecf5ff; }
 .reserved-table-wrap .check-col { padding: 0; }
 .reserved-table-wrap .operation-col { position: sticky; right: 0; z-index: 3; }
-.reserved-table-wrap .operation-cell { position: sticky; right: 0; z-index: 1; padding: 0 3px; background: inherit; }
+.reserved-table-wrap .operation-cell { position: sticky; right: 0; z-index: 1; padding: 0 3px; background: inherit; overflow: visible; }
 .reserved-table-wrap .operation-cell button { padding: 0 5px; border: 0; background: transparent; color: #409eff; font-size: 10px; }
 .reserved-table-wrap .operation-cell button:disabled { color: #bbc4ce; }
 .reserved-empty { height: 180px !important; color: #9ba8b8; }
