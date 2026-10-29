@@ -132,6 +132,7 @@
 .reserved-create-datetime.is-empty input::-webkit-calendar-picker-indicator { opacity: 0; }
 .reserved-create-datetime > span { position: absolute; top: 4px; left: 25px; color: #c0c4cc; pointer-events: none; }
 .reserved-create-remark-field { align-items: start; margin-bottom: 0; }
+.reserved-create-remark-field + .rwl-field { margin-top: 14px; }
 .reserved-create-remark-field > label { padding-top: 4px; }
 .reserved-create-remark { position: relative; min-width: 0; }
 .reserved-create-remark textarea { display: block; height: 78px; min-height: 78px; padding: 5px 10px 21px; resize: vertical; }
