@@ -4,15 +4,6 @@
 .rwl-entry textarea { min-height: 64px; padding: 6px 8px; resize: vertical; }
 .rwl-entry > .rwl-button { display: inline-flex; align-items: center; gap: 5px; }
 .rwl-result-area { grid-column: 1 / -1; min-width: 0; margin-top: 10px; padding-top: 12px; border-top: 1px solid #edf0f5; }
-.rwl-summary { padding: 14px 16px; border: 1px solid #cfe1f7; border-radius: 7px; background: #f3f8ff; }
-.rwl-summary-flow { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #64768c; font-size: 12px; }
-.rwl-summary-flow > span { display: inline-flex; align-items: baseline; gap: 5px; }
-.rwl-summary-flow strong { color: #1759a4; font-size: 24px; font-weight: 700; line-height: 1.1; }
-.rwl-summary-flow > svg { flex-shrink: 0; color: #7b9fc7; }
-.rwl-summary-note { display: flex; align-items: center; gap: 5px; margin-top: 10px; color: #2d8665; font-size: 11px; line-height: 1.5; }
-.rwl-summary-note svg { flex-shrink: 0; }
-.rwl-summary.has-issues { border-color: #f0d9ac; background: #fffaf1; }
-.rwl-summary.has-issues .rwl-summary-note { color: #a36d16; }
 .rwl-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 14px 0 8px; }
 .rwl-list-heading h4,.rwl-review-section h4 { margin: 0; color: #44566c; font-size: 12px; font-weight: 600; }
 .rwl-list-heading > span { color: #97a3b2; font-size: 11px; }
@@ -28,14 +19,14 @@
 .rwl-identity > div { display: grid; grid-template-columns: 58px minmax(0,1fr); gap: 8px; }
 .rwl-identity dt { color: #8a98a9; }
 .rwl-identity dd { margin: 0; color: #53647b; font-family: Consolas,monospace; overflow-wrap: anywhere; }
-.rwl-sources { margin: 0 14px; padding: 11px 0; border-top: 1px dashed #e1e9f2; }
-.rwl-sources > p { margin: 0 0 7px; color: #7c8b9e; font-size: 11px; }
-.rwl-source-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.rwl-source-tag { display: inline-flex; align-items: center; gap: 4px; padding: 4px 5px 4px 7px; border: 1px solid #d6e7f8; border-radius: 4px; background: #f5faff; color: #4c79a7; font-size: 11px; }
-.rwl-source-tag > svg { color: #4b9b7f; }
-.rwl-source-tag > button { display: grid; width: 17px; height: 17px; padding: 0; place-items: center; border: 0; border-radius: 3px; color: #9baabd; background: transparent; }
-.rwl-source-tag > button:hover { color: #c74d4d; background: #feecec; }
-.rwl-card-footnote { padding: 8px 14px; border-top: 1px solid #edf1f6; background: #f9fbfd; color: #8d9caf; font-size: 10px; line-height: 1.6; }
+.rwl-input-manager { margin: 0 14px; padding: 8px 0; border-top: 1px solid #edf1f6; }
+.rwl-input-manager > summary { color: #91a0b1; font-size: 10px; cursor: pointer; }
+.rwl-input-manager > div { display: grid; gap: 6px; margin-top: 8px; }
+.rwl-input-row { display: flex; align-items: center; gap: 8px; padding: 5px 7px; border-radius: 3px; background: #f6f9fc; font-size: 10px; }
+.rwl-input-row > span { flex: 0 0 48px; color: #8a98a9; }
+.rwl-input-row > code { flex: 1; min-width: 0; color: #657a91; overflow-wrap: anywhere; }
+.rwl-input-row > button { display: grid; flex: 0 0 18px; height: 18px; padding: 0; place-items: center; border: 0; background: transparent; color: #9baabd; }
+.rwl-input-row > button:hover { color: #c74d4d; }
 .rwl-result-hint { margin: 9px 0 0; color: #96a0af; font-size: 10px; line-height: 1.6; }
 .rwl-review-section { margin-top: 14px; }
 .rwl-review-section h4 { margin-bottom: 8px; }
