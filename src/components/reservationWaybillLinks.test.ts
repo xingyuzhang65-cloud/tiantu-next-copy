@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildReservationLinks, getLinkedWaybillIds, mergePickingRecords, parseReservationNumbers, resolveReservationNumbers, summarizeReservationPicking, summarizeWaybillPicking, validateReservationLinks, type PickingRecord, type WaybillIdentity } from './reservationWaybillLinks';
 import { createReservationPickingStore } from './reservationPickingStore';
+import { createReservationWaybillMocks, missingMockPickingRecords } from './reservationWaybillMocks';
+import { matchesReservationWaybillNumbers } from './reservationWaybillSearch';
+import { summarizeReservationPickingMatches } from './reservationPickingMatches';
 
 const a: WaybillIdentity = { id: 'internal-a', systemNo: 'YD001', customerNo: 'KH001', fbaNo: 'FBA001', customer: '甲客户', expectedPieces: 5 };
 const b: WaybillIdentity = { id: 'internal-b', systemNo: 'YD002', customerNo: 'KH002', fbaNo: 'FBA002', customer: '甲客户', expectedPieces: 3 };
@@ -12,8 +15,51 @@ const storage = () => {
   return { getItem: (key: string) => data.get(key) || null, setItem: (key: string, value: string) => { data.set(key, value); } };
 };
 
+test('MOCK 预留关联真实目录中的运单，覆盖单票、多票、待回传和撤销归零', () => {
+  const catalog = ['HD2606161063', 'HD2606162231', 'HD2606161099', 'HD2606163345'].map((id, index) => ({
+    id, systemNo: id, customerNo: `KH-${id}`, fbaNo: `FBA-${id}`, customer: index < 2 ? 'VIP客户' : `客户${index}`, expectedPieces: [15, 30, 4, 8][index],
+  }));
+  const mocks = createReservationWaybillMocks(catalog);
+  assert.equal(mocks.orders.length, 6);
+  assert.deepEqual(mocks.orders.map(order => summarizeReservationPicking(order.links.waybills, mocks.records).volume), [2.3, 4.8, 7.1, null, 0, 2.3]);
+  assert.deepEqual(mocks.orders[2].links.waybills.map(waybill => waybill.id), ['HD2606161063', 'HD2606162231']);
+  assert.equal(summarizeWaybillPicking(catalog[1], mocks.records).status, '拣货完成');
+  const mixed = summarizeReservationPickingMatches(mocks.orders[5].links, mocks.orders[5].matchedWaybills || [], mocks.records);
+  assert.equal(mixed.volume, 7.1);
+  assert.equal(mixed.reservedVolume, 2.3);
+  assert.deepEqual(mixed.matches.map(match => match.source), ['普通匹配', '预留运单']);
+  const overlap = summarizeReservationPickingMatches(mocks.orders[2].links, mocks.orders[2].matchedWaybills || [], mocks.records);
+  assert.equal(overlap.matches.length, 2);
+  assert.equal(overlap.volume, 7.1);
+  assert.equal(overlap.reservedVolume, 7.1);
+  assert.ok(overlap.matches.every(match => match.source === '预留运单'));
+});
+
+test('MOCK 初始化不重复写入批次、不恢复被更正或撤销的数据，也不混入用户已有拣货', () => {
+  const catalog = [{ ...a, id: 'HD2606161063', systemNo: 'HD2606161063' }];
+  const mocks = createReservationWaybillMocks(catalog);
+  const corrected = mocks.records.map(record => ({ ...record, revision: 2, status: 'revoked' as const }));
+  assert.deepEqual(missingMockPickingRecords(mocks.records, corrected), []);
+  const manual = record({ waybillId: 'HD2606161063', id: 'manual-batch' });
+  assert.deepEqual(missingMockPickingRecords(mocks.records, [manual]), []);
+  assert.deepEqual(missingMockPickingRecords(mocks.records, mocks.records.slice(0, 1)), mocks.records.slice(1));
+});
+
 test('批量编号支持逗号、空格、制表符及换行混合分隔', () => {
   assert.deepEqual(parseReservationNumbers(' YD001, KH001\tFBA001\nYD002，KH002 '), ['YD001', 'KH001', 'FBA001', 'YD002', 'KH002']);
+});
+
+test('预留运单搜索：单条模糊、多条精确任一命中，兼容三类编号及无关联', () => {
+  const links = buildReservationLinks(a.customer, resolveReservationNumbers(a.customer, ['YD001', 'YD002'], [a, b]), [a, b]);
+  assert.equal(matchesReservationWaybillNumbers(links, ' d00 '), true);
+  assert.equal(matchesReservationWaybillNumbers(links, 'kh001'), true);
+  assert.equal(matchesReservationWaybillNumbers(links, 'fba002'), true);
+  assert.equal(matchesReservationWaybillNumbers(links, 'YD001,UNKNOWN'), true);
+  assert.equal(matchesReservationWaybillNumbers(links, 'FBA001\nKH002'), true);
+  assert.equal(matchesReservationWaybillNumbers(links, 'YD00 YD0'), false);
+  assert.equal(matchesReservationWaybillNumbers(links, 'UNKNOWN UNKNOWN-2'), false);
+  assert.equal(matchesReservationWaybillNumbers(undefined, 'YD001'), false);
+  assert.equal(matchesReservationWaybillNumbers(undefined, ' , \n'), true);
 });
 
 test('三种编号在客户范围内按内部运单ID关联和去重，不重复计算方数', () => {
