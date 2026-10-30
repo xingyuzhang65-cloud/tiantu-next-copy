@@ -2,9 +2,13 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Waybill } from '../types';
-import { buildReservationLinks, getWaybillIdentity, parseReservationNumbers, resolveReservationNumbers, type ReservationIdentifier, type ReservationLinks } from './reservationWaybillLinks';
-import { ReservationPickingDetails, ReservationWaybillFields } from './ReservationWaybillFields';
-import { reservationPickingStore } from './reservationPickingStore';
+import { buildReservationLinks, getWaybillIdentity, parseReservationNumbers, resolveReservationNumbers, summarizeReservationPicking, type PickingRecord, type ReservationIdentifier, type ReservationLinks } from './reservationWaybillLinks';
+import { ReservationWaybillFields } from './ReservationWaybillFields';
+import ReservationPickingDetails from './ReservationPickingDetailTable';
+import { reservationPickingStore, useReservationPicking } from './reservationPickingStore';
+import { createReservationWaybillMocks, missingMockPickingRecords } from './reservationWaybillMocks';
+import { matchesReservationWaybillNumbers } from './reservationWaybillSearch';
+import { summarizeReservationPickingMatches } from './reservationPickingMatches';
 import './ReservedOrderPage.css';
 
 type ReservedStatus = '已预留' | '已送仓' | '已取消';
@@ -13,6 +17,7 @@ type ReservedOrder = {
   deliveryPlace: string; scheduledTime: string; submitter: string; latestUpdated: string; firstSubmitted: string;
   remark: string; transferredVolume: string; untransferredVolume: string; returnedVolume: string; status: ReservedStatus;
   links?: ReservationLinks;
+  matchedWaybills?: import('./reservationWaybillLinks').WaybillIdentity[];
 };
 
 const rows: ReservedOrder[] = [
@@ -57,7 +62,8 @@ const initialRows: ReservedOrder[] = [
   ...rows.filter(row => row.status !== '已预留'),
 ];
 const tabs: ReservedStatus[] = ['已预留', '已送仓', '已取消'];
-const columns: { key: keyof ReservedOrder; label: string; width: number }[] = [
+type ReservedColumnKey = Exclude<keyof ReservedOrder, 'links' | 'matchedWaybills'> | 'reservedWaybillNumbers' | 'reservedWaybillPickingVolume';
+const columns: { key: ReservedColumnKey; label: string; width: number }[] = [
   { key: 'reserveNo', label: '预留单号', width: 8.2 },
   { key: 'customer', label: '客户', width: 5.2 },
   { key: 'merchandiser', label: '跟单', width: 5.2 },
@@ -69,12 +75,27 @@ const columns: { key: keyof ReservedOrder; label: string; width: number }[] = [
   { key: 'latestUpdated', label: '最近更新时间', width: 7.8 },
   { key: 'firstSubmitted', label: '首次提交时间', width: 7.8 },
   { key: 'remark', label: '备注', width: 10.8 },
-  { key: 'transferredVolume', label: '转货方数', width: 5.2 },
-  { key: 'untransferredVolume', label: '未转方数', width: 5.2 },
+  { key: 'transferredVolume', label: '拣货方数', width: 5.2 },
+  { key: 'untransferredVolume', label: '未拣方数', width: 5.2 },
   { key: 'returnedVolume', label: '退件方数', width: 5.2 },
+  { key: 'reservedWaybillNumbers', label: '预留运单号', width: 12 },
+  { key: 'reservedWaybillPickingVolume', label: '预留运单拣货方数', width: 10 },
 ];
-type Filters = { customer: string; merchandiser: string; reserveNo: string; channel: string; deliveryPlace: string; dateFrom: string; dateTo: string };
-const emptyFilters: Filters = { customer: '', merchandiser: '', reserveNo: '', channel: '', deliveryPlace: '', dateFrom: '', dateTo: '' };
+const columnValue = (row: ReservedOrder, key: ReservedColumnKey, records: PickingRecord[]): string => {
+  if (key === 'transferredVolume' || key === 'untransferredVolume') {
+    const total = summarizeReservationPickingMatches(row.links, row.matchedWaybills || [], records);
+    if (total.matches.length) return key === 'transferredVolume' ? String(total.volume)
+      : String(Number((Number(row.volume) - total.volume - Number(row.returnedVolume)).toFixed(6)));
+  }
+  if (key === 'reservedWaybillNumbers') return [...new Set((row.links?.identifiers || []).map(binding => binding.number))].join(' ');
+  if (key === 'reservedWaybillPickingVolume') {
+    const total = summarizeReservationPicking(row.links?.waybills || [], records);
+    return String(total.volume ?? 0);
+  }
+  return row[key];
+};
+type Filters = { customer: string; merchandiser: string; reserveNo: string; reservedWaybillNo: string; channel: string; deliveryPlace: string; dateFrom: string; dateTo: string };
+const emptyFilters: Filters = { customer: '', merchandiser: '', reserveNo: '', reservedWaybillNo: '', channel: '', deliveryPlace: '', dateFrom: '', dateTo: '' };
 const editableFields = ['customer', 'merchandiser', 'channel', 'volume', 'deliveryPlace', 'scheduledTime', 'remark'] as const;
 type Form = Pick<ReservedOrder, typeof editableFields[number]>;
 const emptyForm: Form = { customer: '', merchandiser: '', channel: '', volume: '', deliveryPlace: '', scheduledTime: '', remark: '' };
@@ -102,6 +123,21 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
     } catch { return initialRows; }
   });
   const catalog = useMemo(() => waybills.map(getWaybillIdentity), [waybills]);
+  const picking = useReservationPicking();
+  const mocks = useMemo(() => createReservationWaybillMocks(catalog), [catalog]);
+  const [mockWarning, setMockWarning] = useState('');
+  useEffect(() => {
+    if (!mocks.orders.length) return;
+    try {
+      const missing = missingMockPickingRecords(mocks.records, reservationPickingStore.getSnapshot().records);
+      missing.forEach(record => reservationPickingStore.receive(record));
+      setData(current => {
+        const additions = mocks.orders.filter(mock => !current.some(row => row.id === mock.id));
+        return additions.length ? [...additions, ...current] : current;
+      });
+      setMockWarning('');
+    } catch { setMockWarning('MOCK 拣货示例暂未加载成功，请检查浏览器存储空间后刷新重试'); }
+  }, [mocks]);
   const [bindings, setBindings] = useState<ReservationIdentifier[]>([]);
   const [numberDraft, setNumberDraft] = useState('');
   const [persistenceWarning, setPersistenceWarning] = useState('');
@@ -128,6 +164,7 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
     const includes = (value: string, query: string) => value.toLowerCase().includes(query.trim().toLowerCase());
     return row.status === tab && includes(row.customer, applied.customer) && includes(row.merchandiser, applied.merchandiser)
       && includes(row.reserveNo, applied.reserveNo) && includes(row.channel, applied.channel)
+      && matchesReservationWaybillNumbers(row.links, applied.reservedWaybillNo)
       && includes(row.deliveryPlace, applied.deliveryPlace)
       && (!applied.dateFrom || row.scheduledTime.slice(0, 10) >= applied.dateFrom) && (!applied.dateTo || row.scheduledTime.slice(0, 10) <= applied.dateTo);
   }), [data, tab, applied]);
@@ -154,7 +191,7 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
   const allSelected = pageRows.length > 0 && pageRows.every(row => selection.includes(row.id));
   const selectedRows = visible.filter(row => selection.includes(row.id));
   const statsRows = selectedRows.length ? selectedRows : visible;
-  const total = (key: 'volume' | 'transferredVolume' | 'untransferredVolume' | 'returnedVolume') => Number(statsRows.reduce((sum, row) => sum + Number(row[key]), 0).toFixed(3));
+  const total = (key: 'volume' | 'transferredVolume' | 'untransferredVolume' | 'returnedVolume') => Number(statsRows.reduce((sum, row) => sum + Number(columnValue(row, key, picking.records)), 0).toFixed(3));
   const notify = (message: string, type: 'success' | 'info' | 'warning' = 'info') => addToast?.(message, type);
 
   useEffect(() => { tableWrap.current?.scrollTo({ top: 0 }); }, [currentPage, tab, applied, pageSize]);
@@ -243,24 +280,26 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
   };
   const exportRows = () => {
     const picked = selectedRows.length ? selectedRows : visible;
-    const csv = [columns.map(column => column.label).join(','), ...picked.map(row => columns.map(column => csvEscape(row[column.key])).join(','))].join('\r\n');
+    const csv = [columns.map(column => column.label).join(','), ...picked.map(row => columns.map(column => csvEscape(columnValue(row, column.key, picking.records))).join(','))].join('\r\n');
     const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url; link.download = '预留单列表.csv'; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000); notify('已导出 ' + picked.length + ' 条预留单', 'success');
   };
   const updateFilters = (key: keyof Filters, value: string) => setFilters(current => ({ ...current, [key]: value }));
-  const panelTitle = panel ? { create: '新增预留仓位', batch: '批量预留', edit: '编辑预留单', detail: '预留单详细', cancel: '取消预留', stats: '预留统计', settings: '列表字段设置' }[panel.kind] : '';
+  const panelTitle = panel ? { create: '新增预留仓位', batch: '批量预留', edit: '编辑预留单', detail: '拣货明细', cancel: '取消预留', stats: '预留统计', settings: '列表字段设置' }[panel.kind] : '';
   const pageButtons = [...new Set([1, currentPage - 1, currentPage, currentPage + 1, pageCount])].filter(value => value >= 1 && value <= pageCount).sort((a, b) => a - b);
   const linkFields = <ReservationWaybillFields customer={form.customer} catalog={catalog} bindings={bindings} onChange={value => { setBindings(value); setError(''); }} draft={numberDraft} onDraftChange={value => { setNumberDraft(value); setError(''); }} />;
 
   return (
     <main className="reserved-page">
+      {mockWarning && <p className="rwl-error" role="alert">{mockWarning}</p>}
       {persistenceWarning && <p className="rwl-error" role="alert">{persistenceWarning}</p>}
       <form className="reserved-filter-card" onSubmit={applyQuery}>
         <div className="reserved-filter-grid">
           <label><span>客户</span><input aria-label="客户" value={filters.customer} onChange={event => updateFilters('customer', event.target.value)} placeholder="客户" /></label>
           <label><span>跟单代表</span><input aria-label="跟单代表" value={filters.merchandiser} onChange={event => updateFilters('merchandiser', event.target.value)} placeholder="跟单代表" /></label>
           <label><span>预留单号</span><input aria-label="预留单号" value={filters.reserveNo} onChange={event => updateFilters('reserveNo', event.target.value)} placeholder="预留单号" /></label>
+          <label className="reserved-waybill-search"><span>预留运单号</span><textarea rows={1} aria-label="预留运单号" title="单条模糊匹配；多条按完整编号精确匹配，命中任一编号即可。支持空格、逗号或换行分隔。" value={filters.reservedWaybillNo} onChange={event => updateFilters('reservedWaybillNo', event.target.value)} placeholder="单条模糊，多条精确" onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); applyQuery(event); } }} /></label>
           <div className="reserved-filter-actions">
             <button type="submit"><Search />查询</button>
             <button type="button" onClick={reset}><RotateCcw />重置</button>
@@ -287,13 +326,13 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
           <thead><tr><th className="check-col"><input aria-label="全选预留单" type="checkbox" checked={allSelected} onChange={toggleAll} /></th>{shownColumns.map(column => <th key={column.key}>{column.label}</th>)}<th className="operation-col">操作</th></tr></thead>
           <tbody>{pageRows.map(row => <tr key={row.id} className={selection.includes(row.id) ? 'is-selected' : ''}>
             <td className="check-col"><input aria-label={'选择预留单' + row.reserveNo} type="checkbox" checked={selection.includes(row.id)} onChange={() => setSelection(current => current.includes(row.id) ? current.filter(id => id !== row.id) : [...current, row.id])} /></td>
-            {shownColumns.map(column => <td key={column.key} title={row[column.key]}>{row[column.key]}</td>)}
-            <td className="operation-cell"><button type="button" onClick={() => openPanel({ kind: 'edit', row })} disabled={row.status !== '已预留' || row.reserveNo.startsWith('ASYL')}>编辑</button><button type="button" onClick={() => openPanel({ kind: 'cancel', row })} disabled={row.status !== '已预留' || row.reserveNo.startsWith('ASYL')}>取消</button><button type="button" onClick={() => openPanel({ kind: 'detail', row })}>详细</button></td>
+            {shownColumns.map(column => { const value = columnValue(row, column.key, picking.records); return <td key={column.key} title={value}>{value || (column.key === 'reservedWaybillNumbers' ? '—' : '')}</td>; })}
+            <td className="operation-cell"><button type="button" onClick={() => openPanel({ kind: 'edit', row })} disabled={row.status !== '已预留' || row.reserveNo.startsWith('ASYL')}>编辑</button><button type="button" onClick={() => openPanel({ kind: 'cancel', row })} disabled={row.status !== '已预留' || row.reserveNo.startsWith('ASYL')}>取消</button><button type="button" onClick={() => openPanel({ kind: 'detail', row })}>明细</button></td>
           </tr>)}{!pageRows.length && <tr><td colSpan={shownColumns.length + 2} className="reserved-empty">暂无符合条件的预留单</td></tr>}</tbody>
         </table></div>
         <footer className="reserved-pagination"><span>共 {visible.length} 条</span><select aria-label="每页条数" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); setSelection([]); }}>{[100, 50, 20].map(size => <option key={size} value={size}>{size}条/页</option>)}</select><button type="button" aria-label="上一页" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>‹</button>{pageButtons.map((value, index) => <Fragment key={value}>{index > 0 && value - pageButtons[index - 1] > 1 && <span>…</span>}<button type="button" aria-label={'第' + value + '页'} aria-current={value === currentPage ? 'page' : undefined} className={value === currentPage ? 'active-page' : ''} onClick={() => setPage(value)}>{value}</button></Fragment>)}<button type="button" aria-label="下一页" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>›</button><span>前往</span><input aria-label="前往页码" type="number" min={1} max={pageCount} value={currentPage} onChange={event => setPage(Math.min(pageCount, Math.max(1, Math.floor(Number(event.target.value) || 1))))} /><span>页</span></footer>
       </section>
-      {panel && <div className={`reserved-dialog-backdrop ${panel.kind === 'create' ? 'reserved-create-backdrop' : ''}`} onClick={event => { if (event.target === event.currentTarget) setPanel(null); }}><div className={`reserved-dialog ${panel.kind === 'create' ? 'reserved-create-drawer' : ''} ${panel.kind === 'detail' ? 'reserved-linked-detail' : ''}`} role="dialog" aria-modal="true" aria-labelledby="reserved-dialog-title" ref={dialog} tabIndex={-1} onKeyDown={event => {
+      {panel && <div className={`reserved-dialog-backdrop ${panel.kind === 'create' ? 'reserved-create-backdrop' : ''}`} onClick={event => { if (event.target === event.currentTarget) setPanel(null); }}><div className={`reserved-dialog ${panel.kind === 'create' ? 'reserved-create-drawer' : ''} ${panel.kind === 'detail' ? 'reserved-picking-dialog' : ''}`} role="dialog" aria-modal="true" aria-labelledby="reserved-dialog-title" ref={dialog} tabIndex={-1} onKeyDown={event => {
         if (event.key === 'Escape') setPanel(null);
         if (event.key === 'Tab') {
           const controls = dialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea, select');
@@ -363,7 +402,7 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
           {error && <p className="reserved-dialog-error" role="alert">{error}</p>}
           <div className="reserved-form-wide">{linkFields}</div>
         </div><footer className="reserved-dialog-footer"><button type="button" onClick={() => setPanel(null)}>取消</button><button type="submit" className="reserved-dialog-primary">保存</button></footer></form>}
-        {panel.kind === 'detail' && <><div className="reserved-dialog-body"><dl className="reserved-detail-grid">{[...columns, { key: 'status' as const, label: '状态' }].map(column => <div key={column.key}><dt>{column.label}</dt><dd>{panel.row[column.key] || '—'}</dd></div>)}</dl><ReservationPickingDetails links={panel.row.links} catalog={catalog} /></div><footer className="reserved-dialog-footer"><button type="button" onClick={() => setPanel(null)}>关闭</button></footer></>}
+        {panel.kind === 'detail' && <ReservationPickingDetails links={panel.row.links} ordinaryWaybills={panel.row.matchedWaybills} catalog={catalog} waybills={waybills} onClose={() => setPanel(null)} />}
         {panel.kind === 'cancel' && <><div className="reserved-dialog-body">确认取消预留单 {panel.row.reserveNo}？</div><footer className="reserved-dialog-footer"><button type="button" onClick={() => setPanel(null)}>返回</button><button type="button" className="reserved-dialog-primary" onClick={() => changeStatus([panel.row.id], '已取消')}>确认取消</button></footer></>}
         {panel.kind === 'batch' && <><div className="reserved-dialog-body"><p>每行一条，使用逗号或制表符分隔：客户、跟单、渠道、预留方数、交仓地点、预计送仓时间、备注（选填）。</p><textarea className="reserved-batch-input" aria-label="批量预留数据" placeholder="客户名称,跟单代表,渠道名称,1.5,金华仓,2026-09-24,备注" value={batchText} onChange={event => setBatchText(event.target.value)} />{error && <p className="reserved-dialog-error" role="alert">{error}</p>}</div><footer className="reserved-dialog-footer"><button type="button" onClick={() => setPanel(null)}>取消</button><button type="button" className="reserved-dialog-primary" onClick={saveBatch}>保存预留</button></footer></>}
         {panel.kind === 'stats' && <><div className="reserved-dialog-body"><p>{selectedRows.length ? '已选预留单' : '当前查询结果'}：{statsRows.length} 条</p><dl className="reserved-stat-grid">{(['volume', 'transferredVolume', 'untransferredVolume', 'returnedVolume'] as const).map(key => <div key={key}><dt>{columns.find(column => column.key === key)?.label}</dt><dd>{total(key)}</dd></div>)}</dl></div><footer className="reserved-dialog-footer"><button type="button" onClick={() => setPanel(null)}>关闭</button></footer></>}

@@ -810,12 +810,12 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
   const isProcessingView = activeTab === '拦截中';
   const isCompletedView = activeTab === '已完成';
   const isCanceledOrRejectedView = activeTab === '取消/驳回';
-  const showResultColumns = isCompletedView || activeTab === '全部';
+  const showResultColumns = isCompletedView;
   const showTerminationColumns = isCanceledOrRejectedView || activeTab === '全部';
   const visibleTableHeaders = [
     ...tableHeaders.slice(0, -1),
     ...(showResultColumns ? ['拦截结果', '失败原因'] : []),
-    ...(showTerminationColumns ? ['拦截状态', '取消/驳回原因'] : []),
+    ...(showTerminationColumns ? ['取消/驳回原因'] : []),
     '操作',
   ];
 
@@ -1303,7 +1303,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
       task.reason, task.actualBoxes || task.boxes, `${operations.filter(operation => operation.done).length}/${operations.length}`, operations.map(operation => `${operation.done ? '已处理' : '待处理'} ${operation.description}`).join('；'), getReconciliationStatus(task), task.customerNote || '', task.internalRemark || task.remark || '', task.applicant,
       task.appliedAt,
       ...(showResultColumns ? [task.status === '已完成' ? completedResult(task) : '', task.status === '已完成' ? task.failReason || '' : ''] : []),
-      ...(showTerminationColumns ? [task.status, terminationReason(task) === '-' ? '' : terminationReason(task)] : []),
+      ...(showTerminationColumns ? [terminationReason(task) === '-' ? '' : terminationReason(task)] : []),
     ];
     });
     const csv = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -1523,7 +1523,7 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                 {visibleTableHeaders.map((head) => (
                   <th
                     key={head}
-                    className={head === '操作' ? 'mc-intercept-actions-cell' : ['取消/驳回原因', '拦截结果', '失败原因', '拦截状态'].includes(head) ? 'mc-intercept-result-cell' : undefined}
+                    className={head === '操作' ? 'mc-intercept-actions-cell' : ['取消/驳回原因', '拦截结果', '失败原因'].includes(head) ? 'mc-intercept-result-cell' : undefined}
                   >
                     {head}
                   </th>
@@ -1570,7 +1570,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                     <td className="mc-intercept-result-cell mc-intercept-failure-reason-cell" title={task.status === '已完成' ? task.failReason || '-' : '-'}>{task.status === '已完成' ? task.failReason || '-' : '-'}</td>
                   </>}
                   {showTerminationColumns && <>
-                    <td className="mc-intercept-result-cell"><span className={`mc-intercept-status ${statusClass(task.status)}`}>{task.status}</span></td>
                     <td className="mc-intercept-result-cell mc-intercept-failure-reason-cell" title={terminationReason(task)}>{terminationReason(task)}</td>
                   </>}
                   <td className="mc-intercept-actions-cell">
@@ -1596,16 +1595,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
               <button className="mc-intercept-close" type="button" aria-label="关闭拦截详情" onClick={() => { setDetailTaskId(null); setDetailMode('view'); setDetailContentTab('货箱信息'); }}>×</button>
             </header>
             <div className="mc-intercept-detail-content">
-              <section className="mc-intercept-flow-section">
-                <div className="mc-intercept-flow">
-                  {['提交申请', '已确认', '拦截中', detailTask.status === '已驳回' ? '已驳回' : detailTask.status === '已取消' ? '已取消' : '已完成'].map((label, index) => {
-                    const currentStep = detailTask.status === '待处理' ? 0 : detailTask.status === '已确认' ? 1 : detailTask.status === '拦截中' ? 2 : 3;
-                    const isComplete = index < currentStep || (currentStep === 3 && index === 3 && detailTask.status === '已完成');
-                    return <div key={label} className={`mc-intercept-flow-step ${isComplete ? 'is-complete' : ''} ${index === currentStep ? 'is-active' : ''}`}><i>{isComplete ? '✓' : index + 1}</i><span>{label}</span></div>;
-                  })}
-                </div>
-              </section>
-
               {/* 基础信息 */}
               <section className="mc-intercept-detail-card">
                 <h3 className="mc-intercept-detail-card-title">基础信息</h3>
@@ -1614,13 +1603,14 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   <DetailField label="拦截单号" value={detailTask.no} highlight />
                   <DetailField label="入仓号" value={detailTask.waybillNo || '-'} />
                   <DetailField label="拦截原因" value={detailTask.reason} />
-                  {detailTask.status === '已完成' && detailTask.failReason && (
+                  {detailTask.status === '已完成' && <DetailField label="拦截结果" value={completedResult(detailTask)} />}
+                  {detailTask.status === '已完成' && (
                     <DetailField
                       label="失败原因"
                       value={(
                         <span className="mc-intercept-detail-editable-value">
                           <span>{detailTask.failReason || '-'}</span>
-                          <button className="mc-intercept-detail-edit-button" type="button" onClick={() => startEditRemark(detailTask, 'failure')} aria-label="编辑失败原因" title="编辑失败原因">✎</button>
+                          {detailTask.failReason && <button className="mc-intercept-detail-edit-button" type="button" onClick={() => startEditRemark(detailTask, 'failure')} aria-label="编辑失败原因" title="编辑失败原因">✎</button>}
                         </span>
                       )}
                     />
@@ -1628,7 +1618,6 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
                   {canceledOrRejectedStatuses.includes(detailTask.status) && (
                     <DetailField label={detailTask.status === '已取消' ? '取消原因' : '驳回原因'} value={terminationReason(detailTask)} />
                   )}
-                  {detailTask.status === '已完成' && !detailTask.failReason && <DetailField label="完成结果" value={detailTask.resultRemark || '拦截成功'} />}
                   <DetailField label="拦截箱数" value={`${detailTask.actualBoxes || detailTask.boxes} 箱`} />
                   <DetailField label="核销状态" value={<span className={`mc-reconciliation-status mc-reconciliation-${getReconciliationStatus(detailTask)}`}>{getReconciliationStatus(detailTask)}</span>} />
                   <DetailField label="申请人" value={detailTask.applicant} />
