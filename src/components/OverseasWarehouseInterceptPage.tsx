@@ -1,3 +1,4 @@
+import { INTERCEPT_TASKS_KEY, restoreInterceptTasks, installInterceptCancellationBridge } from './interceptCancellationBridge';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FileText } from 'lucide-react';
 import OverseasFeeModal from './OverseasFeeModal';
@@ -371,7 +372,7 @@ const getReconciliationStatus = (task: Pick<InterceptTask, 'reconciliationStatus
   return feeCount > 1 ? '部分核销' : '待核销';
 };
 
-let persistedInterceptTasks: InterceptTask[] | null = null;
+let persistedInterceptTasks: InterceptTask[] | null = restoreInterceptTasks(initialTasks);
 let mockCancellationInitialized = false;
 const defaultMockInterceptTaskIds = new Set<number>();
 
@@ -1379,7 +1380,20 @@ export default function OverseasWarehouseInterceptPage({ addToast, onOpenStorage
 
   useEffect(() => {
     persistedInterceptTasks = tasks;
+    try { localStorage.setItem(INTERCEPT_TASKS_KEY, JSON.stringify(tasks)); } catch { /* Cancellation fails if storage is unavailable. */ }
   }, [tasks]);
+
+  useEffect(() => {
+    const refresh = (event: StorageEvent) => {
+      if (event.key === INTERCEPT_TASKS_KEY) setTasks(current => restoreInterceptTasks(current));
+    };
+    window.addEventListener('storage', refresh);
+    const uninstall = installInterceptCancellationBridge(
+      () => restoreInterceptTasks(persistedInterceptTasks || initialTasks),
+      next => { persistedInterceptTasks = next; setTasks(next); },
+    );
+    return () => { window.removeEventListener('storage', refresh); uninstall(); };
+  }, []);
 
   useEffect(() => {
     if (incomingRequests.length === 0) return;
