@@ -382,6 +382,7 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
                 {!form.scheduledTime && <span aria-hidden="true">选择日期时间</span>}
               </div>
             </div>
+            {linkFields}
             <div className="reserved-create-field reserved-create-remark-field">
               <label htmlFor="reserved-create-remark">备注:</label>
               <div className="reserved-create-remark">
@@ -389,7 +390,6 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
                 <span id="reserved-create-remark-count">{form.remark.length}/1000</span>
               </div>
             </div>
-            {linkFields}
             {error && <p className="reserved-dialog-error" role="alert">{error}</p>}
             <footer className="reserved-dialog-footer">
               <button type="submit" className="reserved-dialog-primary">保存</button>
@@ -398,9 +398,8 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
           </form>
         </div>}
         {panel.kind === 'edit' && <form onSubmit={saveForm}><div className="reserved-dialog-body reserved-form-grid">
-          {editableFields.map(key => <label key={key} className={key === 'remark' ? 'reserved-form-wide' : ''}><span>{columns.find(column => column.key === key)?.label}{!['remark', 'merchandiser'].includes(key) && <b>*</b>}</span>{key === 'remark' ? <textarea value={form[key]} onChange={event => updateForm(key, event.target.value)} /> : <input required={key !== 'merchandiser'} type={key === 'volume' ? 'number' : key === 'scheduledTime' ? 'datetime-local' : 'text'} min={key === 'volume' ? 0.001 : undefined} step={key === 'volume' ? 'any' : undefined} value={form[key]} onChange={event => updateForm(key, event.target.value)} />}</label>)}
+          {editableFields.map(key => <Fragment key={key}>{key === 'remark' && <div className="reserved-form-wide">{linkFields}</div>}<label className={key === 'remark' ? 'reserved-form-wide' : ''}><span>{columns.find(column => column.key === key)?.label}{!['remark', 'merchandiser'].includes(key) && <b>*</b>}</span>{key === 'remark' ? <textarea value={form[key]} onChange={event => updateForm(key, event.target.value)} /> : <input required={key !== 'merchandiser'} type={key === 'volume' ? 'number' : key === 'scheduledTime' ? 'datetime-local' : 'text'} min={key === 'volume' ? 0.001 : undefined} step={key === 'volume' ? 'any' : undefined} value={form[key]} onChange={event => updateForm(key, event.target.value)} />}</label></Fragment>)}
           {error && <p className="reserved-dialog-error" role="alert">{error}</p>}
-          <div className="reserved-form-wide">{linkFields}</div>
         </div><footer className="reserved-dialog-footer"><button type="button" onClick={() => setPanel(null)}>取消</button><button type="submit" className="reserved-dialog-primary">保存</button></footer></form>}
         {panel.kind === 'detail' && <ReservationPickingDetails links={panel.row.links} ordinaryWaybills={panel.row.matchedWaybills} catalog={catalog} waybills={waybills} onClose={() => setPanel(null)} />}
         {panel.kind === 'cancel' && <><div className="reserved-dialog-body">确认取消预留单 {panel.row.reserveNo}？</div><footer className="reserved-dialog-footer"><button type="button" onClick={() => setPanel(null)}>返回</button><button type="button" className="reserved-dialog-primary" onClick={() => changeStatus([panel.row.id], '已取消')}>确认取消</button></footer></>}

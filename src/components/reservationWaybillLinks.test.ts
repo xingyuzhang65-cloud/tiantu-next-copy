@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildReservationLinks, getLinkedWaybillIds, mergePickingRecords, parseReservationNumbers, resolveReservationNumbers, summarizeReservationPicking, summarizeWaybillPicking, validateReservationLinks, type PickingRecord, type WaybillIdentity } from './reservationWaybillLinks';
+import { getWaybillIdentity, buildReservationLinks, getLinkedWaybillIds, mergePickingRecords, parseReservationNumbers, resolveReservationNumbers, summarizeReservationPicking, summarizeWaybillPicking, validateReservationLinks, type PickingRecord, type WaybillIdentity } from './reservationWaybillLinks';
 import { createReservationPickingStore } from './reservationPickingStore';
-import { createReservationWaybillMocks, missingMockPickingRecords } from './reservationWaybillMocks';
+import { createReservationWaybillMocks, missingMockPickingRecords, reservationSourceMockWaybills } from './reservationWaybillMocks';
 import { matchesReservationWaybillNumbers } from './reservationWaybillSearch';
 import { summarizeReservationPickingMatches } from './reservationPickingMatches';
 
@@ -180,4 +180,31 @@ test('回传错运单时标记异常且保留数据，持久化失败时不发�
   const failing = createReservationPickingStore({ getItem: () => null, setItem: () => { throw new Error('存储已满'); } });
   assert.throws(() => failing.receive(record()), /存储已满/);
   assert.equal(failing.getSnapshot().records.length, 0);
+});
+
+
+test('扩展 MOCK 提供多个客户的多票混合来源，保留历史示例并按运单去重汇总', () => {
+  const legacy = ['HD2606161063', 'HD2606162231', 'HD2606161099', 'HD2606163345'].map((id, index) => ({
+    id, systemNo: id, customerNo: 'KH-' + id, fbaNo: 'FBA-' + id,
+    customer: index < 2 ? 'VIP客户' : '客户' + index, expectedPieces: [15, 30, 4, 8][index],
+  }));
+  const mocks = createReservationWaybillMocks([...legacy, ...reservationSourceMockWaybills.map(getWaybillIdentity)]);
+  assert.equal(mocks.orders.length, 30);
+  assert.equal(new Set(mocks.orders.map(order => order.id)).size, 30);
+  assert.equal(new Set(mocks.orders.map(order => order.reserveNo)).size, 30);
+  const summaries = mocks.orders.map(order => summarizeReservationPickingMatches(order.links, order.matchedWaybills || [], mocks.records));
+  const mixed = summaries.filter(summary => new Set(summary.matches.map(match => match.source)).size === 2);
+  assert.equal(mixed.length, 19);
+  assert.equal(mixed.filter(summary => summary.matches.length === 4).length, 15);
+  assert.equal(new Set(mocks.orders.slice(6).map(order => order.customer)).size, 3);
+  mocks.orders.forEach((order, index) => {
+    const summary = summaries[index];
+    assert.equal(new Set(summary.matches.map(match => match.waybill.id)).size, summary.matches.length);
+    assert.ok(summary.matches.every(match => match.waybill.customer === order.customer));
+    assert.equal(summary.volume, Number(order.transferredVolume));
+    assert.ok(summary.reservedVolume <= summary.volume);
+  });
+  const repeated = createReservationWaybillMocks([...legacy, ...reservationSourceMockWaybills.map(getWaybillIdentity)]);
+  assert.deepEqual(repeated.orders.map(order => order.id), mocks.orders.map(order => order.id));
+  assert.deepEqual(missingMockPickingRecords(repeated.records, mocks.records), []);
 });

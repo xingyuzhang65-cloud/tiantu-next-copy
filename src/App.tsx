@@ -20,6 +20,7 @@ import InstructionListPage from './components/InstructionListPage';
 import InstructionManagementPage from './components/InstructionManagementPage';
 import OverseasStorageInventoryPage from './components/OverseasStagingInventoryPage';
 import ReservedOrderPage from './components/ReservedOrderPage';
+import { reservationSourceMockWaybills } from './components/reservationWaybillMocks';
 import { Waybill, OrderType, WaybillChangeLog, OverseasInterceptRequest } from './types';
 import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from 'lucide-react';
 
@@ -433,7 +434,8 @@ export default function App() {
       insurance: false,
       remarks: '历史导入数据未带贸易方式字段',
       customerName: '上海欧线供应链客户'
-    }
+    },
+    ...reservationSourceMockWaybills,
   ]);
 
   useEffect(() => {
