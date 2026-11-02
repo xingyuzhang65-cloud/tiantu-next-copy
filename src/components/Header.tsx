@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import HeaderHelpEntry from './HeaderHelpEntry';
 import { 
   Bell, Download, MapPin, Globe, ChevronDown, Check, X,
   LogOut, User, ShieldAlert, FileClock
@@ -57,7 +58,7 @@ export default function Header({
   return (
     <div className="relative flex h-12 w-full items-center justify-between border-b border-slate-200 bg-white px-4 selection:bg-blue-200">
       {/* Left Area: Tabs */}
-      <div className="flex h-full items-end gap-1 overflow-x-auto scrollbar-none">
+      <div className="flex h-full min-w-0 items-end gap-1 overflow-x-auto scrollbar-none">
         {openTabs.map((tab) => {
           const isActive = currentTab === tab;
           return (
@@ -92,7 +93,7 @@ export default function Header({
       </div>
 
       {/* Right Area: Controls & User Info */}
-      <div className="flex items-center gap-4 text-xs text-slate-600">
+      <div className="flex shrink-0 items-center gap-3 text-xs text-slate-600">
         {/* UTC Time Clock */}
         <div className="hidden items-center gap-1.5 font-mono text-slate-500 md:flex">
           <FileClock className="h-3.5 w-3.5 text-slate-450" />
@@ -136,6 +137,8 @@ export default function Header({
             </div>
           )}
         </div>
+
+        <HeaderHelpEntry href="about:blank" />
 
         {/* Notifications Icon with Badge */}
         <div className="relative">
