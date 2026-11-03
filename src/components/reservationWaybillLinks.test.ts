@@ -25,14 +25,15 @@ test('MOCK 预留关联真实目录中的运单，覆盖单票、多票、待回
   assert.deepEqual(mocks.orders[2].links.waybills.map(waybill => waybill.id), ['HD2606161063', 'HD2606162231']);
   assert.equal(summarizeWaybillPicking(catalog[1], mocks.records).status, '拣货完成');
   const mixed = summarizeReservationPickingMatches(mocks.orders[5].links, mocks.orders[5].matchedWaybills || [], mocks.records);
-  assert.equal(mixed.volume, 7.1);
+  assert.equal(mixed.volume, 4.8);
   assert.equal(mixed.reservedVolume, 2.3);
   assert.deepEqual(mixed.matches.map(match => match.source), ['普通匹配', '预留运单']);
   const overlap = summarizeReservationPickingMatches(mocks.orders[2].links, mocks.orders[2].matchedWaybills || [], mocks.records);
-  assert.equal(overlap.matches.length, 2);
+  assert.equal(overlap.matches.length, 4);
   assert.equal(overlap.volume, 7.1);
   assert.equal(overlap.reservedVolume, 7.1);
-  assert.ok(overlap.matches.every(match => match.source === '预留运单'));
+  assert.equal(overlap.matches.filter(match => match.source === '普通匹配').length, 2);
+  assert.equal(overlap.matches.filter(match => match.source === '预留运单').length, 2);
 });
 
 test('MOCK 初始化不重复写入批次、不恢复被更正或撤销的数据，也不混入用户已有拣货', () => {
@@ -194,17 +195,39 @@ test('扩展 MOCK 提供多个客户的多票混合来源，保留历史示例�
   assert.equal(new Set(mocks.orders.map(order => order.reserveNo)).size, 30);
   const summaries = mocks.orders.map(order => summarizeReservationPickingMatches(order.links, order.matchedWaybills || [], mocks.records));
   const mixed = summaries.filter(summary => new Set(summary.matches.map(match => match.source)).size === 2);
-  assert.equal(mixed.length, 19);
-  assert.equal(mixed.filter(summary => summary.matches.length === 4).length, 15);
+  assert.equal(mixed.length, 20);
+  assert.equal(mixed.filter(summary => summary.matches.length === 4).length, 13);
   assert.equal(new Set(mocks.orders.slice(6).map(order => order.customer)).size, 3);
   mocks.orders.forEach((order, index) => {
     const summary = summaries[index];
-    assert.equal(new Set(summary.matches.map(match => match.waybill.id)).size, summary.matches.length);
+    assert.equal(new Set(summary.matches.map(match => match.source + ':' + match.waybill.id)).size, summary.matches.length);
     assert.ok(summary.matches.every(match => match.waybill.customer === order.customer));
     assert.equal(summary.volume, Number(order.transferredVolume));
-    assert.ok(summary.reservedVolume <= summary.volume);
+    assert.equal(summary.reservedVolume, summarizeReservationPicking(order.links.waybills, mocks.records).volume ?? 0);
   });
   const repeated = createReservationWaybillMocks([...legacy, ...reservationSourceMockWaybills.map(getWaybillIdentity)]);
   assert.deepEqual(repeated.orders.map(order => order.id), mocks.orders.map(order => order.id));
   assert.deepEqual(missingMockPickingRecords(repeated.records, mocks.records), []);
+});
+
+
+test('预留运单拣货独立记录，不与普通匹配融合或抵扣现有拣货', () => {
+  const links = buildReservationLinks(a.customer, resolveReservationNumbers(a.customer, ['YD001'], [a, b]), [a, b]);
+  const reservedRecord = record({ volume: 7 });
+  const ordinaryRecord = record({ id: 'ordinary-batch', waybillId: b.id, volume: 4 });
+  const records = [reservedRecord, ordinaryRecord];
+  assert.equal(summarizeReservationPickingMatches(links, [], records).volume, 0);
+  const before = summarizeReservationPickingMatches(links, [b], records);
+  assert.equal(before.volume, 4);
+  assert.equal(before.reservedVolume, 7, 'reserved picking is allowed to exceed ordinary picking');
+  const changed = summarizeReservationPickingMatches(links, [b], [{ ...reservedRecord, revision: 2, volume: 9 }, ordinaryRecord]);
+  assert.equal(changed.volume, 4);
+  assert.equal(changed.reservedVolume, 9);
+  const removed = summarizeReservationPickingMatches(undefined, [b], records);
+  assert.equal(removed.volume, 4);
+  assert.equal(removed.reservedVolume, 0);
+  const both = summarizeReservationPickingMatches(links, [a, a], records);
+  assert.equal(both.volume, 7);
+  assert.equal(both.reservedVolume, 7);
+  assert.equal(both.matches.length, 2, 'same waybill remains one record in each independent source');
 });

@@ -169,3 +169,5 @@
 .reserved-picking-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -18px 0 12px; color: #d64040; }
 .reserved-picking-error button { flex-shrink: 0; border: 1px solid #dfe5ed; border-radius: 3px; padding: 4px 8px; background: white; color: #606266; }
 @media(max-width: 600px) { .reserved-picking-dialog { max-width: calc(100vw - 24px); height: 90dvh; } .reserved-picking-content { padding: 20px 12px 16px; } .reserved-picking-pagination { flex-wrap: wrap; gap: 7px; } }
+
+.reserved-table-wrap .reserved-waybill-copy-cell { cursor: text; user-select: text; }

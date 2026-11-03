@@ -54,9 +54,9 @@ export function createReservationWaybillMocks(catalog: WaybillIdentity[]) {
       customer, merchandiser: '天翊', channel: '2-纽约海铁30日达', volume: String(specification.volume),
       deliveryPlace: '金华仓', scheduledTime: '2026-11-03 10:00', submitter: 'MOCK',
       latestUpdated: '2026-10-30 14:00:00', firstSubmitted: '2026-10-30 14:00:00', remark: specification.remark,
-      transferredVolume: String(specification.picked), untransferredVolume: String(Number((specification.volume - specification.picked).toFixed(3))),
+      transferredVolume: specification.suffix === '003' ? String(specification.picked) : '0', untransferredVolume: String(Number((specification.volume - (specification.suffix === '003' ? specification.picked : 0)).toFixed(3))),
       returnedVolume: '0', status: '已预留' as const, links: buildReservationLinks(customer, bindings, catalog),
-      ...(specification.suffix === '003' ? { matchedWaybills: waybills.filter((waybill): waybill is WaybillIdentity => !!waybill) } : {}),
+      matchedWaybills: specification.suffix === '003' ? waybills.filter((waybill): waybill is WaybillIdentity => !!waybill) : [],
     }];
   });
   const ordinaryWaybill = catalog.find(waybill => waybill.id === 'HD2606162231');
@@ -65,7 +65,7 @@ export function createReservationWaybillMocks(catalog: WaybillIdentity[]) {
     id: 'mock-reservation-picking-006', reserveNo: 'MOCKYL20261030006', customer: ordinaryCustomer,
     merchandiser: '天翊', channel: '2-纽约海铁30日达', volume: '10', deliveryPlace: '金华仓', scheduledTime: '2026-11-03 10:00',
     submitter: 'MOCK', latestUpdated: '2026-10-30 14:00:00', firstSubmitted: '2026-10-30 14:00:00',
-    remark: 'MOCK · 普通匹配 4.8 方 + 预留运单 2.3 方，共 7.1 方', transferredVolume: '7.1', untransferredVolume: '2.9',
+    remark: 'MOCK · 拣货方数 4.8 方；预留运单拣货 2.3 方，独立记录', transferredVolume: '4.8', untransferredVolume: '5.2',
     returnedVolume: '0', status: '已预留', matchedWaybills: [ordinaryWaybill],
     links: buildReservationLinks(ordinaryCustomer, resolveReservationNumbers(ordinaryCustomer, ['HD2606161063'], catalog), catalog),
   });
@@ -96,7 +96,7 @@ export function createReservationWaybillMocks(catalog: WaybillIdentity[]) {
     { name: '普通与预留混合', ordinary: [0], reserved: [1] },
     { name: '四票混合：预留待回传及撤销', ordinary: [0, 1], reserved: [2, 3] },
     { name: '四票混合：两种来源均有有效拣货', ordinary: [0, 2], reserved: [1, 3] },
-    { name: '双重命中去重：预留来源优先', ordinary: [0, 1, 2], reserved: [1, 3] },
+    { name: '同票两种来源独立记录', ordinary: [0, 1, 2], reserved: [1, 3] },
     { name: '一票普通与三票预留', ordinary: [0], reserved: [1, 2, 3] },
     { name: '三票普通与一票预留', ordinary: [0, 1, 2], reserved: [3] },
   ];
@@ -109,9 +109,8 @@ export function createReservationWaybillMocks(catalog: WaybillIdentity[]) {
       const matchedWaybills = scenario.ordinary.map(index => waybills[index]!);
       const reserved = scenario.reserved.map(index => waybills[index]!.systemNo);
       const links = buildReservationLinks(customer, resolveReservationNumbers(customer, reserved, catalog), catalog);
-      const unique = [...new Map([...matchedWaybills, ...links.waybills].map(item => [item.id, item])).values()];
-      const picked = summarizeReservationPicking(unique, records).volume ?? 0;
-      const volume = Number((picked + 2.5 + group).toFixed(3));
+      const picked = summarizeReservationPicking(matchedWaybills, records).volume ?? 0;
+      const volume = 12 + group * 3 + index;
       orders.push({
         id: 'mock-reservation-sources-' + serial, reserveNo: 'MOCKYL20261102' + serial,
         customer, merchandiser: ['天翊', '天惠', '天旺'][group], channel: reservationSourceMockWaybills[group * 4].carrier,

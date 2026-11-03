@@ -13,8 +13,8 @@ const columns = [
 ];
 const formatTime = (value?: string) => !value ? '—' : new Date(value).toLocaleString('sv-SE', { timeZone: 'Asia/Shanghai' });
 
-export default function ReservationPickingDetailTable({ links, ordinaryWaybills = [], catalog, waybills, onClose }: {
-  links?: ReservationLinks; ordinaryWaybills?: WaybillIdentity[]; catalog: WaybillIdentity[]; waybills: Waybill[]; onClose: () => void;
+export default function ReservationPickingDetailTable({ links, ordinaryWaybills = [], existingPickingVolume, catalog, waybills, onClose }: {
+  links?: ReservationLinks; ordinaryWaybills?: WaybillIdentity[]; existingPickingVolume?: number; catalog: WaybillIdentity[]; waybills: Waybill[]; onClose: () => void;
 }) {
   const snapshot = useReservationPicking();
   const [page, setPage] = useState(1);
@@ -23,9 +23,9 @@ export default function ReservationPickingDetailTable({ links, ordinaryWaybills 
   const [error, setError] = useState('');
   const table = useRef<HTMLDivElement>(null);
   const totals = summarizeReservationPickingMatches(links, ordinaryWaybills, snapshot.records);
-  const linked = totals.matches.map(match => catalog.find(item => item.id === match.waybill.id && item.customer === match.waybill.customer) || match.waybill);
-  const sources = new Map(totals.matches.map(match => [match.waybill.id, match.source]));
-  const signature = linked.map(item => item.id).sort().join('\0');
+  const linked = totals.matches.map(match => ({ ...match, waybill: catalog.find(item => item.id === match.waybill.id && item.customer === match.waybill.customer) || match.waybill }));
+  const syncWaybills = [...new Map(linked.map(match => [match.waybill.id, match.waybill])).values()];
+  const signature = syncWaybills.map(item => item.id).sort().join('\0');
   const synchronize = async (ids: string[]) => {
     setLoading(true); setError('');
     try { await reservationPickingStore.sync(ids); }
@@ -46,25 +46,25 @@ export default function ReservationPickingDetailTable({ links, ordinaryWaybills 
   const currentPage = Math.min(page, pageCount);
   const visible = linked.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const pageButtons = [...new Set([1, currentPage - 1, currentPage, currentPage + 1, pageCount])].filter(value => value > 0 && value <= pageCount).sort((a, b) => a - b);
-  const syncErrors = linked.filter(item => snapshot.sync[item.id]?.error).map(item => `${item.systemNo}：${snapshot.sync[item.id].error}`);
+  const syncErrors = syncWaybills.filter(item => snapshot.sync[item.id]?.error).map(item => `${item.systemNo}：${snapshot.sync[item.id].error}`);
   return <div className="reserved-picking-content">
-    <div className="reserved-picking-totals" aria-label="拣货方数汇总"><span>拣货方数：<strong>{totals.volume} m³</strong></span><span className="reserved-picking-totals-divider" aria-hidden="true">｜</span><span>其中预留运单拣货：<strong>{totals.reservedVolume} m³</strong></span></div>
-    {(error || syncErrors.length > 0) && <div className="reserved-picking-error" role="alert"><span>{error || `同步异常，保留最近成功数据。${syncErrors.join('；')}`}</span><button type="button" disabled={loading} onClick={() => void synchronize(linked.map(item => item.id))}>{loading ? '同步中…' : '重新同步'}</button></div>}
+    <div className="reserved-picking-totals" aria-label="拣货方数汇总"><span>拣货方数：<strong>{existingPickingVolume ?? totals.volume} m³</strong></span><span className="reserved-picking-totals-divider" aria-hidden="true">｜</span><span>预留运单拣货方数：<strong>{totals.reservedVolume} m³</strong></span></div>
+    {(error || syncErrors.length > 0) && <div className="reserved-picking-error" role="alert"><span>{error || `同步异常，保留最近成功数据。${syncErrors.join('；')}`}</span><button type="button" disabled={loading} onClick={() => void synchronize(syncWaybills.map(item => item.id))}>{loading ? '同步中…' : '重新同步'}</button></div>}
     <div className="reserved-picking-table-wrap" ref={table}>
       <table className="reserved-picking-table" aria-label="拣货明细">
         <colgroup>{columns.map(column => <col key={column.label} style={{ width: `${column.width}%` }} />)}</colgroup>
         <thead><tr>{columns.map(column => <th key={column.label} scope="col">{column.label}</th>)}</tr></thead>
-        <tbody>{visible.map(identity => {
+        <tbody>{visible.map(({ waybill: identity, source: matchSource }) => {
           const source = waybills.find(waybill => waybill.id === identity.id);
           const mock = reservationMockWaybillDetails[identity.id];
           const summary = summarizeWaybillPicking(identity, snapshot.records);
           const active = snapshot.records.filter(record => record.waybillId === identity.id && record.status === 'active');
           const pickedAt = active.reduce((latest, record) => Date.parse(record.updatedAt) > Date.parse(latest || '1970-01-01') ? record.updatedAt : latest, '');
-          const values = [identity.systemNo, sources.get(identity.id)!, identity.customerNo || '—', identity.customer, mock?.channel || source?.carrier || '—', identity.expectedPieces,
+          const values = [identity.systemNo, matchSource, identity.customerNo || '—', identity.customer, mock?.channel || source?.carrier || '—', identity.expectedPieces,
             mock?.chargeableWeight ?? '—', mock?.volume ?? '—', summary.volume ?? 0, mock?.productName || source?.description || '—',
             source?.station || '—', active.length ? mock?.pickingStation || '—' : '—', source?.createTime || '—', formatTime(pickedAt),
             source?.remarks || (summary.volume === null ? '待回传' : summary.records === 0 ? '拣货已撤销' : '—')];
-          return <tr key={identity.id}>{values.map((value, index) => <td key={columns[index].label} title={String(value)}>{index === 1 ? <span className={`reserved-match-source ${value === '预留运单' ? 'is-reserved' : 'is-ordinary'}`}>{value}</span> : value}</td>)}</tr>;
+          return <tr key={matchSource + ':' + identity.id}>{values.map((value, index) => <td key={columns[index].label} title={String(value)}>{index === 1 ? <span className={`reserved-match-source ${value === '预留运单' ? 'is-reserved' : 'is-ordinary'}`}>{value}</span> : value}</td>)}</tr>;
         })}{!visible.length && <tr><td colSpan={columns.length} className="reserved-picking-empty">暂无拣货明细</td></tr>}</tbody>
       </table>
     </div>
