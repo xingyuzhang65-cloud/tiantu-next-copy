@@ -21,6 +21,7 @@ import InstructionManagementPage from './components/InstructionManagementPage';
 import OverseasStorageInventoryPage from './components/OverseasStagingInventoryPage';
 import ReservedOrderPage from './components/ReservedOrderPage';
 import { reservationSourceMockWaybills } from './components/reservationWaybillMocks';
+import { loadWaybillAttachments, saveWaybillAttachments } from './components/waybillAttachmentStore';
 import { Waybill, OrderType, WaybillChangeLog, OverseasInterceptRequest } from './types';
 import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from 'lucide-react';
 
@@ -258,7 +259,7 @@ export default function App() {
   };
 
   // Mock Logistics Data - Pre-populated with details identical to the user's screenshot
-  const [waybills, setWaybills] = useState<Waybill[]>([
+  const [waybills, setWaybills] = useState<Waybill[]>(() => ([
     {
       id: 'HD2606161063',
       fbaCode: 'FBA19G6M4C7B',
@@ -436,7 +437,7 @@ export default function App() {
       customerName: '上海欧线供应链客户'
     },
     ...reservationSourceMockWaybills,
-  ]);
+  ] as Waybill[]).map(waybill => ({ ...waybill, attachments: loadWaybillAttachments(waybill.id, waybill.attachments) })));
 
   useEffect(() => {
     initializeMockCancelableIntercepts(waybills);
@@ -522,6 +523,7 @@ export default function App() {
   };
 
   const handleUpdateWaybill = (id: string, patch: Partial<Waybill>) => {
+    if (patch.attachments !== undefined) saveWaybillAttachments(id, patch.attachments);
     setWaybills(prev => prev.map(w => {
       if (w.id === id) {
         // Log customsDeclarationType changes

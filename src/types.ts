@@ -5,6 +5,9 @@ export interface WaybillAttachment {
   size: number;
   uploadedAt: string;
   dataUrl?: string;
+  category?: string;
+  customerVisible?: '可见' | '不可见';
+  uploadedBy?: string;
 }
 
 export interface OverseasInterceptInstructionFee {

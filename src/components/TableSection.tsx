@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Waybill, SearchParams, OrderType, WaybillAttachment, WaybillChangeLog, OverseasInterceptRequest } from '../types';
 import WaybillPickingEditor from './WaybillPickingEditor';
+import WaybillOtherInformation from './WaybillOtherInformation';
 import { getWaybillCustomerOrderNo } from './reservationWaybillLinks';
 
 interface TableSectionProps {
@@ -2341,7 +2342,7 @@ export default function TableSection({
                     key={tab}
                     type="button"
                     onClick={() => {
-                      if (tab === '基础信息' || tab === '货物信息' || tab === '费用信息') {
+                      if (tab === '基础信息' || tab === '货物信息' || tab === '费用信息' || tab === '其他信息') {
                         setActiveDetailTab(tab);
                         setPickingPanelOpen(false);
                       } else {
@@ -2502,6 +2503,12 @@ export default function TableSection({
                     </div>
                   </section>
                 </>
+              ) : activeDetailTab === '其他信息' ? (
+                <WaybillOtherInformation key={activeDetailWaybill.id} attachments={activeDetailWaybill.attachments || []}
+                  onChange={attachments => {
+                    onUpdateWaybill(activeDetailWaybill.id, { attachments });
+                    setActiveDetailWaybill(current => current ? { ...current, attachments } : current);
+                  }} />
               ) : (
                 <>
                   <section className="rounded-md bg-white p-4 shadow-sm">
