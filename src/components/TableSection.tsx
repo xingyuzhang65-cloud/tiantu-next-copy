@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useId } from 'react';
 import { 
   Search, RotateCcw, ChevronDown, ChevronUp, Plus, Trash2, 
   RefreshCw, Settings2, ShieldCheck, HelpCircle, ArrowUpDown,
@@ -37,6 +37,27 @@ interface PickingTransferRow {
   carrierCompany: string;
   transferNo: string;
 }
+
+const WAYBILL_EXPORT_OPTIONS = [
+  '运单',
+  '货箱',
+  '申报信息',
+  '清关资料导出',
+  '确认数据导出',
+  '自定义模板',
+  '发票',
+  '箱单发票',
+  '报关资料',
+  '天泰发票导出',
+  '智行发票导出',
+  '越南发票导出',
+  '货箱路由信息',
+  '核对件导出',
+  '运踪模板导出',
+  '附件导出',
+  'FBT全量报表',
+  'FBT送仓报表',
+] as const;
 
 const pdfText = (value: string | number) => String(value)
   .replace(/[^\x20-\x7E]/g, '?')
@@ -295,6 +316,19 @@ export default function TableSection({
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [printLabelMenuOpen, setPrintLabelMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const exportMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const exportMenuId = useId();
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!exportMenuRef.current?.contains(event.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
+  }, [exportMenuOpen]);
   const [attachmentExportModalOpen, setAttachmentExportModalOpen] = useState(false);
   const [selectedAttachmentTypes, setSelectedAttachmentTypes] = useState<string[]>([]);
   const [systemLabelPanelOpen, setSystemLabelPanelOpen] = useState(false);
@@ -1712,13 +1746,44 @@ export default function TableSection({
           </div>
 
           {/* 导出 */}
-          <div className="relative">
+          <div
+            ref={exportMenuRef}
+            className="relative"
+            onKeyDown={event => {
+              if (event.key === 'Escape') {
+                setExportMenuOpen(false);
+                exportMenuButtonRef.current?.focus();
+              }
+            }}
+            onBlur={event => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setExportMenuOpen(false);
+              }
+            }}
+          >
             <button
+              ref={exportMenuButtonRef}
               type="button"
+              aria-haspopup="menu"
+              aria-expanded={exportMenuOpen}
+              aria-controls={exportMenuOpen ? exportMenuId : undefined}
               onClick={() => {
                 setPrintLabelMenuOpen(false);
                 setBatchMenuOpen(false);
                 setExportMenuOpen(prev => !prev);
+              }}
+              onKeyDown={event => {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  setPrintLabelMenuOpen(false);
+                  setBatchMenuOpen(false);
+                  setExportMenuOpen(true);
+                  const focusLast = event.key === 'ArrowUp';
+                  requestAnimationFrame(() => {
+                    const items = exportMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
+                    items?.[focusLast ? items.length - 1 : 0]?.focus();
+                  });
+                }
               }}
               className="flex items-center gap-1 rounded bg-[#004bb1] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#003b91] transition-all"
             >
@@ -1727,23 +1792,48 @@ export default function TableSection({
             </button>
 
             {exportMenuOpen && (
-              <div className="absolute left-0 top-full z-30 mt-1 w-36 rounded-sm border border-slate-200 bg-white py-1 shadow-xl">
-                <button
-                  type="button"
-                  onClick={handleExportWaybillCsv}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-slate-700 hover:bg-blue-50 hover:text-[#004bb1]"
-                >
-                  <FileDown className="h-3.5 w-3.5" />
-                  <span>运单明细导出</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={openAttachmentExportModal}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-slate-700 hover:bg-blue-50 hover:text-[#004bb1]"
-                >
-                  <FileDown className="h-3.5 w-3.5" />
-                  <span>附件导出</span>
-                </button>
+              <div
+                id={exportMenuId}
+                role="menu"
+                aria-label="运单导出"
+                onKeyDown={event => {
+                  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+                  event.preventDefault();
+                  const items = Array.from((event.currentTarget as HTMLDivElement).querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+                  const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+                  const nextIndex = event.key === 'Home' ? 0
+                    : event.key === 'End' ? items.length - 1
+                    : (currentIndex + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+                  items[nextIndex]?.focus();
+                }}
+                className="absolute left-0 top-full z-50 mt-1 max-h-[calc(100dvh-15rem)] w-max min-w-[112px] overflow-y-auto rounded-sm border border-slate-200 bg-white py-1 shadow-lg"
+              >
+                {WAYBILL_EXPORT_OPTIONS.map(option => (
+                  <button
+                    key={option}
+                    type="button"
+                    role="menuitem"
+                    tabIndex={-1}
+                    onClick={() => {
+                      if (option === '运单') {
+                        handleExportWaybillCsv();
+                      } else if (option === '附件导出') {
+                        openAttachmentExportModal();
+                      } else if (option.includes('发票')) {
+                        // Preview invoice export feedback without generating a file.
+                        setExportMenuOpen(false);
+                        addToast(`${option.replace(/导出$/, '')}导出成功`, 'success');
+                      } else {
+                        // Frontend-only entries; export actions will be connected later.
+                        setExportMenuOpen(false);
+                      }
+                      exportMenuButtonRef.current?.focus();
+                    }}
+                    className="block h-6 w-full whitespace-nowrap px-3 text-left text-[11px] font-normal leading-6 text-slate-600 hover:bg-blue-50 hover:text-[#004bb1] focus-visible:bg-blue-50 focus-visible:text-[#004bb1] focus-visible:outline-none"
+                  >
+                    {option}
+                  </button>
+                ))}
               </div>
             )}
           </div>
