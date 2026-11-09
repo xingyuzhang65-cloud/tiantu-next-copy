@@ -10,6 +10,7 @@ import CatalogFeeDrawer from './CatalogFeeDrawer';
 import type { CatalogFeeDrawerRow } from './CatalogFeeDrawer';
 import OperationInstructionTable from './OperationInstructionTable';
 import { getInventoryFeeCatalog, loadOverseasInventory } from './overseasStorageInventoryData';
+import type { InventoryState } from './overseasStorageInventoryData';
 import InstructionWaybillInfo from './InstructionWaybillInfo';
 import InstructionCargoTransfers from './InstructionCargoTransfers';
 import InstructionFeeEditDialog from './InstructionFeeEditDialog';
@@ -51,13 +52,14 @@ function feeDraft(fee: InstructionFeeRow): FeeDraft {
     instructionRemark: fee.instructionRemark, images: fee.images, status: fee.status };
 }
 
-export default function InstructionDetailPage({ row, onClose, onUpdate }: {
+export default function InstructionDetailPage({ row, onClose, onUpdate, inventoryState, initialAttachments }: {
   row: InstructionListRow; onClose: () => void; onUpdate?: (patch: Partial<InstructionListRow>) => void;
+  inventoryState?: InventoryState; initialAttachments?: InstructionAttachment[];
 }) {
   const canEdit = row.tab === '待确认';
   const displayStatus = row.status === '已处理' ? '已完成' : row.status;
-  const [state, setState] = useState<InstructionDetailState>(() => loadInstructionDetail(row));
-  const inventory = useMemo(loadOverseasInventory, []);
+  const [state, setState] = useState<InstructionDetailState>(() => loadInstructionDetail(row, initialAttachments));
+  const inventory = useMemo(() => inventoryState || loadOverseasInventory(), [inventoryState]);
   const cargoRows = useMemo(()=>getInstructionCargoRows(row,inventory),[row,inventory]);
   const waybillContext = useMemo(() => getInstructionWaybillContext(row, inventory), [row, inventory]);
   const [waybillDraft, setWaybillDraft] = useState<InstructionWaybillFields>(() => ({ ...(state.waybillInfo || waybillContext.fields) }));

@@ -5,6 +5,7 @@ export type InstructionStatus = '已处理' | '待处理' | '已取消' | '已�
 export type InstructionProcessingResult = '拦截成功' | '拦截失败' | '已处理';
 
 export interface InstructionListRow {
+  detailStorageKey?: string;
   operationFees?: InstructionFeeRow[];
   rejectionReason?: string;
   id: string; tab: InstructionListTab; waybill: string; instructionNo: string; names: string[]; created: string; updated: string;

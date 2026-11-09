@@ -6,6 +6,8 @@ import type { InventoryRecord, InventoryState, InventoryStatus, ReleaseDraft, St
 import CatalogFeeDrawer from './CatalogFeeDrawer';
 import { emptyInventoryFilters as emptyFilters, matchesInventoryFilters, clearInventoryOrderFilters, type InventoryFilters as Filters } from './overseasStorageInventoryFilters';
 import OperationInstructionTable from './OperationInstructionTable';
+import InstructionDetailPage from './InstructionDetailPage';
+import { getInventoryInstructionDetail } from './inventoryInstructionDetail';
 import './InstructionManagementPage.css';
 import './StorageManagementPage.css';
 import './OverseasStorageInventoryPage.css';
@@ -43,6 +45,7 @@ export default function OverseasStorageInventoryPage({addToast}:Props) {
   const [expanded,setExpanded]=useState(false);const [selected,setSelected]=useState<string[]>([]);const [compact,setCompact]=useState(false);
   const [page,setPage]=useState(1);const [pageSize,setPageSize]=useState(50);
   const [drawer,setDrawer]=useState<{mode:'order'|'detail'|'logs';ids:string[]}|null>(null);
+  const [instructionDetail,setInstructionDetail]=useState<ReturnType<typeof getInventoryInstructionDetail>|null>(null);
   const selectedRows=data.records.filter(r=>selected.includes(r.id));
   const ordersFor=(id:string)=>data.orders.filter(o=>o.recordIds.includes(id));
   const unique=(key:'customer'|'warehouseCode'|'service'|'waybillType'|'releaseType'|'financialAudit'):string[]=>[...new Set<string>(data.records.filter(r=>r.status===sourceStatus(status)).map(r=>r[key]).filter((value):value is string=>!!value?.trim()&&value!=='—'&&value!=='-'))];
@@ -51,6 +54,7 @@ export default function OverseasStorageInventoryPage({addToast}:Props) {
   const all=visible.length>0&&visible.every(r=>selected.includes(r.id));
   function save(next:InventoryState){try{persistOverseasInventory(next);setData(next);return true;}catch{addToast('浏览器空间不足，未能保存。请减少附件或图片后重试。','warning');return false;}}
   function openOrder(ids:string[]){const source=data.records.filter(r=>ids.includes(r.id));if(!source.length){addToast('请先勾选需要下单的运单','warning');return;}if(new Set(source.map(r=>r.customer)).size>1){addToast('请勾选同一客户的运单后下单','warning');return;}setDrawer({mode:'order',ids});}
+  function openDetail(record:InventoryRecord){if(record.status==='暂存')setDrawer({mode:'detail',ids:[record.id]});else setInstructionDetail(getInventoryInstructionDetail(record,data));}
   function query(){if(filters.from&&filters.to&&filters.from>filters.to){addToast('开始日期不能晚于结束日期','warning');return;}setApplied({...filters});setSelected([]);setPage(1);}
   function changeStatus(next:InventoryView){if(next===status)return;setStatus(next);setFilters(clearInventoryOrderFilters);setApplied(clearInventoryOrderFilters);setSelected([]);setPage(1);}
   const filterInput=(key:keyof Filters,label:string,placeholder=label)=><label className="sm-filter"><span>{label}</span><input aria-label={label} value={filters[key]} placeholder={placeholder} onChange={e=>setFilters({...filters,[key]:e.target.value})}/></label>;
@@ -60,7 +64,8 @@ export default function OverseasStorageInventoryPage({addToast}:Props) {
   const cols:Col[]=status==='暂存'?[...base,{key:'time',label:'入库时间',width:165},{key:'weight',label:'重量',width:80},{key:'volume',label:'体积',width:80},{key:'boxes',label:'总箱数',width:85},{key:'pending',label:'待审核箱数',width:100},{key:'unsent',label:'未发货箱数',width:100},{key:'sent',label:'已发货箱数',width:100}]
     :[...base,{key:'applicationNo',label:status==='待出库'?'指令单号':'申请单号',width:145},{key:'waybillType',label:'运单类型',width:100},{key:'releaseType',label:'下单类型',width:100},{key:'shipmentId',label:'Shipment ID',width:140},{key:'referenceId',label:'Reference ID',width:140},{key:'financialAudit',label:'财务审核',width:100},{key:'instructionCount',label:'指令数量',width:90},{key:'instructions',label:'指令内容',width:280},{key:'time',label:'入库时间',width:165},{key:'boxes',label:'申请箱数',width:90},{key:'volume',label:'申请箱数总体积',width:125}];
   const cell=(r:InventoryRecord,key:string)=>{
-    if(key==='waybillNo')return r.waybillNo?.trim()&&r.waybillNo!=='—'&&r.waybillNo!=='-'?<button type="button" className="oi-link" aria-haspopup="dialog" onClick={()=>setDrawer({mode:'detail',ids:[r.id]})}>{r.waybillNo}</button>:'—';
+    if(key==='waybillNo')return r.waybillNo?.trim()&&r.waybillNo!=='—'&&r.waybillNo!=='-'?<button type="button" className="oi-link" aria-haspopup="dialog" onClick={()=>openDetail(r)}>{r.waybillNo}</button>:'—';
+    if(key==='applicationNo')return r.applicationNo?<button type="button" className="oi-link" aria-haspopup="dialog" onClick={()=>openDetail(r)}>{r.applicationNo}</button>:'—';
     const orders=ordersFor(r.id);const fees=[...new Map([...(r.instructions||[]),...orders.flatMap(o=>o.instructions)].map(f=>[f.id,f])).values()];
     if(key==='blocked')return <span className={`oi-type-tag${r.blocked==='拦截'?' oi-blocked':''}`}>{r.blocked}</span>;
     if(key==='notes')return orders.map(o=>o.remark).filter(Boolean).join('；')||r.remark||'';
@@ -82,6 +87,8 @@ export default function OverseasStorageInventoryPage({addToast}:Props) {
     <div className="im-table-scroll"><table className={`im-table sm-table oi-table${compact?' oi-compact':''}`} style={{minWidth:74+135+cols.reduce((n,c)=>n+c.width,0)}}><colgroup><col style={{width:36}}/><col style={{width:38}}/>{cols.map(c=><col key={c.key} style={{width:c.width}}/>)}<col style={{width:135}}/></colgroup><thead><tr><th>#</th><th><input type="checkbox" aria-label="全选暂存管理" checked={all} onChange={()=>setSelected(current=>all?current.filter(id=>!visible.some(r=>r.id===id)):[...new Set([...current,...visible.map(r=>r.id)])])}/></th>{cols.map(c=><th key={c.key}>{c.label}</th>)}<th className="sm-actions-cell">操作</th></tr></thead><tbody>{visible.map((r,i)=><tr key={r.id} className={selected.includes(r.id)?'im-row-selected':''}><td>{(page-1)*pageSize+i+1}</td><td><input type="checkbox" aria-label={`选择${r.id}`} checked={selected.includes(r.id)} onChange={()=>setSelected(current=>current.includes(r.id)?current.filter(id=>id!==r.id):[...current,r.id])}/></td>{cols.map(c=><td key={c.key} title={c.key==='waybillNo'?r.waybillNo||'—':String(cell(r,c.key))}>{cell(r,c.key)}</td>)}<td className="sm-actions-cell"><span className="im-actions">{status==='暂存'&&<button type="button" onClick={()=>openOrder([r.id])}>下单</button>}<button type="button" onClick={()=>setDrawer({mode:'logs',ids:[r.id]})}>日志</button></span></td></tr>)}{!visible.length&&<tr className="im-empty"><td colSpan={cols.length+3}>暂无匹配库存记录</td></tr>}</tbody></table></div>
     <footer className="im-footer"><span>共 {rows.length} 条</span><button className="im-page-arrow" disabled={page<=1} onClick={()=>setPage(page-1)}>‹</button><span>{page} / {pages}</span><button className="im-page-arrow" disabled={page>=pages} onClick={()=>setPage(page+1)}>›</button><span className="im-select im-page-size"><select aria-label="暂存管理每页条数" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setPage(1);}}>{[20,50,100].map(n=><option key={n} value={n}>{n}条/页</option>)}</select><ChevronDown/></span></footer></section>
     {drawer&&<InventoryDrawer data={data} ids={drawer.ids} mode={drawer.mode} onClose={()=>setDrawer(null)} onSubmit={next=>{if(save(next)){setSelected([]);setDrawer(null);addToast(`已生成待审批申请 ${next.orders[0].applicationNo}`,'success');}}}/>}
+    {instructionDetail&&<InstructionDetailPage row={instructionDetail.row} inventoryState={instructionDetail.inventory} initialAttachments={instructionDetail.attachments}
+      onClose={()=>setInstructionDetail(null)} onUpdate={patch=>setInstructionDetail(current=>current?{...current,row:{...current.row,...patch}}:null)}/>}
   </main>;
 }
 

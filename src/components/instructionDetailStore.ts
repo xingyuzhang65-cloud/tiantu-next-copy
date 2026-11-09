@@ -80,14 +80,15 @@ function validState(value: InstructionDetailState): boolean {
 function readStored(row: InstructionListRow): StoredDetail | null {
   try {
     const entries = JSON.parse(localStorage.getItem(INSTRUCTION_DETAIL_STORAGE_KEY) || '{}') as Record<string,StoredDetail>;
-    for(const key of [row.instructionNo,row.legacyInstructionNo].filter((key):key is string=>!!key)){
+    const keys = row.detailStorageKey ? [row.detailStorageKey] : [row.instructionNo,row.legacyInstructionNo].filter((key):key is string=>!!key);
+    for(const key of keys){
       const value=entries?.[key];
-      if(validState(value)&&value.instructionNo===key&&value.waybill===row.waybill)return value;
+      if(validState(value)&&value.instructionNo===(row.detailStorageKey ? row.instructionNo : key)&&value.waybill===row.waybill)return value;
     }
     return null;
   } catch { return null; }
 }
-export function loadInstructionDetail(row: InstructionListRow): InstructionDetailState {
+export function loadInstructionDetail(row: InstructionListRow, initialAttachments: InstructionAttachment[] = []): InstructionDetailState {
   const saved = readStored(row);
   if (saved) return {fees:saved.fees.map(normalizedFee),feesEdited:saved.feesEdited,attachments:saved.attachments.map(file => ({...file})),
     customerNote:saved.customerNote,internalRemark:saved.internalRemark,failureReason:saved.failureReason,updatedAt:saved.updatedAt,
@@ -96,7 +97,7 @@ export function loadInstructionDetail(row: InstructionListRow): InstructionDetai
     ...(saved.cargoTransferNumbers === undefined ? {} : {cargoTransferNumbers:{...saved.cargoTransferNumbers}}),
     ...(saved.cargoTransferOrder === undefined ? {} : {cargoTransferOrder:[...saved.cargoTransferOrder]}),
     ...(saved.trackingEvents === undefined ? {} : {trackingEvents:saved.trackingEvents.map(event => ({...event}))})};
-  return {fees:buildInstructionDetail(row).feeRows.map(normalizedFee),feesEdited:false,attachments:[],
+  return {fees:buildInstructionDetail(row).feeRows.map(normalizedFee),feesEdited:false,attachments:initialAttachments.map(file => ({...file})),
     customerNote:row.customerNote || '',internalRemark:row.internalRemark || '',failureReason:row.failureReason || ''};
 }
 export function getInstructionFeeTotal(fees: InstructionFeeRow[]): number {
@@ -118,7 +119,7 @@ export function saveInstructionDetail(row: InstructionListRow, state: Instructio
     ...(state.cargoTransferOrder === undefined ? {} : {cargoTransferOrder:[...state.cargoTransferOrder]}),
     ...(state.trackingEvents === undefined ? {} : {trackingEvents:state.trackingEvents.map(event => ({...event}))}),
     updatedAt:state.updatedAt || new Date().toLocaleString('sv-SE')};
-  localStorage.setItem(INSTRUCTION_DETAIL_STORAGE_KEY,JSON.stringify({...entries,[row.instructionNo]:next}));
+  localStorage.setItem(INSTRUCTION_DETAIL_STORAGE_KEY,JSON.stringify({...entries,[row.detailStorageKey || row.instructionNo]:next}));
 }
 export function applyInstructionDetailOverrides(row: InstructionListRow): InstructionListRow {
   const saved = readStored(row);
