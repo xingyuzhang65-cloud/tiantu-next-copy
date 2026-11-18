@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ChevronDown, Download, Plus, RefreshCw, Search, Settings2, Trash2 } from 'lucide-react';
 import NiuKuOrderDrawer from './NiuKuOrderDrawer';
+import BillOfLadingExportDialog from './BillOfLadingExportDialog';
 
 type BillRow = {
   container: string;
@@ -47,6 +48,8 @@ export default function BillOfLadingPage({ addToast }: { addToast: (message: str
   const [page, setPage] = useState(1);
   const [pushOpen, setPushOpen] = useState(false);
   const [pushMenuOpen, setPushMenuOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const closeExport = useCallback(() => setExportOpen(false), []);
   const activeBill = rows.find((row) => selected.includes(row.container)) || rows[0];
 
   const filtered = useMemo(() => rows.filter((row) => {
@@ -88,7 +91,10 @@ export default function BillOfLadingPage({ addToast }: { addToast: (message: str
           <button type="button" onClick={() => notify('更新统计', 'success')} className="rounded bg-[#0759b6] px-3 py-1.5 font-semibold text-white">更新统计</button>
           <button type="button" onClick={() => notify('删除', 'warning')} className="flex items-center gap-1 rounded bg-[#df3e3e] px-3 py-1.5 font-semibold text-white"><Trash2 className="h-3.5 w-3.5" />删除</button>
           <button type="button" onClick={() => notify('作废', 'warning')} className="rounded bg-[#df3e3e] px-3 py-1.5 font-semibold text-white">作废</button>
-          <button type="button" onClick={() => addToast('提单列表已导出', 'success')} className="flex items-center gap-1 rounded bg-[#0759b6] px-3 py-1.5 font-semibold text-white"><Download className="h-3.5 w-3.5" />导出<ChevronDown className="h-3 w-3" /></button>
+          <button type="button" onClick={() => {
+            if (!selected.length) { addToast('请先勾选需要导出的提单', 'warning'); return; }
+            setPushMenuOpen(false); setExportOpen(true);
+          }} className="flex items-center gap-1 rounded bg-[#0759b6] px-3 py-1.5 font-semibold text-white"><Download className="h-3.5 w-3.5" />导出<ChevronDown className="h-3 w-3" /></button>
           <div className="relative shrink-0">
             <button type="button" onClick={() => setPushMenuOpen((value) => !value)} className="flex items-center gap-1 rounded bg-[#0759b6] px-3 py-1.5 font-semibold text-white hover:bg-[#064a97]">推送下单<ChevronDown className="h-3 w-3" /></button>
             {pushMenuOpen && <div className="absolute left-0 top-full z-50 mt-1 w-36 overflow-hidden rounded border border-slate-200 bg-white py-1 text-[12px] shadow-xl">
@@ -127,6 +133,7 @@ export default function BillOfLadingPage({ addToast }: { addToast: (message: str
         </div>
       </section>
       <NiuKuOrderDrawer open={pushOpen} bill={activeBill.bill} container={activeBill.container} onClose={() => setPushOpen(false)} addToast={addToast} />
+      <BillOfLadingExportDialog open={exportOpen} records={rows.filter(row => selected.includes(row.container))} onClose={closeExport} />
     </main>
   );
 }

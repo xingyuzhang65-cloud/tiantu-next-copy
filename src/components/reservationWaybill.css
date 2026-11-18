@@ -5,6 +5,18 @@
 .rwl-entry > .rwl-button { display: inline-flex; align-items: center; gap: 5px; }
 .rwl-tag-input { display: flex; min-height: 92px; flex-wrap: wrap; align-content: start; align-items: center; gap: 6px; padding: 9px; border: 1px solid #dcdfe6; border-radius: 4px; background: #fff; cursor: text; }
 .rwl-tag-input:focus-within { border-color: #409eff; box-shadow: 0 0 0 2px #409eff0c; }
+.rwl-tag-input.has-conflicts { border-color: #ef9b9b; }
+.rwl-tag-input.has-conflicts:focus-within { box-shadow: 0 0 0 2px #ef9b9b18; }
+.rwl-conflict-badge { flex-shrink: 0; padding-left: 3px; font-size: 10px; font-style: normal; font-family: "Microsoft YaHei",sans-serif; }
+.rwl-entry-notice { margin: 6px 0; color: #5e7b9f; font-size: 11px; line-height: 1.6; }
+.rwl-conflict-panel { margin-top: 9px; padding: 11px 12px; border: 1px solid #f0caca; border-radius: 5px; background: #fff7f7; color: #bb4141; font-size: 11px; line-height: 1.7; }
+.rwl-conflict-heading { display: flex; align-items: center; gap: 6px; }
+.rwl-conflict-heading > svg { flex-shrink: 0; }
+.rwl-conflict-panel ul { display: grid; gap: 5px; max-height: 150px; overflow-y: auto; margin: 8px 0; padding-left: 18px; overflow-wrap: anywhere; }
+.rwl-conflict-panel p { margin: 6px 0; color: #8d6b6b; }
+.rwl-remove-conflicts { padding: 4px 8px; border: 1px solid #eab5b5; border-radius: 3px; color: #b83d3d; background: #fff; font-size: 11px; cursor: pointer; }
+.rwl-remove-conflicts:hover { border-color: #d77e7e; background: #fff0f0; }
+.rwl-popup-choice:has(input:disabled) { color: #949aa3; cursor: not-allowed; }
 .reserved-create-field .rwl-tag-input textarea { flex: 1 1 155px; width: 155px; min-width: 120px; max-width: 100%; height: 28px; min-height: 28px; max-height: 100px; margin: 0; padding: 5px 2px; border: 0; border-radius: 0; background: transparent; color: #53647b; font-size: 11px; line-height: 18px; resize: vertical; box-shadow: none; }
 .rwl-tag { display: inline-flex; max-width: 100%; min-height: 25px; align-items: center; gap: 4px; padding: 3px 5px 3px 7px; border: 1px solid #bcd6ff; border-radius: 4px; background: #eef5ff; color: #2665c5; }
 .rwl-tag.is-warning { border-color: #ebd096; background: #fff8e6; color: #ac7919; }
@@ -29,6 +41,17 @@
 .rwl-popup-waybill dd { margin: 0; color: #465f7e; font-family: Consolas,monospace; font-size: 11px; overflow-wrap: anywhere; }
 .rwl-popup-choice { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; color: #376da7; font-size: 11px; cursor: pointer; }
 .rwl-popup-choice input { width: 13px; height: 13px; accent-color: #2e70d5; }
+.rwl-selection-badge { flex-shrink: 0; font-family: "Microsoft YaHei",sans-serif; font-size: 10px; font-style: normal; }
+.rwl-tag-popup.has-multiple { max-height: min(560px, calc(100dvh - 24px)); }
+.rwl-candidate-summary { margin: 10px 0; padding: 9px 10px; border: 1px solid #dce8f5; border-radius: 4px; background: #f5f9ff; color: #526b8b; font-size: 11px; }
+.rwl-candidate-summary p { margin: 0; }
+.rwl-candidate-summary > div { display: flex; flex-wrap: wrap; gap: 12px; margin: 7px 0; color: #327f64; }
+.rwl-candidate-summary .is-occupied { color: #b47724; }
+.rwl-candidate-summary .rwl-candidate-hint { color: #8190a3; }
+.rwl-candidate-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
+.rwl-candidate-heading > strong { color: #37587d; font-family: Consolas,monospace; font-size: 12px; }
+.rwl-availability { flex-shrink: 0; padding: 1px 6px; border-radius: 3px; background: #edf8f1; color: #368465; font-size: 10px; }
+.rwl-availability.is-occupied { background: #fff1e4; color: #b47724; }
 .rwl-result-area { grid-column: 1 / -1; min-width: 0; margin-top: 10px; padding-top: 12px; border-top: 1px solid #edf0f5; }
 .rwl-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 14px 0 8px; }
 .rwl-list-heading h4,.rwl-review-section h4 { margin: 0; color: #44566c; font-size: 12px; font-weight: 600; }

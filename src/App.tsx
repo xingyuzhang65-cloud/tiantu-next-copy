@@ -20,7 +20,7 @@ import InstructionListPage from './components/InstructionListPage';
 import InstructionManagementPage from './components/InstructionManagementPage';
 import OverseasStorageInventoryPage from './components/OverseasStagingInventoryPage';
 import ReservedOrderPage from './components/ReservedOrderPage';
-import { reservationSourceMockWaybills } from './components/reservationWaybillMocks';
+import { reservationMultiFbaMockWaybills, reservationSourceMockWaybills } from './components/reservationWaybillMocks';
 import { loadWaybillAttachments, saveWaybillAttachments } from './components/waybillAttachmentStore';
 import { Waybill, OrderType, WaybillChangeLog, OverseasInterceptRequest } from './types';
 import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from 'lucide-react';
@@ -28,6 +28,7 @@ import { Settings, HelpCircle, Layers, ShieldCheck, Mail, Phone, Calendar } from
 const workspaceHashByTab: Record<string, string> = {
   拦截管理: '#overseas-intercept',
   预留单: '#reserved-orders',
+  提单: '#bill-of-lading',
   指令管理: '#instruction-management',
   指令列表: '#instruction-list',
   暂存管理: '#overseas-storage',
@@ -437,6 +438,7 @@ export default function App() {
       customerName: '上海欧线供应链客户'
     },
     ...reservationSourceMockWaybills,
+    ...reservationMultiFbaMockWaybills,
   ] as Waybill[]).map(waybill => ({ ...waybill, attachments: loadWaybillAttachments(waybill.id, waybill.attachments) })));
 
   useEffect(() => {

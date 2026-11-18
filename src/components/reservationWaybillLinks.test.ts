@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getWaybillIdentity, buildReservationLinks, getLinkedWaybillIds, mergePickingRecords, parseReservationNumbers, resolveReservationNumbers, summarizeReservationPicking, summarizeWaybillPicking, validateReservationLinks, type PickingRecord, type WaybillIdentity } from './reservationWaybillLinks';
 import { createReservationPickingStore } from './reservationPickingStore';
-import { createReservationWaybillMocks, missingMockPickingRecords, reservationSourceMockWaybills } from './reservationWaybillMocks';
+import { createReservationWaybillMocks, mergeReservationWaybillMocks, missingMockPickingRecords, reservationSourceMockWaybills } from './reservationWaybillMocks';
 import { matchesReservationWaybillNumbers } from './reservationWaybillSearch';
 import { summarizeReservationPickingMatches } from './reservationPickingMatches';
+import { findReservationConflicts } from './reservationWaybillUniqueness';
 
 const a: WaybillIdentity = { id: 'internal-a', systemNo: 'YD001', customerNo: 'KH001', fbaNo: 'FBA001', customer: '甲客户', expectedPieces: 5 };
 const b: WaybillIdentity = { id: 'internal-b', systemNo: 'YD002', customerNo: 'KH002', fbaNo: 'FBA002', customer: '甲客户', expectedPieces: 3 };
@@ -17,18 +18,19 @@ const storage = () => {
 
 test('MOCK 预留关联真实目录中的运单，覆盖单票、多票、待回传和撤销归零', () => {
   const catalog = ['HD2606161063', 'HD2606162231', 'HD2606161099', 'HD2606163345'].map((id, index) => ({
-    id, systemNo: id, customerNo: `KH-${id}`, fbaNo: `FBA-${id}`, customer: index < 2 ? 'VIP客户' : `客户${index}`, expectedPieces: [15, 30, 4, 8][index],
+    id, systemNo: id, customerNo: `KH-${id}`, fbaNo: `FBA-${id}`, customer: index < 2 ? '深圳天图电子有限公司 (VIP)' : `客户${index}`, expectedPieces: [15, 30, 4, 8][index],
   }));
-  const mocks = createReservationWaybillMocks(catalog);
-  assert.equal(mocks.orders.length, 6);
-  assert.deepEqual(mocks.orders.map(order => summarizeReservationPicking(order.links.waybills, mocks.records).volume), [2.3, 4.8, 7.1, null, 0, 2.3]);
-  assert.deepEqual(mocks.orders[2].links.waybills.map(waybill => waybill.id), ['HD2606161063', 'HD2606162231']);
+  const mocks = createReservationWaybillMocks([...catalog, ...reservationSourceMockWaybills.map(getWaybillIdentity)]);
+  const orders = mocks.orders.filter(order => order.id.startsWith('mock-reservation-picking-'));
+  assert.equal(orders.length, 6);
+  assert.deepEqual(orders.map(order => summarizeReservationPicking(order.links.waybills, mocks.records).volume), [2.3, 4.8, 7.1, null, 0, 2.3]);
+  assert.deepEqual(orders[2].links.waybills.map(waybill => waybill.id), ['HD2611169001', 'HD2611169002']);
   assert.equal(summarizeWaybillPicking(catalog[1], mocks.records).status, '拣货完成');
-  const mixed = summarizeReservationPickingMatches(mocks.orders[5].links, mocks.orders[5].matchedWaybills || [], mocks.records);
+  const mixed = summarizeReservationPickingMatches(orders[5].links, orders[5].matchedWaybills || [], mocks.records);
   assert.equal(mixed.volume, 4.8);
   assert.equal(mixed.reservedVolume, 2.3);
   assert.deepEqual(mixed.matches.map(match => match.source), ['普通匹配', '预留运单']);
-  const overlap = summarizeReservationPickingMatches(mocks.orders[2].links, mocks.orders[2].matchedWaybills || [], mocks.records);
+  const overlap = summarizeReservationPickingMatches(orders[2].links, orders[2].matchedWaybills || [], mocks.records);
   assert.equal(overlap.matches.length, 4);
   assert.equal(overlap.volume, 7.1);
   assert.equal(overlap.reservedVolume, 7.1);
@@ -129,10 +131,11 @@ test('相同版本冲突及非法数据拒绝写入，不破坏旧数据', () =>
   assert.equal(initial[0].volume, 2);
 });
 
-test('预留单内部去重但不限制跨预留单关联；人工预留方数不受回传改变', () => {
+test('预留单内部去重并识别历史跨单冲突；人工预留方数不受回传改变', () => {
   const bindings = resolveReservationNumbers(a.customer, ['YD001'], [a]);
-  const first = { id: 'reserve-1', volume: 9, links: buildReservationLinks(a.customer, bindings, [a]) };
-  const second = { id: 'reserve-2', volume: 12, links: buildReservationLinks(a.customer, bindings, [a]) };
+  const first = { id: 'reserve-1', reserveNo: 'YL001', status: '已预留', volume: 9, links: buildReservationLinks(a.customer, bindings, [a]) };
+  const second = { id: 'reserve-2', reserveNo: 'YL002', status: '已预留', volume: 12, links: buildReservationLinks(a.customer, bindings, [a]) };
+  assert.equal(findReservationConflicts([a.id], [first, second], first.id)[0].owners[0].reserveNo, 'YL002');
   assert.equal(summarizeReservationPicking([...first.links.waybills, ...first.links.waybills], [record()]).volume, 2);
   assert.equal(summarizeReservationPicking(second.links.waybills, [record()]).volume, 2);
   assert.equal(first.volume, 9);
@@ -187,12 +190,17 @@ test('回传错运单时标记异常且保留数据，持久化失败时不发�
 test('扩展 MOCK 提供多个客户的多票混合来源，保留历史示例并按运单去重汇总', () => {
   const legacy = ['HD2606161063', 'HD2606162231', 'HD2606161099', 'HD2606163345'].map((id, index) => ({
     id, systemNo: id, customerNo: 'KH-' + id, fbaNo: 'FBA-' + id,
-    customer: index < 2 ? 'VIP客户' : '客户' + index, expectedPieces: [15, 30, 4, 8][index],
+    customer: index < 2 ? '深圳天图电子有限公司 (VIP)' : '客户' + index, expectedPieces: [15, 30, 4, 8][index],
   }));
   const mocks = createReservationWaybillMocks([...legacy, ...reservationSourceMockWaybills.map(getWaybillIdentity)]);
   assert.equal(mocks.orders.length, 30);
   assert.equal(new Set(mocks.orders.map(order => order.id)).size, 30);
   assert.equal(new Set(mocks.orders.map(order => order.reserveNo)).size, 30);
+  const linkedIds = mocks.orders.flatMap(order => order.links.waybills.map(waybill => waybill.id));
+  assert.equal(new Set(linkedIds).size, linkedIds.length, '预留运单在全部 Mock 预留单之间唯一');
+  assert.equal(new Set(reservationSourceMockWaybills.map(waybill => waybill.id)).size, reservationSourceMockWaybills.length);
+  assert.equal(new Set(reservationSourceMockWaybills.map(waybill => waybill.customerOrderNo)).size, reservationSourceMockWaybills.length);
+  assert.equal(new Set(reservationSourceMockWaybills.map(waybill => waybill.fbaCode)).size, reservationSourceMockWaybills.length);
   const summaries = mocks.orders.map(order => summarizeReservationPickingMatches(order.links, order.matchedWaybills || [], mocks.records));
   const mixed = summaries.filter(summary => new Set(summary.matches.map(match => match.source)).size === 2);
   assert.equal(mixed.length, 20);
@@ -208,6 +216,29 @@ test('扩展 MOCK 提供多个客户的多票混合来源，保留历史示例�
   const repeated = createReservationWaybillMocks([...legacy, ...reservationSourceMockWaybills.map(getWaybillIdentity)]);
   assert.deepEqual(repeated.orders.map(order => order.id), mocks.orders.map(order => order.id));
   assert.deepEqual(missingMockPickingRecords(repeated.records, mocks.records), []);
+});
+
+test('旧浏览器缓存中的重复 Mock 关联迁移为独立运单，刷新幂等且保留用户数据与后续编辑', () => {
+  const catalog = reservationSourceMockWaybills.map(getWaybillIdentity);
+  const fixtures = createReservationWaybillMocks(catalog).orders;
+  const sharedLinks = fixtures[0].links;
+  const old = fixtures.map(row => ({ ...row, links: sharedLinks, mockFixtureVersion: undefined }));
+  const manual = { ...fixtures[0], id: 'user-order', reserveNo: 'YL-USER', submitter: '用户', links: sharedLinks };
+  const migrated = mergeReservationWaybillMocks([manual, ...old], fixtures);
+  assert.equal(migrated[0], manual);
+  const allIds = migrated.flatMap(row => row.links.waybills.map(waybill => waybill.id));
+  assert.equal(allIds.length, new Set(allIds).size);
+  assert.ok(migrated.slice(1).every(row => row.mockFixtureVersion === 2));
+  assert.equal(mergeReservationWaybillMocks(migrated, fixtures), migrated);
+  const edited = migrated.map((row, index) => index === 1 ? { ...row, links: { identifiers: [], waybills: [] }, remark: '用户已修改' } : row);
+  assert.equal(mergeReservationWaybillMocks(edited, fixtures), edited);
+});
+
+test('缓存迁移只处理已知 Mock 身份，不覆写同 ID 的人工记录', () => {
+  const fixtures = createReservationWaybillMocks(reservationSourceMockWaybills.map(getWaybillIdentity)).orders;
+  const manual = { ...fixtures[0], submitter: '用户', mockFixtureVersion: undefined };
+  const merged = mergeReservationWaybillMocks([manual], fixtures);
+  assert.equal(merged.find(row => row.id === manual.id), manual);
 });
 
 

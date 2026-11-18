@@ -3,10 +3,11 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Waybill } from '../types';
 import { buildReservationLinks, getWaybillIdentity, parseReservationNumbers, resolveReservationNumbers, summarizeReservationPicking, type PickingRecord, type ReservationIdentifier, type ReservationLinks } from './reservationWaybillLinks';
+import { findReservationConflicts } from './reservationWaybillUniqueness';
 import { ReservationWaybillFields } from './ReservationWaybillFields';
 import ReservationPickingDetails from './ReservationPickingDetailTable';
 import { reservationPickingStore, useReservationPicking } from './reservationPickingStore';
-import { createReservationWaybillMocks, missingMockPickingRecords } from './reservationWaybillMocks';
+import { createReservationWaybillMocks, mergeReservationWaybillMocks, missingMockPickingRecords } from './reservationWaybillMocks';
 import { matchesReservationWaybillNumbers } from './reservationWaybillSearch';
 import './ReservedOrderPage.css';
 
@@ -17,6 +18,7 @@ type ReservedOrder = {
   remark: string; transferredVolume: string; untransferredVolume: string; returnedVolume: string; status: ReservedStatus;
   links?: ReservationLinks;
   matchedWaybills?: import('./reservationWaybillLinks').WaybillIdentity[];
+  mockFixtureVersion?: number;
 };
 
 const rows: ReservedOrder[] = [
@@ -61,7 +63,7 @@ const initialRows: ReservedOrder[] = [
   ...rows.filter(row => row.status !== '已预留'),
 ];
 const tabs: ReservedStatus[] = ['已预留', '已送仓', '已取消'];
-type ReservedColumnKey = Exclude<keyof ReservedOrder, 'links' | 'matchedWaybills'> | 'reservedWaybillNumbers' | 'reservedWaybillPickingVolume';
+type ReservedColumnKey = Exclude<keyof ReservedOrder, 'links' | 'matchedWaybills' | 'mockFixtureVersion'> | 'reservedWaybillNumbers' | 'reservedWaybillPickingVolume';
 const columns: { key: ReservedColumnKey; label: string; width: number }[] = [
   { key: 'reserveNo', label: '预留单号', width: 8.2 },
   { key: 'customer', label: '客户', width: 5.2 },
@@ -112,6 +114,12 @@ const isValidScheduledTime = (value: string) => {
 const csvEscape = (value: string) => '"' + (/^[=+\-@]/.test(value) && !Number.isFinite(Number(value)) ? "'" + value : value).replace(/"/g, '""') + '"';
 
 export const reservedOrdersStorageKey = 'tiantu-reserved-orders-v2';
+const readSavedOrders = (fallback: ReservedOrder[]): ReservedOrder[] => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(reservedOrdersStorageKey) || 'null');
+    return Array.isArray(saved) && saved.every(row => row && typeof row.id === 'string' && typeof row.reserveNo === 'string' && editableFields.every(field => typeof row[field] === 'string')) ? saved : fallback;
+  } catch { return fallback; }
+};
 export default function ReservedOrderPage({ addToast, waybills = [] }: { addToast?: (text: string, type?: 'success' | 'info' | 'warning') => void; waybills?: Waybill[] }) {
   const [data, setData] = useState<ReservedOrder[]>(() => {
     try {
@@ -130,14 +138,7 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
     try {
       const missing = missingMockPickingRecords(mocks.records, reservationPickingStore.getSnapshot().records);
       missing.forEach(record => reservationPickingStore.receive(record));
-      setData(current => {
-        const additions = mocks.orders.filter(mock => !current.some(row => row.id === mock.id));
-        const migrated = current.map(row => {
-          const mock = mocks.orders.find(item => item.id === row.id);
-          return mock && row.matchedWaybills === undefined ? { ...row, matchedWaybills: mock.matchedWaybills || [] } : row;
-        });
-        return additions.length ? [...additions, ...migrated] : migrated.some((row, index) => row !== current[index]) ? migrated : current;
-      });
+      setData(current => mergeReservationWaybillMocks(current, mocks.orders));
       setMockWarning('');
     } catch { setMockWarning('MOCK 拣货示例暂未加载成功，请检查浏览器存储空间后刷新重试'); }
   }, [mocks]);
@@ -148,6 +149,17 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
     try { localStorage.setItem(reservedOrdersStorageKey, JSON.stringify(data)); setPersistenceWarning(''); }
     catch { setPersistenceWarning('预留单暂未保存到本机，关闭或刷新页面可能丢失，请检查浏览器存储空间'); }
   }, [data]);
+  useEffect(() => {
+    const refresh = (event: StorageEvent) => {
+      if (event.storageArea !== localStorage || event.key !== reservedOrdersStorageKey) return;
+      setData(current => {
+        const latest = readSavedOrders(current);
+        return JSON.stringify(latest) === JSON.stringify(current) ? current : latest;
+      });
+    };
+    window.addEventListener('storage', refresh);
+    return () => window.removeEventListener('storage', refresh);
+  }, []);
   const [tab, setTab] = useState<ReservedStatus>('已预留');
   const [filters, setFilters] = useState(emptyFilters);
   const [applied, setApplied] = useState(emptyFilters);
@@ -157,6 +169,8 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
   const [selection, setSelection] = useState<string[]>([]);
   const [panel, setPanel] = useState<Panel>(null);
   const [form, setForm] = useState<Form>(emptyForm);
+  const editingId = panel?.kind === 'edit' ? panel.row.id : undefined;
+  const candidateConflicts = findReservationConflicts(bindings.flatMap(binding => binding.candidateIds), data, editingId);
   const [batchText, setBatchText] = useState('');
   const [error, setError] = useState('');
   const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
@@ -258,10 +272,22 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
     let links: ReservationLinks;
     try { links = buildReservationLinks(value.customer, resolvedBindings, catalog); }
     catch (caught) { setError(caught instanceof Error ? caught.message : '运单关联校验失败'); return; }
+    const latest = readSavedOrders(data);
+    const conflicts = findReservationConflicts(links.waybills.map(waybill => waybill.id), latest, editingId);
+    if (conflicts.length) {
+      setData(latest);
+      setError(`保存失败：有 ${conflicts.length} 票运单已关联其他预留单，请移除重复运单后重试。`);
+      requestAnimationFrame(() => {
+        const field = document.getElementById('reserved-waybill-numbers');
+        field?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        field?.focus({ preventScroll: true });
+      });
+      return;
+    }
     if (panel?.kind === 'edit') {
-      setData(current => current.map(row => row.id === panel.row.id ? { ...row, ...value, links, untransferredVolume: String(Number((Number(value.volume) - Number(row.transferredVolume) - Number(row.returnedVolume)).toFixed(3))), latestUpdated: now() } : row));
+      setData(latest.map(row => row.id === panel.row.id ? { ...row, ...value, links, untransferredVolume: String(Number((Number(value.volume) - Number(row.transferredVolume) - Number(row.returnedVolume)).toFixed(3))), latestUpdated: now() } : row));
     } else {
-      setData(current => [{ ...createRow(value), links }, ...current]);
+      setData([{ ...createRow(value), links }, ...latest]);
       reset(); switchTab('已预留');
     }
     void reservationPickingStore.sync(links.waybills.map(waybill => waybill.id)).catch(() => notify('运单已关联，拣货同步异常，可在详情中重试', 'warning'));
@@ -291,7 +317,7 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
   const updateFilters = (key: keyof Filters, value: string) => setFilters(current => ({ ...current, [key]: value }));
   const panelTitle = panel ? { create: '新增预留仓位', batch: '批量预留', edit: '编辑预留单', detail: '拣货明细', cancel: '取消预留', stats: '预留统计', settings: '列表字段设置' }[panel.kind] : '';
   const pageButtons = [...new Set([1, currentPage - 1, currentPage, currentPage + 1, pageCount])].filter(value => value >= 1 && value <= pageCount).sort((a, b) => a - b);
-  const linkFields = <ReservationWaybillFields customer={form.customer} catalog={catalog} bindings={bindings} onChange={value => { setBindings(value); setError(''); }} draft={numberDraft} onDraftChange={value => { setNumberDraft(value); setError(''); }} />;
+  const linkFields = <ReservationWaybillFields customer={form.customer} catalog={catalog} bindings={bindings} conflicts={candidateConflicts} onChange={value => { setBindings(value); setError(''); }} draft={numberDraft} onDraftChange={value => { setNumberDraft(value); setError(''); }} />;
 
   return (
     <main className="reserved-page">
@@ -388,7 +414,10 @@ export default function ReservedOrderPage({ addToast, waybills = [] }: { addToas
               <label htmlFor="reserved-create-scheduledTime"><b aria-hidden="true">*</b>预计送仓时间:</label>
               <div className={`reserved-create-datetime ${form.scheduledTime ? '' : 'is-empty'}`}>
                 <CalendarDays size={12} aria-hidden="true" />
-                <input id="reserved-create-scheduledTime" type="datetime-local" required value={form.scheduledTime} onChange={event => updateForm('scheduledTime', event.target.value)} />
+                <input id="reserved-create-scheduledTime" type="datetime-local" required value={form.scheduledTime} onClick={event => {
+                  const input = event.currentTarget;
+                  try { input.showPicker?.(); } catch { input.focus(); }
+                }} onChange={event => updateForm('scheduledTime', event.target.value)} />
                 {!form.scheduledTime && <span aria-hidden="true">选择日期时间</span>}
               </div>
             </div>
