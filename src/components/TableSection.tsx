@@ -17,6 +17,7 @@ interface TableSectionProps {
   onDeleteWaybills: (ids: string[]) => void;
   onUpdateWaybillStatus: (id: string, nextStatus: Waybill['status']) => void;
   onUpdateWaybill: (id: string, patch: Partial<Waybill>) => void;
+  onUpdateWaybillInsurance: (ids: string[], buyInsurance: boolean) => boolean;
   onCreateOverseasIntercept: (requests: OverseasInterceptRequest[]) => void;
   onBatchCancelIntercept: (ids: string[]) => void;
   getCancelableInterceptWaybillIds: () => string[];
@@ -232,6 +233,7 @@ export default function TableSection({
   onDeleteWaybills,
   onUpdateWaybillStatus,
   onUpdateWaybill,
+  onUpdateWaybillInsurance,
   onCreateOverseasIntercept,
   onBatchCancelIntercept,
   getCancelableInterceptWaybillIds,
@@ -335,6 +337,13 @@ export default function TableSection({
   const [systemLabelPanelOpen, setSystemLabelPanelOpen] = useState(false);
   const [systemLabelDownloadMode, setSystemLabelDownloadMode] = useState<'split' | 'continuous'>('continuous');
   const [batchMenuOpen, setBatchMenuOpen] = useState(false);
+  const batchMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const batchInsuranceDialogRef = useRef<HTMLDialogElement>(null);
+  const [batchInsurance, setBatchInsurance] = useState<{ ids: string[]; buyInsurance: boolean; saveFailed?: boolean } | null>(null);
+  const batchInsuranceOpen = batchInsurance !== null;
+  useEffect(() => {
+    if (batchInsuranceOpen && !batchInsuranceDialogRef.current?.open) batchInsuranceDialogRef.current?.showModal();
+  }, [batchInsuranceOpen]);
   const [workOrderOpen, setWorkOrderOpen] = useState(false);
   const [otherMenuOpen, setOtherMenuOpen] = useState(false);
   const [workOrderType, setWorkOrderType] = useState('拦截');
@@ -944,6 +953,41 @@ export default function TableSection({
     addToast(`已批量修改 ${selectedIds.length} 门运单报关方式为 ${nextDeclType}`, 'success');
   };
 
+  const batchInsuranceTargets = batchInsurance ? waybills.filter(waybill => batchInsurance.ids.includes(waybill.id)) : [];
+  const batchInsuranceChanges = batchInsuranceTargets.filter(waybill => (waybill.buyInsurance ?? false) !== batchInsurance?.buyInsurance);
+
+  const openBatchInsurance = () => {
+    const selected = waybills.filter(waybill => selectedIds.includes(waybill.id));
+    if (!selected.length) {
+      addToast('请先勾选需要设置购买保险的运单', 'warning');
+      return;
+    }
+    setBatchMenuOpen(false);
+    setBatchInsurance({ ids: selected.map(waybill => waybill.id), buyInsurance: false });
+  };
+
+  const closeBatchInsurance = () => {
+    batchInsuranceDialogRef.current?.close();
+    setBatchInsurance(null);
+    batchMenuButtonRef.current?.focus();
+  };
+
+  const saveBatchInsurance = () => {
+    if (!batchInsurance) return;
+    if (!batchInsuranceChanges.length) {
+      addToast(batchInsuranceTargets.length ? '所选运单已是该保险设置' : '所选运单已不存在，请重新勾选', 'info');
+      closeBatchInsurance();
+      return;
+    }
+    const { buyInsurance } = batchInsurance;
+    if (!onUpdateWaybillInsurance(batchInsuranceChanges.map(waybill => waybill.id), buyInsurance)) {
+      setBatchInsurance({ ...batchInsurance, saveFailed: true });
+      return;
+    }
+    addToast(`已将 ${batchInsuranceChanges.length} 票运单的购买保险设为「${buyInsurance ? '是' : '否'}」`, 'success');
+    closeBatchInsurance();
+  };
+
   const handleConfirmImportInfo = () => {
     if (!importInfoWaybill) return;
     if (!importInfoFileName || !importInfoAttachment) {
@@ -1069,20 +1113,20 @@ export default function TableSection({
     });
   };
 
-  const editableInstructionFields = new Set<keyof Waybill>(['internalNote', 'remarks']);
+  const editableBasicInfoFields = new Set<keyof Waybill>(['internalNote', 'remarks', 'buyInsurance']);
 
   const updateEditDraft = <K extends keyof Waybill>(field: K, value: Waybill[K]) => {
-    if (!editableInstructionFields.has(field)) return;
+    if (!editableBasicInfoFields.has(field)) return;
     setEditDraft(prev => ({ ...prev, [field]: value }));
   };
 
   const updateTextDraft = (field: keyof Waybill, value: string) => {
-    if (!editableInstructionFields.has(field)) return;
+    if (!editableBasicInfoFields.has(field)) return;
     setEditDraft(prev => ({ ...prev, [field]: value }));
   };
 
   const updateBooleanDraft = (field: keyof Waybill, value: boolean) => {
-    if (!editableInstructionFields.has(field)) return;
+    if (!editableBasicInfoFields.has(field)) return;
     setEditDraft(prev => ({ ...prev, [field]: value }));
   };
 
@@ -1102,16 +1146,22 @@ export default function TableSection({
 
   const saveBasicInfo = () => {
     if (!editingWaybill) return;
+    const buyInsurance = editDraft.buyInsurance ?? false;
+    const insuranceChanged = buyInsurance !== (editingWaybill.buyInsurance ?? false);
+    if (insuranceChanged && !onUpdateWaybillInsurance([editingWaybill.id], buyInsurance)) {
+      addToast('购买保险设置保存失败，请重试', 'warning');
+      return;
+    }
     const instructionDraft: Partial<Waybill> = {
       internalNote: textDraftValue('internalNote'),
       remarks: textDraftValue('remarks'),
     };
     onUpdateWaybill(editingWaybill.id, instructionDraft);
-    const updatedWaybill = { ...editingWaybill, ...instructionDraft };
+    const updatedWaybill = { ...editingWaybill, ...instructionDraft, buyInsurance };
     setActiveDetailWaybill(updatedWaybill);
     setEditingWaybill(null);
     setEditDraft({});
-    addToast(`运单 ${editingWaybill.id} 指令信息已保存`, 'success');
+    addToast(`运单 ${editingWaybill.id} ${insuranceChanged ? '基础信息' : '指令信息'}已保存`, 'success');
   };
 
   const cancelBasicInfoEdit = () => {
@@ -1681,6 +1731,8 @@ export default function TableSection({
           <div className="relative">
             <button
               type="button"
+              ref={batchMenuButtonRef}
+              aria-expanded={batchMenuOpen}
               onClick={() => {
                 setPrintLabelMenuOpen(false);
                 setExportMenuOpen(false);
@@ -1724,6 +1776,13 @@ export default function TableSection({
                   className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[11px] text-slate-700 hover:bg-blue-50 hover:text-[#004bb1]"
                 >
                   <span>批量修改贸易方式</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={openBatchInsurance}
+                  className="flex w-full items-center px-3 py-1.5 text-left text-[11px] text-slate-700 hover:bg-blue-50 hover:text-[#004bb1]"
+                >
+                  批量购买保险
                 </button>
                 <button
                   type="button"
@@ -3239,6 +3298,49 @@ export default function TableSection({
             </div>
           </div>
         </div>
+      )}
+
+      {batchInsurance && (
+        <dialog
+          ref={batchInsuranceDialogRef}
+          aria-labelledby="batch-insurance-title"
+          aria-describedby="batch-insurance-scope batch-insurance-summary"
+          onCancel={event => { event.preventDefault(); closeBatchInsurance(); }}
+          className="fixed inset-x-0 top-16 bottom-auto mx-auto my-0 w-[520px] max-w-[92vw] rounded-sm bg-white p-0 shadow-2xl backdrop:bg-slate-950/50"
+        >
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <h3 id="batch-insurance-title" className="text-base font-bold text-slate-900">批量购买保险</h3>
+            <button type="button" aria-label="关闭" onClick={closeBatchInsurance} className="text-slate-500 hover:text-slate-800"><X className="h-4 w-4" /></button>
+          </div>
+          <div className="space-y-4 px-7 py-5 text-xs text-slate-700">
+            <p id="batch-insurance-scope">已勾选 <strong>{batchInsuranceTargets.length}</strong> 票运单</p>
+            <fieldset className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <legend className="mb-2 font-medium text-slate-700">购买保险</legend>
+              {[true, false].map(value => (
+                <label key={String(value)} className="flex cursor-pointer items-center gap-1.5">
+                  <input
+                    type="radio"
+                    name="batch-buy-insurance"
+                    checked={batchInsurance.buyInsurance === value}
+                    onChange={() => setBatchInsurance({ ...batchInsurance, buyInsurance: value, saveFailed: false })}
+                    className="h-3.5 w-3.5 accent-[#004bb1]"
+                  />
+                  {value ? '是' : '否'}
+                </label>
+              ))}
+            </fieldset>
+            <p id="batch-insurance-summary" aria-live="polite" className="rounded bg-slate-50 px-3 py-2.5 text-slate-600">
+              {batchInsuranceChanges.length
+                ? `确认后将 ${batchInsuranceChanges.length} 票所选运单的购买保险设为「${batchInsurance.buyInsurance ? '是' : '否'}」。`
+                : '所选运单的购买保险设置与当前选择一致。'}
+            </p>
+            {batchInsurance.saveFailed && <p role="alert" className="text-red-700">购买保险设置保存失败，请重试。</p>}
+          </div>
+          <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
+            <button type="button" autoFocus onClick={closeBatchInsurance} className="rounded border border-slate-300 bg-white px-5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">取消</button>
+            <button type="button" onClick={saveBatchInsurance} className="rounded bg-[#004bb1] px-5 py-1.5 text-xs font-bold text-white hover:bg-[#003b91]">确定</button>
+          </div>
+        </dialog>
       )}
 
       {/* ─── Waybill Change Log Modal ───────────────────────────────────── */}

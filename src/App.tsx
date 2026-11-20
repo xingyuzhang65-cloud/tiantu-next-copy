@@ -35,6 +35,15 @@ const workspaceHashByTab: Record<string, string> = {
   运单时效监控: '#overtime-waybills',
 };
 const initialWorkspaceTab = Object.keys(workspaceHashByTab).find(tab => workspaceHashByTab[tab] === location.hash) || '运单';
+const waybillInsuranceStorageKey = 'tiantu-waybill-buy-insurance-v1';
+
+function readWaybillInsurance(): Record<string, unknown> {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(waybillInsuranceStorageKey) || '{}');
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) return saved as Record<string, unknown>;
+  } catch { /* Use the waybill's existing value if the local copy is unavailable. */ }
+  return {};
+}
 
 export default function App() {
   // Tabs management
@@ -260,7 +269,9 @@ export default function App() {
   };
 
   // Mock Logistics Data - Pre-populated with details identical to the user's screenshot
-  const [waybills, setWaybills] = useState<Waybill[]>(() => ([
+  const [waybills, setWaybills] = useState<Waybill[]>(() => {
+    const savedInsurance = readWaybillInsurance();
+    return ([
     {
       id: 'HD2606161063',
       fbaCode: 'FBA19G6M4C7B',
@@ -439,7 +450,15 @@ export default function App() {
     },
     ...reservationSourceMockWaybills,
     ...reservationMultiFbaMockWaybills,
-  ] as Waybill[]).map(waybill => ({ ...waybill, attachments: loadWaybillAttachments(waybill.id, waybill.attachments) })));
+    ] as Waybill[]).map(waybill => {
+      const saved = savedInsurance[waybill.id];
+      return {
+        ...waybill,
+        buyInsurance: typeof saved === 'boolean' ? saved : waybill.buyInsurance ?? false,
+        attachments: loadWaybillAttachments(waybill.id, waybill.attachments),
+      };
+    });
+  });
 
   useEffect(() => {
     initializeMockCancelableIntercepts(waybills);
@@ -483,7 +502,7 @@ export default function App() {
 
   // Add new manual waybill callback
   const handleSaveWaybill = (newWaybill: Waybill) => {
-    setWaybills(prev => [newWaybill, ...prev]);
+    setWaybills(prev => [{ ...newWaybill, buyInsurance: newWaybill.buyInsurance ?? false }, ...prev]);
     addWaybillLog(newWaybill.id, '创建', '运单', '-', '创建运单');
     if (newWaybill.customsDeclarationType) {
       addWaybillLog(newWaybill.id, '创建', '报关方式', '-', newWaybill.customsDeclarationType);
@@ -546,6 +565,19 @@ export default function App() {
     }));
   };
 
+  const handleUpdateWaybillInsurance = (ids: string[], buyInsurance: boolean): boolean => {
+    const saved = readWaybillInsurance();
+    for (const id of ids) saved[id] = buyInsurance;
+    try {
+      localStorage.setItem(waybillInsuranceStorageKey, JSON.stringify(saved));
+    } catch {
+      return false;
+    }
+    const selected = new Set(ids);
+    setWaybills(current => current.map(waybill => selected.has(waybill.id) ? { ...waybill, buyInsurance } : waybill));
+    return true;
+  };
+
   const navigateToView = (view: string) => {
     setCurrentSubView(view);
     setOpenTabs(tabs => tabs.includes(view) ? tabs : [...tabs, view]);
@@ -586,6 +618,7 @@ export default function App() {
             onDeleteWaybills={handleDeleteWaybills}
             onUpdateWaybillStatus={handleUpdateWaybillStatus}
             onUpdateWaybill={handleUpdateWaybill}
+            onUpdateWaybillInsurance={handleUpdateWaybillInsurance}
             onCreateOverseasIntercept={handleCreateOverseasIntercept}
             onBatchCancelIntercept={(ids) => {
               const count = cancelInterceptsByWaybill(ids, pendingOverseasIntercepts);

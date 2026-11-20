@@ -1,0 +1,47 @@
+.reserved-dialog.reserved-batch-drawer { width: min(1340px, max(1040px, 55vw)); }
+.reserved-dialog.reserved-batch-drawer .reserved-dialog-header { flex-basis: 42px; }
+.reserved-dialog.reserved-batch-drawer .reserved-dialog-header h2 { font-size: 16px; }
+.reserved-dialog.reserved-batch-drawer .reserved-dialog-header h2::before { width: 5px; height: 21px; }
+.reserved-batch-surface { display: flex; flex: 1; min-height: 0; padding: 12px; background: #f1f6fc; }
+.reserved-batch-form { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; padding: 20px 20px clamp(16px, 5vh, 64px) 10px; background: #fff; }
+.reserved-batch-customer { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 19px 46px; color: #606266; }
+.reserved-batch-customer label span { margin-right: 3px; color: #f56c6c; }
+.reserved-batch-customer > div { width: 222px; max-width: 100%; }
+.reserved-batch-waybill-hint { margin: 0; color: #667385; }
+.reserved-batch-table-wrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid #e3e6ed; }
+.reserved-batch-table { width: 100%; min-width: 960px; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.reserved-batch-waybill-col { width: 24%; }
+.reserved-batch-table :is(th,td) { border-right: 1px solid #e3e6ed; border-bottom: 1px solid #e3e6ed; text-align: center; }
+.reserved-batch-table :is(th,td):last-child { width: 11%; border-right: 0; }
+.reserved-batch-table th { position: sticky; top: 0; z-index: 2; height: 31px; color: #606266; background: #f6f6f7; font-weight: 600; }
+.reserved-batch-table td { height: 69px; padding: 8px clamp(6px, 0.5vw, 11px); vertical-align: middle; }
+.reserved-batch-form :is(input,select,.reserved-create-remark textarea) { width: 100%; min-width: 0; border: 1px solid #dcdfe6; border-radius: 3px; background: #fff; color: #606266; }
+.reserved-batch-form :is(input,select) { height: 28px; }
+.reserved-batch-form :is(input,select,.reserved-create-remark textarea):focus { border-color: #409eff; }
+.reserved-batch-form .reserved-create-select select { padding: 0 25px 0 10px; }
+.reserved-batch-form .reserved-create-select select.is-placeholder { color: #c0c4cc; }
+.reserved-batch-form .reserved-create-select > svg { top: 8px; }
+.reserved-batch-form .reserved-create-stepper { height: 28px; }
+.reserved-batch-form .reserved-create-stepper input { height: 26px; padding: 0 2px; border: 0; }
+.reserved-batch-form .reserved-create-stepper input::placeholder { color: #a9b2bf; }
+.reserved-batch-form .reserved-create-datetime { width: 100%; }
+.reserved-batch-form .reserved-create-datetime > svg { top: 8px; }
+.reserved-batch-form .reserved-create-datetime > span { top: 6px; white-space: nowrap; }
+.reserved-batch-form .reserved-create-datetime.is-empty input:not(:focus)::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; opacity: 0; }
+.reserved-batch-form .reserved-create-remark textarea { height: 54px; min-height: 54px; }
+.reserved-batch-form .reserved-create-remark textarea::placeholder,.reserved-batch-table .rwl-tag-input textarea::placeholder { color: #a9b2bf; }
+.reserved-batch-table .rwl-tag-input { min-height: 54px; padding: 4px 6px; gap: 4px; }
+.reserved-batch-table .rwl-tag-input textarea { flex: 1 1 100px; width: 100px; min-width: 100px; min-height: 28px; max-width: 100%; height: 28px; padding: 5px 2px; border: 0; background: transparent; color: #53647b; font-size: 11px; line-height: 18px; resize: none; }
+.reserved-batch-table .rwl-warning { margin-bottom: 0; }
+.reserved-batch-actions { display: flex; justify-content: center; gap: 4px; }
+.reserved-batch-actions button { min-width: 26px; height: 28px; border: 1px solid #dcdfe6; border-radius: 3px; color: #606266; background: #fff; }
+.reserved-batch-actions .reserved-batch-add { width: 39px; border-color: #00439f; color: #fff; background: #00439f; }
+.reserved-batch-actions .reserved-batch-add:hover { background: #003782; }
+.reserved-dialog.reserved-batch-drawer .reserved-dialog-footer { flex: 0 0 auto; gap: 10px; padding-top: 15px; }
+.reserved-dialog.reserved-batch-drawer .reserved-dialog-footer button { height: 28px; }
+.reserved-dialog.reserved-batch-drawer .reserved-dialog-error { margin: 8px 0 0; }
+@media(max-width: 760px) {
+  .reserved-batch-surface { padding: 8px; }
+  .reserved-batch-form { padding: 16px 10px; }
+  .reserved-batch-customer { margin-left: 0; }
+}

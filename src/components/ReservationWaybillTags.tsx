@@ -1,14 +1,19 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, CircleAlert, Link2, X } from 'lucide-react';
 import { parseReservationNumbers, resolveReservationNumbers, type ReservationIdentifier, type WaybillIdentity } from './reservationWaybillLinks';
 import { getReservationCandidateState, removeConflictingReservationBindings, reservationConflictMessage, type ReservationConflict } from './reservationWaybillUniqueness';
 
-export default function ReservationWaybillTags({ customer, catalog, bindings, onChange, draft, onDraftChange, conflicts = [] }: {
+export default function ReservationWaybillTags({ customer, catalog, bindings, onChange, draft, onDraftChange, conflicts = [], tableLabel }: {
   customer: string; catalog: WaybillIdentity[]; bindings: ReservationIdentifier[]; onChange: (bindings: ReservationIdentifier[]) => void;
   draft: string; onDraftChange: (draft: string) => void;
   conflicts?: ReservationConflict[];
+  tableLabel?: string;
 }) {
+  const fieldId = useId();
+  const inputId = tableLabel ? fieldId : 'reserved-waybill-numbers';
+  const hintId = tableLabel ? fieldId + '-hint' : 'reserved-waybill-hint';
+  const conflictId = tableLabel ? fieldId + '-conflicts' : 'reserved-waybill-conflicts';
   const [activeNumber, setActiveNumber] = useState<string | null>(null);
   const [entryNotice, setEntryNotice] = useState('');
   const [position, setPosition] = useState({ left: 0, top: 0, width: 360 });
@@ -20,6 +25,10 @@ export default function ReservationWaybillTags({ customer, catalog, bindings, on
   const active = bindings.find(binding => binding.number === activeNumber);
   const cancelClose = () => { if (timer.current) clearTimeout(timer.current); };
   const close = () => { cancelClose(); setActiveNumber(null); };
+  const dismissPopup = () => {
+    close();
+    if (tableLabel) input.current?.focus();
+  };
   const scheduleClose = () => { cancelClose(); timer.current = setTimeout(() => setActiveNumber(null), 180); };
   const show = (number: string, target: HTMLElement) => {
     cancelClose(); anchor.current = target; setActiveNumber(number);
@@ -65,20 +74,26 @@ export default function ReservationWaybillTags({ customer, catalog, bindings, on
   const activeState = active ? getReservationCandidateState(active, conflicts) : null;
   const tone = (binding: ReservationIdentifier) => !customer ? 'warning' : !binding.candidateIds.length || bindingConflicts(binding).length ? 'error' : !binding.selectedIds.length ? 'warning' : 'success';
   const pending = bindings.filter(binding => tone(binding) !== 'success').length;
-  return <div className="reserved-create-field rwl-field rwl-tag-field" ref={field}>
-    <label htmlFor="reserved-waybill-numbers">预留运单号:</label>
+  return <div className={tableLabel ? 'rwl-field rwl-tag-field' : 'reserved-create-field rwl-field rwl-tag-field'} ref={field}>
+    {!tableLabel && <label htmlFor={inputId}>预留运单号:</label>}
     <div className="rwl-entry">
       <div className={`rwl-tag-input ${blockingConflicts.length ? 'has-conflicts' : ''}`} onClick={event => { if (event.target === event.currentTarget) input.current?.focus(); }} onKeyDown={event => {
         if (event.key === 'Escape' && activeNumber) { event.preventDefault(); event.stopPropagation(); close(); }
       }}>
         {bindings.map(binding => <span className={`rwl-tag is-${tone(binding)}`} key={binding.number} onMouseEnter={event => show(binding.number, event.currentTarget)} onMouseLeave={scheduleClose}>
           <button type="button" className="rwl-tag-trigger" aria-label={`查看编号${binding.number}关联信息`} aria-haspopup="dialog" aria-expanded={activeNumber === binding.number}
-            onFocus={event => show(binding.number, event.currentTarget.parentElement!)} onBlur={scheduleClose} onClick={event => show(binding.number, event.currentTarget.parentElement!)}>
+            onFocus={event => show(binding.number, event.currentTarget.parentElement!)} onBlur={scheduleClose} onClick={event => {
+              show(binding.number, event.currentTarget.parentElement!);
+              if (tableLabel && event.detail === 0) requestAnimationFrame(() => {
+                const target = popup.current?.querySelector<HTMLElement>('input:not([disabled])') ?? popup.current?.querySelector('button');
+                target?.focus();
+              });
+            }}>
             {tone(binding) === 'success' ? <Link2 size={12} aria-hidden="true" /> : <CircleAlert size={12} aria-hidden="true" />}<span>{binding.number}</span>{bindingConflicts(binding).length > 0 ? <em className="rwl-conflict-badge">重复预留</em> : binding.candidateIds.length > 1 && <em className="rwl-selection-badge">{binding.selectedIds.length ? `已选 ${binding.selectedIds.length} 票` : '待选运单'}</em>}
           </button>
           <button type="button" className="rwl-tag-remove" aria-label={`移除编号${binding.number}`} onMouseDown={event => event.preventDefault()} onClick={() => remove(binding.number)}><X size={12} aria-hidden="true" /></button>
         </span>)}
-        <textarea id="reserved-waybill-numbers" ref={input} value={draft} rows={1} aria-invalid={blockingConflicts.length > 0} aria-describedby={`reserved-waybill-hint${blockingConflicts.length ? ' reserved-waybill-conflicts' : ''}`} placeholder={bindings.length ? '继续输入或粘贴单号…' : '输入或粘贴单号，支持逗号、空格、换行分隔'}
+        <textarea id={inputId} ref={input} value={draft} rows={1} aria-label={tableLabel} aria-invalid={blockingConflicts.length > 0} aria-describedby={blockingConflicts.length ? hintId + ' ' + conflictId : hintId} placeholder={tableLabel ? '输入或粘贴单号' : bindings.length ? '继续输入或粘贴单号…' : '输入或粘贴单号，支持逗号、空格、换行分隔'}
           onFocus={close} onChange={event => { onDraftChange(event.target.value); setEntryNotice(''); }} onKeyDown={event => {
             if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); commit(event.currentTarget.value); }
           }} onBlur={event => commit(event.currentTarget.value)} onPaste={event => {
@@ -89,10 +104,10 @@ export default function ReservationWaybillTags({ customer, catalog, bindings, on
             commit(target.value.slice(0, target.selectionStart) + pasted + target.value.slice(target.selectionEnd));
           }} />
       </div>
-      <p className="rwl-hint" id="reserved-waybill-hint">支持运单号、客户单号、FBA号；粘贴、回车或失焦自动识别。</p>
-      <p className="rwl-hint">同一运单仅可关联一个预留单。</p>
+      <p className={tableLabel ? 'sr-only' : 'rwl-hint'} id={hintId}>支持运单号、客户单号、FBA号；粘贴、回车或失焦自动识别。</p>
+      {!tableLabel && <p className="rwl-hint">同一运单仅可关联一个预留单。</p>}
       {entryNotice && <p className="rwl-entry-notice" role="status">{entryNotice}</p>}
-      {blockingConflicts.length > 0 && <div className="rwl-conflict-panel" id="reserved-waybill-conflicts" role="alert">
+      {blockingConflicts.length > 0 && <div className="rwl-conflict-panel" id={conflictId} role="alert">
         <div className="rwl-conflict-heading"><CircleAlert size={15} aria-hidden="true" /><strong>{blockingConflicts.length} 票运单重复预留，暂无法保存</strong></div>
         <ul>{blockingConflicts.map(conflict => <li key={conflict.waybillId}>{reservationConflictMessage(conflict)}</li>)}</ul>
         <p>请移除重复运单后保存，其他已填内容会保留。</p>
@@ -106,8 +121,8 @@ export default function ReservationWaybillTags({ customer, catalog, bindings, on
     </div>
     {active && createPortal(<div ref={popup} className={`rwl-tag-popup is-${tone(active)}${active.candidateIds.length > 1 ? ' has-multiple' : ''}`} role="dialog" aria-label={`编号${active.number}关联详情`} style={{ left: position.left, top: position.top, width: position.width }}
       onMouseEnter={cancelClose} onMouseLeave={scheduleClose} onFocus={cancelClose} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) scheduleClose(); }}
-      onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); } }}>
-      <header><strong>{active.number}</strong><button type="button" onClick={close} aria-label="关闭编号详情"><X size={14} /></button></header>
+      onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); dismissPopup(); } }}>
+      <header><strong>{active.number}</strong><button type="button" onClick={dismissPopup} aria-label="关闭编号详情"><X size={14} /></button></header>
       {!customer ? <p className="rwl-popup-warning">请先选择客户，选择后将自动重新识别。</p> : !active.candidateIds.length ? <p className="rwl-popup-error">未匹配当前客户的运单，请检查编号或点击标签右侧×移除。</p> : <>
         {active.candidateIds.length > 1 ? <div className="rwl-candidate-summary" role="status" aria-live="polite">
           <p>匹配到 <strong>{active.candidateIds.length}</strong> 票运单，请选择需要关联的运单。</p>
@@ -131,6 +146,6 @@ export default function ReservationWaybillTags({ customer, catalog, bindings, on
           </div>;
         })}</div>
       </>}
-    </div>, document.body)}
+    </div>, (tableLabel && field.current?.closest('[aria-modal="true"]')) || document.body)}
   </div>;
 }
