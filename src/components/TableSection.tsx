@@ -339,7 +339,7 @@ export default function TableSection({
   const [batchMenuOpen, setBatchMenuOpen] = useState(false);
   const batchMenuButtonRef = useRef<HTMLButtonElement>(null);
   const batchInsuranceDialogRef = useRef<HTMLDialogElement>(null);
-  const [batchInsurance, setBatchInsurance] = useState<{ ids: string[]; buyInsurance: boolean; saveFailed?: boolean } | null>(null);
+  const [batchInsurance, setBatchInsurance] = useState<{ ids: string[]; buyInsurance: boolean | null; saveFailed?: boolean } | null>(null);
   const batchInsuranceOpen = batchInsurance !== null;
   useEffect(() => {
     if (batchInsuranceOpen && !batchInsuranceDialogRef.current?.open) batchInsuranceDialogRef.current?.showModal();
@@ -954,7 +954,6 @@ export default function TableSection({
   };
 
   const batchInsuranceTargets = batchInsurance ? waybills.filter(waybill => batchInsurance.ids.includes(waybill.id)) : [];
-  const batchInsuranceChanges = batchInsuranceTargets.filter(waybill => (waybill.buyInsurance ?? false) !== batchInsurance?.buyInsurance);
 
   const openBatchInsurance = () => {
     const selected = waybills.filter(waybill => selectedIds.includes(waybill.id));
@@ -963,7 +962,7 @@ export default function TableSection({
       return;
     }
     setBatchMenuOpen(false);
-    setBatchInsurance({ ids: selected.map(waybill => waybill.id), buyInsurance: false });
+    setBatchInsurance({ ids: selected.map(waybill => waybill.id), buyInsurance: null });
   };
 
   const closeBatchInsurance = () => {
@@ -973,18 +972,18 @@ export default function TableSection({
   };
 
   const saveBatchInsurance = () => {
-    if (!batchInsurance) return;
-    if (!batchInsuranceChanges.length) {
-      addToast(batchInsuranceTargets.length ? '所选运单已是该保险设置' : '所选运单已不存在，请重新勾选', 'info');
+    if (!batchInsurance || batchInsurance.buyInsurance === null) return;
+    if (!batchInsuranceTargets.length) {
+      addToast('所选运单已不存在，请重新勾选', 'warning');
       closeBatchInsurance();
       return;
     }
     const { buyInsurance } = batchInsurance;
-    if (!onUpdateWaybillInsurance(batchInsuranceChanges.map(waybill => waybill.id), buyInsurance)) {
+    if (!onUpdateWaybillInsurance(batchInsuranceTargets.map(waybill => waybill.id), buyInsurance)) {
       setBatchInsurance({ ...batchInsurance, saveFailed: true });
       return;
     }
-    addToast(`已将 ${batchInsuranceChanges.length} 票运单的购买保险设为「${buyInsurance ? '是' : '否'}」`, 'success');
+    addToast(`已将 ${batchInsuranceTargets.length} 票运单的购买保险设为「${buyInsurance ? '是' : '否'}」`, 'success');
     closeBatchInsurance();
   };
 
@@ -1782,7 +1781,7 @@ export default function TableSection({
                   onClick={openBatchInsurance}
                   className="flex w-full items-center px-3 py-1.5 text-left text-[11px] text-slate-700 hover:bg-blue-50 hover:text-[#004bb1]"
                 >
-                  批量购买保险
+                  批量设置保险
                 </button>
                 <button
                   type="button"
@@ -3304,16 +3303,16 @@ export default function TableSection({
         <dialog
           ref={batchInsuranceDialogRef}
           aria-labelledby="batch-insurance-title"
-          aria-describedby="batch-insurance-scope batch-insurance-summary"
+          aria-describedby={batchInsurance.buyInsurance === null ? 'batch-insurance-scope' : 'batch-insurance-scope batch-insurance-summary'}
           onCancel={event => { event.preventDefault(); closeBatchInsurance(); }}
           className="fixed inset-x-0 top-16 bottom-auto mx-auto my-0 w-[520px] max-w-[92vw] rounded-sm bg-white p-0 shadow-2xl backdrop:bg-slate-950/50"
         >
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <h3 id="batch-insurance-title" className="text-base font-bold text-slate-900">批量购买保险</h3>
+            <h3 id="batch-insurance-title" className="text-base font-bold text-slate-900">批量设置保险</h3>
             <button type="button" aria-label="关闭" onClick={closeBatchInsurance} className="text-slate-500 hover:text-slate-800"><X className="h-4 w-4" /></button>
           </div>
           <div className="space-y-4 px-7 py-5 text-xs text-slate-700">
-            <p id="batch-insurance-scope">已勾选 <strong>{batchInsuranceTargets.length}</strong> 票运单</p>
+            <p id="batch-insurance-scope">已选中 <strong>{batchInsuranceTargets.length}</strong> 票运单</p>
             <fieldset className="flex flex-wrap items-center gap-x-5 gap-y-2">
               <legend className="mb-2 font-medium text-slate-700">购买保险</legend>
               {[true, false].map(value => (
@@ -3329,16 +3328,16 @@ export default function TableSection({
                 </label>
               ))}
             </fieldset>
-            <p id="batch-insurance-summary" aria-live="polite" className="rounded bg-slate-50 px-3 py-2.5 text-slate-600">
-              {batchInsuranceChanges.length
-                ? `确认后将 ${batchInsuranceChanges.length} 票所选运单的购买保险设为「${batchInsurance.buyInsurance ? '是' : '否'}」。`
-                : '所选运单的购买保险设置与当前选择一致。'}
-            </p>
+            {batchInsurance.buyInsurance !== null && (
+              <p id="batch-insurance-summary" aria-live="polite" className="rounded bg-slate-50 px-3 py-2.5 text-slate-600">
+                {`保存后，所选 ${batchInsuranceTargets.length} 票运单将统一设为『${batchInsurance.buyInsurance ? '购买保险' : '不购买保险'}』。`}
+              </p>
+            )}
             {batchInsurance.saveFailed && <p role="alert" className="text-red-700">购买保险设置保存失败，请重试。</p>}
           </div>
           <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
             <button type="button" autoFocus onClick={closeBatchInsurance} className="rounded border border-slate-300 bg-white px-5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">取消</button>
-            <button type="button" onClick={saveBatchInsurance} className="rounded bg-[#004bb1] px-5 py-1.5 text-xs font-bold text-white hover:bg-[#003b91]">确定</button>
+            <button type="button" disabled={batchInsurance.buyInsurance === null} onClick={saveBatchInsurance} className="rounded bg-[#004bb1] px-5 py-1.5 text-xs font-bold text-white enabled:hover:bg-[#003b91] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500">保存</button>
           </div>
         </dialog>
       )}
